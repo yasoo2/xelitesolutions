@@ -229,7 +229,10 @@ describe('the forms are filled in and sent, not counted', () => {
         //  2026-11-10: by type alone a postcode got «Joe QA <nonce>» and a year 3 (qa-field-cases.ts fillValueFor).
         expect(b).toContain('let value = fillValueFor(caseField, runNonce, pageLanguage);');
         expect(b).toMatch(/await el\.fill\(value, \{ timeout: 2500 \}\)/);
-        expect(b).toMatch(/await el\.selectOption\(fld\.options\[0\]/);
+        //  A select gets the option its meaning asks for (qa-field-cases selectValueFor), its first one otherwise:
+        //  a card's expiry-year select given this year was a card the checkout rightly refused (the exam, 2026-11-13).
+        expect(b).toContain('const choice = selectValueFor(caseField) || fld.options[0];');
+        expect(b).toMatch(/await el\.selectOption\(choice, \{ timeout: 2000 \}\)/);
         expect(b).toMatch(/await el\.check\(\{ timeout: 2000, force: true \}\)/);
         for (const t of ['email', 'tel', 'date', 'password', 'url']) expect(b).toMatch(new RegExp(`case '${t}'`));
     });
@@ -243,10 +246,14 @@ describe('the forms are filled in and sent, not counted', () => {
     it('proves a QA-created record survives refresh and tests only its own removal', () => {
         const b = B();
         expect(b).toContain('أتحقق من حفظ النتيجة بعد تحديث الصفحة');
-        expect(b).toContain("page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })");
+        //  A record already sent is checked to the end on its own bounded time (checkUntil, at least 9 s
+        //  past the submit): the forms budget ending mid-check left a reloaded page unsearched and «found
+        //  nowhere» said of it (the exam, 2026-11-13: P179, P189, P197).
+        expect(b).toContain('const checkUntil = Math.max(deadline, Date.now() + 9000);');
+        expect(b).toContain("page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, checkUntil - Date.now())) })");
         //  The wait after the reload is bounded and stretches only while the
         //  page is still being answered (38c6d8509): 2.5 s, 6 s at most.
-        expect(b).toContain('const persistenceUntil = () => Math.min(deadline, reloadedAt + 6000, Math.max(reloadedAt + 2500, lastServedAt + 1200));');
+        expect(b).toContain('const persistenceUntil = () => Math.min(checkUntil, reloadedAt + 6000, Math.max(reloadedAt + 2500, lastServedAt + 1200));');
         expect(b).toContain('Date.now() < persistenceUntil() && eyeIsOpen()');
         expect(b).toContain('data-joe-qa-delete-own-record');
         expect(b).toContain('qaRecordsDeleted');
@@ -254,8 +261,10 @@ describe('the forms are filled in and sent, not counted', () => {
 
     it('waits for an observable async submit effect within a bounded window', () => {
         const b = B();
-        //  A disabled submit sends nothing and has no answer to wait for; every other waits a bounded 2.5 s.
-        expect(b).toContain('const effectDeadline = submitDisabled ? Date.now() : Math.min(deadline, Date.now() + 2500);');
+        //  A disabled submit sends nothing and has no answer to wait for; every other waits a bounded 2.5 s —
+        //  its own 2.5 s, not cut by the forms budget: a form already sent past the budget was looked at once
+        //  and called dead while its POST was on its way (the replay of the exam's P096, 2026-11-15).
+        expect(b).toContain('const effectDeadline = submitDisabled ? Date.now() : Date.now() + 2500;');
         expect(b).toContain('while (!effect && Date.now() < effectDeadline && eyeIsOpen())');
         expect(b).toContain("effect = await pending() ? '' : changed(before, after);");
     });
@@ -288,7 +297,8 @@ describe('the forms are filled in and sent, not counted', () => {
             formsNotReachedEvidence: [{ label: 'Create account', reason: 'form missing after state change' }] }).findings;
         expect(findings.some(f => f.code === 'form_dead_submit')).toBe(false);
         const gap = findings.find(f => f.code === 'forms_not_reached')!;
-        expect(gap.severity).toBe('major');
+        //  Told, never a refusal: what the QA could not reach is the QA's gap (the exam, 2026-11-13: P094, P195).
+        expect(gap.severity).toBe('minor');
         expect(gap.evidence?.[0].label).toBe('Create account');
         expect(handlerRepairable([{ id: gap.code, evidence: gap.evidence }])).toEqual([]);
     });

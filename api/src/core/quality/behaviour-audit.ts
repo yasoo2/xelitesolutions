@@ -19,7 +19,7 @@
 import { AuditEyes, boxOf, evalInPage } from './audit-eyes';
 import { applyViewportSize } from './ui-inspection';
 import { showsSignInForm, signInThroughPage, type SignInAccount } from './sign-in';
-import { casesFor, fillValueFor, markupFieldOf, meaningOf, type FieldCase, type QaField } from './qa-field-cases';
+import { casesFor, fillValueFor, markupFieldOf, meaningOf, selectValueFor, type FieldCase, type QaField } from './qa-field-cases';
 import { intentOf, judgeIntent, readControlState, readFacts, type ControlState, type IntentRead, type PageFacts } from './qa-control-intent';
 
 /** What the strip over the outlined element calls it, in his language. */
@@ -51,7 +51,7 @@ export interface BehaviourFinding {
 export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
     'controls_not_reached', 'forms_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
     'form_no_validation', 'form_reloads', 'js_errors', 'keyboard_unreachable',
-    'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven',
+    'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven', 'form_persistence_unmeasured',
     'qa_created_record_not_deletable', 'order_not_kept',
     'markup_executes', 'markup_drawn', 'field_accepts_invalid', 'field_rejects_valid', 'field_case_minor',
     'control_missed_its_job', 'control_job_unseen', 'form_submit_disabled',
@@ -458,7 +458,20 @@ function findControls(limit: number) {
     // Tabs and filters can replace the whole working surface without changing
     // the URL. Test the controls on the current surface first, then switch it.
     // Frontier discovery will catalogue controls revealed by each new tab.
-    document.querySelectorAll('[role="tab"], [data-tab], .tab, .filter, [data-filter]').forEach(el => push(el, 'tab'));
+    /*
+     * …but a class named «filter» is not a control. The exam, 2026-11-13 (P397, P236): the whole
+     * bar («From To Last 3 months Last 6 months Reset range», a <div class="filter">) and a
+     * <label class="filter"> around a <select> were pressed as tabs and called unresponsive. A
+     * «.filter» or «[data-filter]» is one only when it is itself pressable (a button, a link, a
+     * control's role, a tab stop, or a pointer with nothing pressable inside) and holds no field.
+     */
+    const ownControl = (el: Element): boolean => {
+        if (el.matches('[role="tab"], [data-tab], .tab')) return true;
+        if (el.querySelector('input, select, textarea')) return false;
+        if (el.matches('button, a[href], input[type="button"], input[type="radio"], input[type="checkbox"], [role="button"], [role="radio"], [role="option"], [role="menuitem"], [role="menuitemradio"], [role="link"], [role="switch"], [role="checkbox"], [tabindex]:not([tabindex="-1"])')) return true;
+        return getComputedStyle(el).cursor === 'pointer' && !el.querySelector('button, a[href], [role="button"], [role="tab"], [role="link"]');
+    };
+    document.querySelectorAll('[role="tab"], [data-tab], .tab, .filter, [data-filter]').forEach(el => { if (ownControl(el)) push(el, 'tab'); });
     /**
      * AND THE ROUTES INSIDE THE APP.
      *
@@ -499,7 +512,7 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     document.querySelectorAll('[data-joe-sub]').forEach(el => el.removeAttribute('data-joe-sub'));
     const forms: Array<{
         sel: string; label: string;
-        fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string; min: string; max: string; minLength: number; maxLength: number; step: string; inputMode: string }>;
+        fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string; min: string; max: string; minLength: number; maxLength: number; step: string; inputMode: string; autocomplete: string; placeholder: string }>;
         hasSubmit: boolean; submitSel: string; expectsPersistence: boolean; noValidate: boolean; placesOrder?: boolean;
     }> = [];
     const vis = (el: Element) => {
@@ -513,8 +526,15 @@ function findForms(o: { maxForms: number; maxFields: number }) {
         if (!vis(f)) continue;
         const fid = `joe-form-${forms.length}`;
         f.setAttribute('data-joe-form', fid);
-        const fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string; min: string; max: string; minLength: number; maxLength: number; step: string; inputMode: string }> = [];
+        const fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string; min: string; max: string; minLength: number; maxLength: number; step: string; inputMode: string; autocomplete: string; placeholder: string }> = [];
         const raw = Array.from(f.querySelectorAll('input,textarea,select'));
+        /*
+         * A group of radios is one question, answered once. run500 P298 (a booking page, 2026-11-13):
+         * twelve time slots, each taken as a field of its own, filled the form's fourteen before its
+         * phone was reached; the form was sent with no phone, the page said «رقم الهاتف مطلوب», and
+         * nothing reached the server. Its first choice a person can take stands for the group.
+         */
+        const radioGroups = new Set<string>();
         for (const el of raw) {
             if (fields.length >= maxFields) break;
             const h = el as HTMLInputElement;
@@ -522,6 +542,10 @@ function findForms(o: { maxForms: number; maxFields: number }) {
             if (['hidden', 'submit', 'button', 'image', 'reset', 'file'].includes(type)) continue;
             if (h.disabled || h.readOnly) continue;
             if (!vis(el)) continue;
+            if (type === 'radio' && h.name) {
+                if (radioGroups.has(h.name)) continue;
+                radioGroups.add(h.name);
+            }
             const did = `joe-fld-${forms.length}-${fields.length}`;
             el.setAttribute('data-joe-fld', did);
             const options = el.tagName === 'SELECT'
@@ -538,6 +562,8 @@ function findForms(o: { maxForms: number; maxFields: number }) {
                 min: h.getAttribute('min') || '', max: h.getAttribute('max') || '',
                 minLength: Number(h.getAttribute('minlength') || 0), maxLength: Number(h.getAttribute('maxlength') || 0),
                 step: h.getAttribute('step') || '', inputMode: h.getAttribute('inputmode') || '',
+                //  A card field is known by its autocomplete token too (cc-number, cc-csc, cc-exp: qa-field-cases.ts).
+                autocomplete: h.getAttribute('autocomplete') || '', placeholder: h.getAttribute('placeholder') || '',
             });
         }
         const submit = f.querySelector('button[type="submit"],input[type="submit"],button:not([type])');
@@ -563,7 +589,16 @@ function findForms(o: { maxForms: number; maxFields: number }) {
          * rule, written out here; expectsPersistentRecord below keeps it for Node.
          */
         const signsIn = /\b(?:sign[ -]?in|log[ -]?in|login|authenticate)\b|سج[ّ]?ل\s+الدخول|تسجيل\s+الدخول|دخول\s+(?:الحساب|إلى\s+الحساب)/i.test(persistenceContext);
-        const expectsPersistence = !signsIn && /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(persistenceContext);
+        /*
+         * «طلب» and «order» alone are not a record to find again. The exam, 2026-11-12 (P041, a landing
+         * page): its contact form's «إرسال الطلب» («send the request») was read as a record the page must
+         * show after a refresh, and refused four times. A form that sends a message is proven by its
+         * answer and the server's; only words that make a record — or «طلب»/«order» with no word of
+         * sending beside them — ask for one (expectsPersistentRecord says the same for Node).
+         */
+        const makesRecord = /\b(?:add|create|save|register|book|reserve|new record)\b|أضف|اضف|إضافة|اضافة|إنشاء|انشاء|حفظ|احفظ|تسجيل|حجز|احجز/i.test(persistenceContext);
+        const sendsMessage = /\b(?:send|contact|message|inquiry|enquiry|get in touch|subscribe|newsletter|request a (?:quote|call|callback))\b|أرسل|ارسل|إرسال|ارسال|تواصل|اتصل|راسل|رسالة|استفسار|اشترك|اشتراك|النشرة/i.test(persistenceContext);
+        const expectsPersistence = !signsIn && (makesRecord || (!sendsMessage && /\border\b|طلب/i.test(persistenceContext)));
         /*
          * A shop's checkout places an order: its proof is the order confirmed and the
          * cart emptied. An order kept where the shopper can see it again (a «my
@@ -693,7 +728,13 @@ export function currentLinkFacts(sel: string): { names: string; toggle: boolean;
     const marked = (!!current && current !== 'false') || el.getAttribute('aria-selected') === 'true' || /(?:^|\s)(?:active|current|selected|is-active|is-current)(?:$|\s)/i.test(cls);
     const group = el.closest('nav, [role="navigation"], [role="tablist"], [role="menubar"]');
     const items = group ? Array.from(group.querySelectorAll('a[href], button, [role="button"], [role="tab"], [role="link"], [role="menuitem"]')).filter(shown) : [];
-    const first = items.length > 1 && items[0] === el;
+    /*
+     * …or its only one. The replay of the exam's P236 (2026-11-15): a store's header <nav> held one
+     * button, «Shop» (setView('shop')), on the shop it opens on; no other control could leave that
+     * view to try it from, and it was «unresponsive». Tried from another view and still quiet, it is
+     * dead (probeControls testedElsewhere), alone or not.
+     */
+    const first = items.length > 0 && items[0] === el;
     const own = String(el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().replace(/\s+/g, ' ').toLowerCase();
     const brand = !!el.closest('header, [role="banner"]') && !group && own.length >= 2 && String(document.title || '').toLowerCase().includes(own);
     return { names, toggle, marked, first, brand };
@@ -733,8 +774,103 @@ export function sameDocumentUrl(a: string, b: string): boolean {
 /** Runs in the page: the words of the page's own text (what a submit adds is what is not among them). Self-contained. */
 export function pageTokens(): string[] {
     const out = new Set<string>();
-    for (const t of String(document.body?.innerText || '').split(/[\s،؛,;:()[\]{}«»"'|—–]+/)) if (t) out.add(t);
+    //  Cut as newRecordTokens cuts: a word's own full stop or question mark is not part of it.
+    for (const raw of String(document.body?.innerText || '').split(/[\s،؛,;:()[\]{}«»"'|—–]+/)) {
+        const t = raw.replace(/^[.!?؟…]+|[.!?؟…]+$/gu, '');
+        if (t) out.add(t);
+    }
     return Array.from(out).slice(0, 30_000);
+}
+
+/**
+ * Runs in the page: a fingerprint of what the browser itself keeps for the page — its storage (a
+ * form's own draft aside), its cookies, its IndexedDB databases. A submit that changed none of it,
+ * and that no server took, kept nothing anywhere: the one positive proof that a record was lost
+ * (probeForms). Self-contained.
+ */
+export async function browserKept(): Promise<string> {
+    const parts: string[] = [];
+    for (const [name, store] of [['local', window.localStorage], ['session', window.sessionStorage]] as Array<[string, Storage]>) {
+        try {
+            for (let i = 0; i < store.length; i++) {
+                const key = String(store.key(i) || '');
+                if (/draft|autosave|auto-save|unsaved|form-?state/i.test(key)) continue;
+                parts.push(`${name}:${key}=${String(store.getItem(key) || '')}`);
+            }
+        } catch { parts.push(`${name}:?`); }
+    }
+    parts.sort();
+    try { parts.push(`cookie:${document.cookie}`); } catch { /* none */ }
+    try {
+        const dbs = typeof (indexedDB as any)?.databases === 'function' ? await (indexedDB as any).databases() : [];
+        //  A page that keeps an IndexedDB may have kept the record there: it is never «kept nothing».
+        if (dbs.length) parts.push(`idb:${Date.now()}`);
+    } catch { /* none */ }
+    let h = 5381;
+    const text = parts.join('\n');
+    for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+    return `${text.length}:${h}`;
+}
+
+/**
+ * In Node: whether the server, asked again where a write went, lists its records under the very field
+ * the QA's mark was sent in — and this one is not among them. That is a 201 that kept nothing,
+ * measured: positive proof, as a submit that wrote nowhere is. A collection that does not show that
+ * field (a booking list of slots without names) proves nothing and is never read as lost, nor is one
+ * of fifty records or more (a page of a longer list may simply not hold it yet).
+ */
+export function serverListsWithout(posts: Array<{ at: string; body: string }>, answers: string[], mark: string): boolean {
+    if (!mark) return false;
+    const fields = new Set<string>();
+    const take = (key: string, value: unknown, depth: number): void => {
+        if (typeof value === 'string') { if (value.includes(mark) && key) fields.add(key); return; }
+        if (depth > 3 || !value || typeof value !== 'object') return;
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) take(Array.isArray(value) ? key : k, v, depth + 1);
+    };
+    for (const p of posts || []) {
+        const body = String(p?.body || '');
+        if (!body.includes(mark)) continue;
+        try { take('', JSON.parse(body), 0); continue; } catch { /* not JSON */ }
+        try { for (const [k, v] of new URLSearchParams(body)) if (v.includes(mark)) fields.add(k); } catch { /* not a form body */ }
+    }
+    if (!fields.size) return false;
+    let listed = 0;
+    let nodes = 0;
+    const count = (value: unknown, depth: number): void => {
+        if (depth > 6 || !value || typeof value !== 'object' || ++nodes > 20_000) return;
+        if (Array.isArray(value)) { for (const v of value) count(v, depth + 1); return; }
+        const own = value as Record<string, unknown>;
+        if ([...fields].some(k => typeof own[k] === 'string' && String(own[k]).trim() !== '')) listed++;
+        for (const v of Object.values(own)) if (v && typeof v === 'object') count(v, depth + 1);
+    };
+    for (const body of answers || []) {
+        if (String(body).includes(mark)) return false;
+        try { count(JSON.parse(String(body)), 0); } catch { /* an answer that is not JSON lists nothing */ }
+    }
+    return listed >= 1 && listed < 50;
+}
+
+/** Runs in the page: whether the page keeps any IndexedDB database. Self-contained. */
+export async function browserHasIndexedDb(): Promise<boolean> {
+    try {
+        const dbs = typeof (indexedDB as any)?.databases === 'function' ? await (indexedDB as any).databases() : [];
+        return dbs.length > 0;
+    } catch { return false; }
+}
+
+/** Runs in the page: whether the browser's storage holds one of these marks — a form's own draft («draft», «autosave») aside. Self-contained. */
+export function storageHolds(list: string[]): boolean {
+    for (const store of [window.localStorage, window.sessionStorage]) {
+        try {
+            for (let i = 0; i < store.length; i++) {
+                const key = String(store.key(i) || '');
+                if (/draft|autosave|auto-save|unsaved|form-?state/i.test(key)) continue;
+                const value = String(store.getItem(key) || '');
+                if ((list || []).some(n => !!n && value.includes(n))) return true;
+            }
+        } catch { /* a storage the page may not read */ }
+    }
+    return false;
 }
 
 /**
@@ -748,11 +884,31 @@ export function newRecordTokens(before: string[]): string[] {
     const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice,form,script,style,template';
     const out: string[] = [];
     const rows = Array.from(document.querySelectorAll('li,tr,article,[role="listitem"],[role="row"],.card,.item,.entry,.record,[data-item],[data-id],[data-row]'));
+    /*
+     * A row is read without the passing messages inside it. The exam, 2026-11-12 (P280, a booking
+     * page): its <section class="card"> held the form's <p role="status">, and the confirmation
+     * «تم حجز موعدك … يا اختبار جو mwdtsde1-cm098.» gave «mwdtsde1-cm098.» — the name with the
+     * sentence's full stop — as the record's own mark; kept without it, it was «found nowhere».
+     */
+    const textOf = (el: HTMLElement): string => {
+        if (!el.querySelector(noise)) return String(el.innerText || '');
+        //  What is shown of it, outside its messages and forms: text that is drawn, never a hidden panel's.
+        const parts: string[] = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const host = n.parentElement;
+            if (!host || host.closest(noise) || !host.getClientRects().length) continue;
+            parts.push(String(n.textContent || ''));
+        }
+        return parts.join(' ');
+    };
     for (const el of rows) {
         if (el.closest(noise)) continue;
         const r = (el as HTMLElement).getBoundingClientRect();
         if (r.width <= 1 || r.height <= 1) continue;
-        for (const t of String((el as HTMLElement).innerText || '').split(/[\s،؛,;:()[\]{}«»"'|—–]+/)) {
+        for (const raw of textOf(el as HTMLElement).split(/[\s،؛,;:()[\]{}«»"'|—–]+/)) {
+            //  …and a word without its own full stop, question mark or ellipsis: «#1042.» is «#1042».
+            const t = raw.replace(/^[.!?؟…]+|[.!?؟…]+$/gu, '');
             if (t.length < 4 || known.has(t) || out.includes(t)) continue;
             if (!/[0-9٠-٩]/.test(t) || /^[-+]?[0-9٠-٩.,٫٬]+%?$/.test(t)) continue;
             out.push(t);
@@ -883,6 +1039,36 @@ export function stampFirstChoice(formSel: string): string {
     if (!choice) return '';
     choice.setAttribute('data-joe-choice', '1');
     return '[data-joe-choice="1"]';
+}
+
+/**
+ * Runs in the page: each group of radios in the form with none chosen gets its first enabled,
+ * shown one chosen — clicked, so the page hears it as a person's choice. Returns how many groups.
+ * Self-contained.
+ */
+export function chooseUnchosenRadios(formSel: string): number {
+    const form = document.querySelector(formSel);
+    if (!form) return 0;
+    const shown = (el: Element) => { const r = (el as HTMLElement).getBoundingClientRect(); const s = getComputedStyle(el as HTMLElement); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    const groups = new Map<string, HTMLInputElement[]>();
+    (Array.from(form.querySelectorAll('input[type="radio"]')) as HTMLInputElement[]).forEach(r => {
+        const key = r.name || (r.id ? `#${r.id}` : '');
+        if (!key) return;
+        const list = groups.get(key) || [];
+        list.push(r);
+        groups.set(key, list);
+    });
+    let n = 0;
+    for (const list of Array.from(groups.values())) {
+        if (list.some(r => r.checked)) continue;
+        //  A radio a styled label hides is still chosen through its label, as a person clicks it.
+        const label = (r: HTMLInputElement) => (r.labels && r.labels[0]) as HTMLElement | undefined;
+        const pick = list.find(r => !r.disabled && (shown(r) || (label(r) && shown(label(r)!))));
+        if (!pick) continue;
+        if (shown(pick)) pick.click(); else label(pick)!.click();
+        if (pick.checked) n++;
+    }
+    return n;
 }
 
 /** Runs in the page: how many records the page shows — the innermost rows, items and cards, outside forms, menus and notices. Self-contained. */
@@ -1173,7 +1359,15 @@ export function isVisibleFormRefusal(text: string): boolean {
      * «Create booking» answered «Car is required» (no car could be chosen yet), the QA read it as
      * «submitted», looked for the booking, and refused the delivery for one never made.
      */
-    if (/\b(?:is|are) required\b|\brequired field|\bmust (?:be|contain|have|include|match)\b|\bplease (?:enter|select|choose|fill|provide|correct|add|pick)\b|\binvalid\b|\bnot (?:a )?valid\b|\b(?:cannot|can't|can not) be (?:empty|blank|in the past|before|after)\b|\btoo (?:short|long|many|few)\b|\b(?:select|choose|pick) an? \w+ first\b|مطلوب|إلزامي|الزامي|يجب أن|يجب ان|يرجى|الرجاء|من فضلك|غير صالح|غير صحيح|لا يمكن أن يكون|قصير جد|طويل جد|اختر .{0,20}أولاً/iu.test(said)) return true;
+    if (/\b(?:is|are) required\b|\brequired field|\bmust (?:be|contain|have|include|match|look|start|end|use)\b|\bplease (?:enter|select|choose|fill|provide|correct|add|pick)\b|\binvalid\b|\bnot (?:a )?valid\b|\b(?:cannot|can't|can not) be (?:empty|blank|in the past|before|after)\b|\btoo (?:short|long|many|few)\b|\b(?:select|choose|pick) an? \w+ first\b|مطلوب|إلزامي|الزامي|يجب أن|يجب ان|يرجى|الرجاء|من فضلك|غير صالح|غير صحيح|لا يمكن أن يكون|قصير جد|طويل جد|اختر .{0,20}أولاً/iu.test(said)) return true;
+    /*
+     * …and a line that tells him to choose: «اختر موعدًا من القائمة». The exam, 2026-11-13 (P290): the
+     * booking's slots sit outside its form, none was chosen, the page said so, and the QA read it as
+     * «submitted» — then found its own name in the form's still-filled field and looked for a booking
+     * never made. «أولًا» is spelled with its tanween on either letter, or with none.
+     */
+    if (/(?:اختر|اختاري|اختيار|حدد|حدّد)\s.{0,30}(?:أولاً|أولًا|أولا|اولاً|اولًا|اولا|من القائمة|من الجدول|من المواعيد|من الأوقات)/u.test(said)) return true;
+    if (/(?:^|\n)\s*(?:(?:يرجى|الرجاء|من فضلك)\s+)?(?:اختر|اختاري|حدد|حدّد)\s|(?:^|\n)\s*(?:please\s+)?(?:select|choose|pick)\s+(?:a|an|the|your|one)\b/iu.test(said)) return true;
     return /\b(?:unauthori[sz]ed|forbidden|access denied|permission denied|invalid (?:email|password|credentials)|please sign[ -]?in|sign[ -]?in (?:to continue|required)|could not save|unable to save)\b|لم\s+يُ?حفظ|سج[ّ]?ل\s+الدخول|غير\s+صحيح(?:ة)?|لا\s+تملك\s+صلاحية|تعذ[ّ]?ر|مرفوض|خطأ/i.test(String(text || ''));
 }
 
@@ -1186,7 +1380,10 @@ export function expectsPersistentRecord(context: string): boolean {
     const text = String(context || '');
     const authentication = /\b(?:sign[ -]?in|log[ -]?in|login|authenticate)\b|سج[ّ]?ل\s+الدخول|تسجيل\s+الدخول|دخول\s+(?:الحساب|إلى\s+الحساب)/i;
     if (authentication.test(text)) return false;
-    return /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(text);
+    //  The same rule findForms writes out in the page: a form that sends a message makes no record to find.
+    if (/\b(?:add|create|save|register|book|reserve|new record)\b|أضف|اضف|إضافة|اضافة|إنشاء|انشاء|حفظ|احفظ|تسجيل|حجز|احجز/i.test(text)) return true;
+    const sendsMessage = /\b(?:send|contact|message|inquiry|enquiry|get in touch|subscribe|newsletter|request a (?:quote|call|callback))\b|أرسل|ارسل|إرسال|ارسال|تواصل|اتصل|راسل|رسالة|استفسار|اشترك|اشتراك|النشرة/i;
+    return !sendsMessage.test(text) && /\border\b|طلب/i.test(text);
 }
 
 async function formFeedback(page: any, selector: string): Promise<string> {
@@ -1213,6 +1410,41 @@ async function formFeedback(page: any, selector: string): Promise<string> {
             .join('\n')
             .slice(0, 1200);
     }, selector).catch(() => '');
+}
+
+/**
+ * What the form shows NOW that says it refused: its fields marked aria-invalid, and the error text
+ * drawn in it or beside it — whenever it was drawn. The exam, 2026-11-13 (P230, P236, P238, P246,
+ * P250): five checkouts validated their card number live, the error was on screen before «Place
+ * order» was pressed, so nothing NEW answered the submit, and a form that told its visitor exactly
+ * what was wrong was «filled in completely and submitted, and nothing happened at all». Read in the
+ * page; judged in Node (isVisibleFormRefusal).
+ */
+export async function refusalOnScreen(page: any, selector: string): Promise<{ invalid: string[]; said: string[]; tied: string[] }> {
+    return page.evaluate((sel: string) => {
+        const form = document.querySelector(sel) as HTMLElement | null;
+        //  The form gone (a thank-you view in its place) says no refusal.
+        if (!form) return { invalid: [], said: [], tied: [] };
+        const shown = (el: Element) => {
+            const r = (el as HTMLElement).getBoundingClientRect();
+            const s = getComputedStyle(el as HTMLElement);
+            return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && s.display !== 'none';
+        };
+        const invalidFields = Array.from(form.querySelectorAll('[aria-invalid="true"]')).filter(shown);
+        const invalid = invalidFields
+            .map(el => String(el.getAttribute('name') || el.id || el.getAttribute('aria-label') || el.tagName).slice(0, 60)).slice(0, 6);
+        //  The words an invalid field points at (aria-errormessage, aria-describedby) are its refusal, whatever they say.
+        const tied = invalidFields.flatMap(el => `${el.getAttribute('aria-errormessage') || ''} ${el.getAttribute('aria-describedby') || ''}`.split(/\s+/).filter(Boolean))
+            .map(id => document.getElementById(id)).filter((el): el is HTMLElement => !!el && shown(el))
+            .map(el => String(el.innerText || '').trim().replace(/\s+/g, ' ')).filter(t => t.length > 1 && t.length <= 240).slice(0, 4);
+        const scope = form.closest('[role="dialog"],section,article') || form.parentElement || form;
+        const errorish = '[role="alert"],[aria-live],[role="status"],.error,.err,.errors,.invalid-feedback,.field-error,.error-message,.form-error,.help-block,.text-danger,[data-error],[id$="-error"],[id$="Error"],[class*="error"],[class*="Error"],[class*="invalid"]';
+        const said = Array.from(new Set([...Array.from(form.querySelectorAll(errorish)), ...Array.from(scope.querySelectorAll('[role="alert"],[aria-live],.error,.form-error,.error-message'))]))
+            .filter(el => shown(el) && !el.closest('[data-joe-ambient]') && !el.querySelector('input,select,textarea,button'))
+            .map(el => String((el as HTMLElement).innerText || '').trim().replace(/\s+/g, ' '))
+            .filter(t => t.length > 1 && t.length <= 240).slice(0, 8);
+        return { invalid, said, tied };
+    }, selector).catch(() => ({ invalid: [], said: [], tied: [] }));
 }
 
 /**
@@ -1244,9 +1476,20 @@ export function isExpectedRefusal(page: any, status: number, url = '', method = 
  * (2xx) and those it refused (4xx). A refused write is remembered by its address
  * so its console line is known as the same refusal (isExpectedRefusal).
  */
-export function watchWrites(page: any): { saved: () => number; refused: () => number; written: () => string[]; pending: () => number; stop: () => void } {
+export function watchWrites(page: any): {
+    saved: () => number; refused: () => number; written: () => string[]; pending: () => number; stop: () => void;
+    /** Writes taken anywhere — a redirect after a post, another origin's 2xx (a hosted database) included: where a record may be kept. */
+    kept: () => number;
+    /** The page's own credentials, as its last same-origin request carried them: the QA asks its server as the page does. */
+    auth: () => Record<string, string>;
+    /** Each write its origin took, with what was sent: where a record was written and under which field names (keptAtServer). */
+    posted: () => Array<{ at: string; body: string }>;
+} {
     let saved = 0;
     let refused = 0;
+    let keptElsewhere = 0;
+    const posts: Array<{ at: string; body: string }> = [];
+    let auth: Record<string, string> = {};
     /** Writes sent and not answered yet: what the page drew meanwhile is not their answer. */
     let pending = 0;
     /** Where the product took a write (POST, PUT, PATCH), in order: where what a form made is asked for again. */
@@ -1258,9 +1501,19 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
             const method = String(response?.request?.()?.method?.() || '').toUpperCase();
             if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
             const at = String(response.url());
-            if (origin && new URL(at).origin !== origin) return;
             const status = Number(response.status());
-            if (status >= 200 && status < 300) { if (method !== 'DELETE') { saved++; written.push(at); } return; }
+            if (origin && new URL(at).origin !== origin) { if (status >= 200 && status < 300 && method !== 'DELETE') keptElsewhere++; return; }
+            //  A post answered by a redirect (post, then show) was taken: counted as kept, never as a save a wrong value got.
+            if (status >= 300 && status < 400 && method !== 'DELETE') { keptElsewhere++; return; }
+            if (status >= 200 && status < 300) {
+                if (method !== 'DELETE') {
+                    saved++; written.push(at);
+                    let body = '';
+                    try { body = String(response.request().postData() || '').slice(0, 20_000); } catch { body = ''; }
+                    posts.push({ at, body });
+                }
+                return;
+            }
             if (status >= 400 && status < 500) {
                 refused++;
                 if (!page.__joeQaRefusedUrls) page.__joeQaRefusedUrls = new Set<string>();
@@ -1274,12 +1527,24 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
             return !origin || new URL(String(request.url())).origin === origin;
         } catch { return false; }
     };
-    const sent = (request: any) => { if (isWrite(request)) pending++; };
+    const sent = (request: any) => {
+        //  Its credentials, from any request of its own origin: a Bearer token kept in localStorage is in no cookie.
+        try {
+            if (origin && new URL(String(request.url())).origin === origin) {
+                const headers = request.headers?.() || {};
+                const own: Record<string, string> = {};
+                for (const [k, v] of Object.entries(headers)) if (/^(?:authorization|x-[\w-]*(?:token|auth|session|api-key|csrf)[\w-]*)$/i.test(k) && v) own[k] = String(v);
+                if (Object.keys(own).length) auth = own;
+            }
+        } catch { /* a request that cannot be read carries nothing we use */ }
+        if (isWrite(request)) pending++;
+    };
     const answered = (response: any) => { if (isWrite(response?.request?.())) pending = Math.max(0, pending - 1); on(response); };
     const lost = (request: any) => { if (isWrite(request)) pending = Math.max(0, pending - 1); };
     try { page.on('request', sent); page.on('response', answered); page.on('requestfailed', lost); } catch { /* a page without events */ }
     return {
         saved: () => saved, refused: () => refused, written: () => written.slice(), pending: () => pending,
+        kept: () => saved + keptElsewhere, auth: () => ({ ...auth }), posted: () => posts.slice(),
         stop: () => { try { page.off('request', sent); page.off('response', answered); page.off('requestfailed', lost); } catch { /* gone */ } },
     };
 }
@@ -2902,7 +3167,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         const SEARCH_LABEL = /^(?:search|find|go|apply|filter|بحث|ابحث|تصفية|تطبيق)$/iu;
         //  The ladder, 2026-11-09: «مسح الحقول», «إعادة الضبط», «Reset filters» on a page as it
         //  loads clear nothing, correctly, and were reported as unresponsive.
-        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|clear all|clear form|reset (?:filters?|form|all|search)|show all|مسح|مسح الكل|مسح الحقول|مسح البحث|مسح الفلاتر|إعادة تعيين|اعادة تعيين|إعادة الضبط|اعادة الضبط|إعادة ضبط|اعادة ضبط|إلغاء البحث|إلغاء الفلترة|عرض الكل|إظهار الكل|اظهار الكل)$/iu;
+        //  The exam, 2026-11-13 (P386): «كل الفترات» on a report that opens on every period was «unresponsive».
+        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|clear all|clear form|reset (?:filters?|form|all|search|range|dates?|period)|show all|all periods|all time|all dates|any time|مسح|مسح الكل|مسح الحقول|مسح البحث|مسح الفلاتر|إعادة تعيين|اعادة تعيين|إعادة الضبط|اعادة الضبط|إعادة ضبط|اعادة ضبط|إلغاء البحث|إلغاء الفلترة|عرض الكل|إظهار الكل|اظهار الكل|كل الفترات|كل الفتره|جميع الفترات|كل الأوقات|كل الاوقات|كل التواريخ|جميع التواريخ)$/iu;
+        /** Pressed on a state it had something to undo (a box typed into, a field moved, another control's press): only then may it be called dead. */
+        const fairPress = new Set<string>();
         const QUERY = 'zzqxjv';
         const queryLookUntil = Date.now() + 10_000;
         const asked = pressedQuiet.filter(q => SEARCH_LABEL.test(q.label.trim()) || CLEAR_LABEL.test(q.label.trim()));
@@ -2914,30 +3182,73 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 await restoreProbeStart();
                 const found = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
                 if (!found || !await reachableOnScreen(found.sel)) continue;
-                //  Its box: a text field in the control's own form, search bar or toolbar.
-                const hasBox = await page.evaluate((s: string) => {
+                /*
+                 * Its box: a text field in the control's own form, search bar or toolbar — or, for a
+                 * control that clears, any other field of its group to move first: the exam, 2026-11-13
+                 * (P386), «كل الفترات» reset a date filter that has no text box at all, and stayed
+                 * «unresponsive» on a report that opens on every period.
+                 */
+                const boxKind: string = await page.evaluate(({ s, clearing }: { s: string; clearing: boolean }) => {
                     document.querySelectorAll('[data-joe-qbox]').forEach(el => el.removeAttribute('data-joe-qbox'));
                     const control = document.querySelector(s);
-                    if (!control) return false;
+                    if (!control) return '';
                     const visible = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-                    const scopes = [control.closest('form, [role="search"], .toolbar, .search, .search-bar, .filters'), control.parentElement, control.parentElement?.parentElement];
+                    const scopes = [control.closest('form, [role="search"], [role="toolbar"], [role="group"], .toolbar, .search, .search-bar, .filters, .filter-bar, .controls'), control.parentElement, control.parentElement?.parentElement];
                     for (const scope of scopes) {
                         const box = scope && Array.from(scope.querySelectorAll('input')).find((el: any) => visible(el) && !el.disabled && !el.readOnly
                             && /^(?:|text|search)$/i.test(el.getAttribute('type') || ''));
-                        if (box) { box.setAttribute('data-joe-qbox', '1'); return true; }
+                        if (box) { box.setAttribute('data-joe-qbox', '1'); return 'text'; }
                     }
-                    return false;
-                }, found.sel).catch(() => false);
-                if (!hasBox) continue;
+                    if (!clearing) return '';
+                    for (const scope of scopes) {
+                        const field = scope && (Array.from(scope.querySelectorAll('select, input')) as HTMLInputElement[]).find(el => visible(el) && !el.disabled && !el.readOnly
+                            && (el.tagName === 'SELECT' ? (el as unknown as HTMLSelectElement).options.length > 1
+                                : /^(?:date|month|week|time|datetime-local|number|range|checkbox|radio)$/i.test(el.type)));
+                        if (field) { field.setAttribute('data-joe-qbox', '1'); return field.tagName === 'SELECT' ? 'select' : field.type.toLowerCase(); }
+                    }
+                    return '';
+                }, { s: found.sel, clearing }).catch(() => '');
+                if (!boxKind) continue;
                 const box = page.locator('[data-joe-qbox="1"]').first();
-                await box.fill(QUERY, { timeout: 2000 });
-                if (clearing) await box.press('Enter').catch(() => { });
+                /** The value the field was moved to: a press that clears takes it away. */
+                let movedTo = '';
+                if (boxKind === 'text') {
+                    await box.fill(QUERY, { timeout: 2000 });
+                    if (clearing) await box.press('Enter').catch(() => { });
+                } else {
+                    //  Moved as a person moves it: another option, another date, a box ticked.
+                    const target: string = await page.evaluate(() => {
+                        const el = document.querySelector('[data-joe-qbox="1"]') as HTMLInputElement | null;
+                        if (!el) return '';
+                        if (el.tagName === 'SELECT') {
+                            const sel = el as unknown as HTMLSelectElement;
+                            return Array.from(sel.options).find(o => !o.disabled && o.value !== sel.value)?.value ?? '';
+                        }
+                        const t = el.type.toLowerCase();
+                        if (t === 'checkbox' || t === 'radio') return el.checked ? '' : 'on';
+                        if (t === 'number' || t === 'range') {
+                            const min = el.min !== '' ? Number(el.min) : NaN, max = el.max !== '' ? Number(el.max) : NaN;
+                            const now = el.value !== '' ? Number(el.value) : NaN;
+                            const next = Number.isFinite(now) ? now + 1 : Number.isFinite(min) ? min : 1;
+                            return String(Number.isFinite(max) && next > max ? (Number.isFinite(min) ? min : now - 1) : next);
+                        }
+                        const day = el.min || '2020-01-15';
+                        const pick = t === 'month' ? day.slice(0, 7) : t === 'week' ? '2020-W03' : t === 'time' ? '10:15' : t === 'datetime-local' ? `${day.slice(0, 10)}T10:15` : day.slice(0, 10);
+                        return el.value === pick ? (t === 'date' ? '2020-02-15' : '') : pick;
+                    }).catch(() => '');
+                    if (!target) continue;
+                    if (boxKind === 'select') await box.selectOption(target, { timeout: 2000 });
+                    else if (boxKind === 'checkbox' || boxKind === 'radio') await box.check({ timeout: 2000, force: true });
+                    else await box.fill(target, { timeout: 2000 });
+                    movedTo = boxKind === 'checkbox' || boxKind === 'radio' ? 'true' : target;
+                }
                 await settled(Math.min(queryLookUntil, Date.now() + 2500));
                 const ready = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
                 if (!ready || !await reachableOnScreen(ready.sel)) continue;
                 const boxValue = () => page.evaluate(() => {
                     const field = (document.querySelector('[data-joe-qbox="1"]') || document.querySelector('input[type="search"], [role="search"] input')) as HTMLInputElement | null;
-                    return field ? field.value : null;
+                    if (!field) return null;
+                    return field.type === 'checkbox' || field.type === 'radio' ? String(field.checked) : field.value;
                 }).catch(() => null);
                 await eyes.lookAt(page, await boxOf(page, ready.sel), { note: `${KIND_AR[quiet.kind] || 'عنصر'}: ${quiet.label}`.slice(0, 64), moveMouse: true });
                 const before = await page.evaluate(snapshot).catch(() => null);
@@ -2949,9 +3260,13 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 do {
                     await page.waitForTimeout(100);
                     effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
-                    if (!effect && clearing && await boxValue() === '') effect = 'cleared';
+                    if (!effect && clearing) {
+                        const value = await boxValue();
+                        if (movedTo ? value !== null && value !== movedTo : value === '') effect = 'cleared';
+                    }
                 } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
-                metrics.secondLook.push({ label: quiet.label, after: clearing ? `«${QUERY}» searched` : `«${QUERY}» typed`, effect });
+                fairPress.add(`${quiet.kind}|${quiet.label}|${quiet.instance ?? 0}`);
+                metrics.secondLook.push({ label: quiet.label, after: movedTo ? `its ${boxKind} field moved to «${movedTo}»` : clearing ? `«${QUERY}» searched` : `«${QUERY}» typed`, effect });
                 if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
             } catch { /* the control under test keeps its first verdict */ }
         }
@@ -3043,6 +3358,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
                     } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
                     metrics.secondLook.push({ label: quiet.label, after: mover.label, effect });
+                    fairPress.add(`${quiet.kind}|${quiet.label}|${quiet.instance ?? 0}`);
                     if (!effect && left) q.testedElsewhere = true;
                     if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
                     if (effect) q.answered = true;
@@ -3058,6 +3374,22 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 metrics.currentPageLinks = Number(metrics.currentPageLinks || 0) + 1;
                 (metrics.currentPageWhy = metrics.currentPageWhy || []).push(`${quiet.label}: ${why}`);
             }
+        }
+        /*
+         * ⛔ A CONTROL THAT UNDOES IS DEAD ONLY AFTER IT HAD SOMETHING TO UNDO.
+         *
+         * A reset, a «show all», an «all periods» on a page already at its defaults changes nothing,
+         * correctly (P386, the exam of 2026-11-13). Pressed after a box was typed into, a field of its
+         * group moved, or another control's press, and still quiet, it is dead; never given that
+         * state, it is not judged («idle»), and told in the metrics.
+         */
+        for (const quiet of pressedQuiet) {
+            if (!CLEAR_LABEL.test(quiet.label.trim())) continue;
+            const key = `${quiet.kind}|${quiet.label}|${quiet.instance ?? 0}`;
+            if (fairPress.has(key)) continue;
+            if (controls.some(r => r.kind === quiet.kind && r.label === quiet.label && (r.instance ?? 0) === (quiet.instance ?? 0) && (r.worked || r.effect === 'current' || r.effect === 'idle'))) continue;
+            controls.push({ label: quiet.label, kind: quiet.kind, worked: false, effect: 'idle', instance: quiet.instance, href: quiet.href });
+            (metrics.nothingToUndo = metrics.nothingToUndo || []).push(quiet.label);
         }
         probeWrites.stop();
         phase('rest');
@@ -3100,6 +3432,12 @@ export function semanticTypeForField(tag: string, name: string): 'email' | 'tel'
      * working search box to type="text" to quiet it.
      */
     if (/^\s*search\b|\bsearch\b|بحث|ابحث|فلترة|تصفية|filter/iu.test(label)) return '';
+    /*
+     * A payment card's fields are not a date, a phone or an amount: its «Expiry (MM/YY)» is text by
+     * every card form's design, and «should be type=date» refused checkouts that were right (the
+     * exam, 2026-11-13: P230, P236, P238, P246, P250). Their own cases test them (qa-field-cases.ts).
+     */
+    if (/\b(?:card|cc|credit|debit|cvc|cvv|csc)\b|\bmm\s*\/\s*yy|بطاقة|البطاقة/iu.test(label)) return '';
     if (/\bemail\b|e[- ]?mail|(?:البريد\s*)?(?:الإلكتروني|الالكتروني)/iu.test(label)) return 'email';
     if (/\b(?:phone|telephone|mobile|tel)\b|(?:رقم\s*)?(?:الهاتف|هاتف|الجوال|جوال|الموبايل|موبايل)/iu.test(label)) return 'tel';
     if (/\b(?:birth\s*date|date\s*of\s*birth|dob|date|expiry|expiration|deadline|due\s+date)\b|تاريخ\s*(?:الميلاد|الانتهاء|الاستحقاق)?/iu.test(label)) return 'date';
@@ -3211,7 +3549,7 @@ export async function probeForms(
         /** Major cases the field took at input: sent with the form, the product's own answer decides. */
         const submitCandidates: Array<{ sel: string; field: string; meaning: string; c: FieldCase }> = [];
         /** The one field markup is tried in: free text with room for it (markupFieldOf). */
-        const asCaseFields: QaField[] = f.fields.map((x: any) => ({ tag: x.tag, type: x.type, name: x.name, required: x.required, pattern: x.pattern, min: x.min, max: x.max, minLength: x.minLength, maxLength: x.maxLength, step: x.step, inputMode: x.inputMode }));
+        const asCaseFields: QaField[] = f.fields.map((x: any) => ({ tag: x.tag, type: x.type, name: x.name, required: x.required, pattern: x.pattern, min: x.min, max: x.max, minLength: x.minLength, maxLength: x.maxLength, step: x.step, inputMode: x.inputMode, autocomplete: x.autocomplete, placeholder: x.placeholder, options: x.options }));
         const markupAt = markupFieldOf(asCaseFields);
         const markupSel = markupAt >= 0 ? String(f.fields[markupAt].sel) : '';
         let savedInvalid = false;
@@ -3283,15 +3621,25 @@ export async function probeForms(
                 await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
                 if (!eyeIsOpen()) break;
                 await eyes.lookAt(page, await boxOf(page, fld.sel), { note: `${fld.type}`, tone: 'warn', moveMouse: true });
+                //  Its meaning, from its type, its limits, its words and its autocomplete token (qa-field-cases.ts).
+                const caseField: QaField = {
+                    tag: fld.tag, type: fld.type, name: fld.name, required: fld.required, pattern: fld.pattern,
+                    min: fld.min, max: fld.max, minLength: fld.minLength, maxLength: fld.maxLength, step: fld.step, inputMode: fld.inputMode,
+                    autocomplete: fld.autocomplete, placeholder: fld.placeholder, options: fld.options,
+                };
                 if (fld.tag === 'select') {
                     if (!fld.options.length) continue;
-                    await el.selectOption(fld.options[0], { timeout: 2000 });
-                    validValues.set(fld.sel, { kind: 'select', value: fld.options[0] });
+                    //  The option its meaning asks for: a card's expiry year in the future, never this year (selectValueFor).
+                    const choice = selectValueFor(caseField) || fld.options[0];
+                    await el.selectOption(choice, { timeout: 2000 });
+                    validValues.set(fld.sel, { kind: 'select', value: choice });
                 } else if (fld.type === 'checkbox' || fld.type === 'radio') {
                     await el.check({ timeout: 2000, force: true });
                     if (fld.type === 'checkbox') validValues.set(fld.sel, { kind: 'check', value: '' });
                 } else {
-                    const semantic = semanticTypeForField(fld.tag, fld.name);
+                    //  A card's MM/YY, its number and its code are not a date, a phone or an amount: their own cases test them.
+                    const cardField = /^(?:card|cvc|expiry|expiry-month|expiry-year|cardholder)$/.test(meaningOf(caseField));
+                    const semantic = cardField ? '' : semanticTypeForField(fld.tag, fld.name);
                     if (semantic) {
                         const expected = semantic;
                         const bad = semantic === 'email' ? 'not-an-email' : semantic === 'tel' || semantic === 'number' ? 'letters-only' : 'not-a-date';
@@ -3322,10 +3670,6 @@ export async function probeForms(
                         if (!result.rejected && wrongType) metrics.semanticValidationFailures++;
                     }
                     //  Every case a careful tester tries on it, by what it means (qa-field-cases.ts).
-                    const caseField: QaField = {
-                        tag: fld.tag, type: fld.type, name: fld.name, required: fld.required, pattern: fld.pattern,
-                        min: fld.min, max: fld.max, minLength: fld.minLength, maxLength: fld.maxLength, step: fld.step, inputMode: fld.inputMode,
-                    };
                     const meaning = meaningOf(caseField);
                     for (const c of casesFor(caseField)) {
                         if (c.expect === 'inert') continue;
@@ -3484,6 +3828,12 @@ export async function probeForms(
         let viewBeforeSubmit: string[] = [];
         /** How many writes the product had taken before this form was sent: the ones after are this form's. */
         let writtenBeforeSubmit = 0;
+        /** …and taken anywhere (watchWrites kept): a redirect after a post, another origin's database. */
+        let keptBeforeSubmit = 0;
+        /** What the browser itself kept before the submit (browserKept): a record the page stores is kept there. */
+        let storageBeforeSubmit = '';
+        /** The form still said no when it was sent: its invalid fields and its words (refusalOnScreen). */
+        let refusedOnScreen: { invalid: string[]; said: string[] } | null = null;
         try {
             /*
              * ⛔ A SUBMIT THE PRODUCT KEEPS DISABLED WAS NOT SENT.
@@ -3523,6 +3873,18 @@ export async function probeForms(
                 if (asked.length || choice) metrics.formsPrerequisitesChosen = Number(metrics.formsPrerequisitesChosen || 0) + 1;
                 submitDisabled = await isSubmitDisabled();
             }
+            /*
+             * …and a group of radios the page drew again with nothing chosen is chosen again. run500 P298
+             * (a booking page, 2026-11-13): its time slots are radios drawn again when the date changes,
+             * and drawing them clears the choice; the walk checked a slot, then set the date, and sent a
+             * form with no time — the page said «اختر الوقت», nothing reached the server, and the booking
+             * was called «found nowhere» after the refresh. A tester looks before he presses the button.
+             */
+            const rechosen: number = await page.evaluate(chooseUnchosenRadios, f.sel).catch(() => 0);
+            if (rechosen) {
+                metrics.formsRadiosChosenAgain = Number(metrics.formsRadiosChosenAgain || 0) + rechosen;
+                await page.waitForTimeout(300).catch(() => { });
+            }
             //  Every baseline below is taken after what the page asked for was chosen: those choices are no answer of the submit.
             const before = await page.evaluate(snapshot).catch(() => null);
             const feedbackBefore = await formFeedback(page, f.sel);
@@ -3535,6 +3897,8 @@ export async function probeForms(
             const savedBeforeSubmit = writes.saved();
             writtenBeforeSubmit = writes.written().length;
             const refusedBeforeSubmit = writes.refused();
+            keptBeforeSubmit = writes.kept();
+            storageBeforeSubmit = f.expectsPersistence ? await evalInPage(page, browserKept).catch(() => '?') : '';
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
             viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings, true).catch(() => [] as string[]) : [];            await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
@@ -3575,7 +3939,12 @@ export async function probeForms(
             let after = await page.evaluate(snapshot).catch(() => null);
             effect = await pending() ? '' : changed(before, after);
             //  A disabled submit sends nothing: there is no answer to wait for.
-            const effectDeadline = submitDisabled ? Date.now() : Math.min(deadline, Date.now() + 2500);
+            /*
+             * A form already sent is waited for on its own time, never cut by the forms budget: the replay of
+             * the exam's P096 (2026-11-15) pressed «أضف التقييم» as the budget ran out, looked once, saw nothing
+             * yet, and called a form whose POST was still on its way «filled in and nothing happened».
+             */
+            const effectDeadline = submitDisabled ? Date.now() : Date.now() + 2500;
             while (!effect && Date.now() < effectDeadline && eyeIsOpen()) {
                 await page.waitForTimeout(250);
                 after = await page.evaluate(snapshot).catch(() => null);
@@ -3615,12 +3984,26 @@ export async function probeForms(
                     const was = new Set(String(feedbackBefore || '').split('\n'));
                     const fresh = String(feedbackAfter || '').split('\n').filter(line => !was.has(line)).join('\n');
                     effect = isVisibleFormRefusal(fresh || feedbackAfter) ? 'refused' : 'submitted';
-                } else if (!effect && stillInvalid) {
+                } else if (stillInvalid && (!effect || !f.noValidate)) {
+                    /*
+                     * A form the browser holds invalid is not sent at all, whatever else moved meanwhile: the
+                     * replay of the exam's P179 (2026-11-15) chose a showtime the QA had just deleted, the select
+                     * stayed empty and required, a list redrew beside it, and «Add ticket» — never sent — was
+                     * looked for as a record and called lost.
+                     */
                     // The browser refused it — which is the behaviour that was asked
                     // for, not a dead form.
                     effect = 'validation';
-                } else if (effect) {
-                    effect = 'submitted';
+                } else {
+                    //  The form still says no — a field marked invalid, an error drawn before this press (refusalOnScreen).
+                    const onScreen = await refusalOnScreen(page, f.sel);
+                    const saidNo = [...new Set([...(onScreen.tied || []), ...(onScreen.said || []).filter(line => isVisibleFormRefusal(line))])];
+                    if ((onScreen.invalid || []).length || saidNo.length) {
+                        effect = 'refused';
+                        refusedOnScreen = { invalid: onScreen.invalid, said: saidNo.slice(0, 3) };
+                    } else if (effect) {
+                        effect = 'submitted';
+                    }
                 }
             }
             //  What the page wrote into its messages (read now, judged after what the server said).
@@ -3644,10 +4027,13 @@ export async function probeForms(
              * contain digits») after the page had already changed, and was judged «sent and taken,
              * never shown» — a record the server had refused, looked for four times.
              */
-            const writesUntil = Math.min(deadline, Date.now() + 4000);
+            //  …and so is its write: its answer is the submit's (the same replay, P179: a POST still pending read as «nothing kept»).
+            const writesUntil = Date.now() + 4000;
             while (writes.pending() > 0 && Date.now() < writesUntil) await page.waitForTimeout(100);
             const savedNow = writes.saved() > savedBeforeSubmit;
             const refusedNow = writes.refused() > refusedBeforeSubmit;
+            //  An error still drawn from an earlier case is not this submit's answer when the server took the write.
+            if (refusedOnScreen && savedNow) { effect = 'submitted'; refusedOnScreen = null; }
             if (refusedNow && !savedNow && effect !== 'validation' && effect !== 'reload') {
                 //  Told nothing unless the page wrote a refusal: said again in the same words is telling (watchFormAnswer);
                 //  a «Saving…» it then wiped is not (the fifth review).
@@ -3667,6 +4053,23 @@ export async function probeForms(
             }
             if (!effect && submitDisabled) effect = 'declined';
         } catch { /* the form is what is under test */ }
+        /*
+         * Refused by the product, on screen, with every field given its valid value: the product decided
+         * about the QA's value (a card number it checks, a slot it wants chosen) — told as a weak check
+         * with its own words, never a dead form (judgeBehaviour, field_case_minor).
+         */
+        if (effect === 'refused' && refusedOnScreen) {
+            const shown = refusedOnScreen as { invalid: string[]; said: string[] };
+            const words = shown.said.length ? shown.said.join(' / ') : `marked invalid: ${shown.invalid.join(', ')}`;
+            metrics.formsRefusedOnScreen = Number(metrics.formsRefusedOnScreen || 0) + 1;
+            metrics.fieldCasesFailed++;
+            metrics.fieldCaseFailures.push({
+                form: f.label, field: shown.invalid[0] || f.label, meaning: 'form', case: 'form:refused_on_screen', value: '',
+                ar: `رفض النموذج القيم الصالحة التي أدخلها الفحص وقال: «${words.slice(0, 160)}»`,
+                en: `the form refused the QA's valid values and said: "${words.slice(0, 160)}"`,
+                weight: 'minor', outcome: 'refused_on_screen',
+            });
+        }
 
         /*
          * ⛔ MARKUP SENT AS TEXT COMES BACK AS TEXT.
@@ -3734,8 +4137,14 @@ export async function probeForms(
              * field that shows it (an edit form after a reload: its value came
              * from the server).
              */
-            const visibleNeedle = (needles: string[]) => page.evaluate((list: string[]) => {
+            /*
+             * Right after the submit, never in the submitted form's own fields: the exam, 2026-11-13 (P290),
+             * a booking refused for want of a slot kept the QA's name in its field, and that was taken for
+             * the record. After a reload a field that shows it is the server's (an edit form).
+             */
+            const visibleNeedle = (needles: string[], formSel = '') => page.evaluate(({ list, formSel }: { list: string[]; formSel: string }) => {
                 const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice';
+                const own = formSel ? document.querySelector(formSel) : null;
                 const shows = (needle: string) => {
                     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
                     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
@@ -3746,10 +4155,12 @@ export async function probeForms(
                         if (r.width > 1 && r.height > 1) return true;
                     }
                     return Array.from(document.querySelectorAll('input,textarea'))
-                        .some(x => String((x as HTMLInputElement).value || '').includes(needle));
+                        .some(x => !(own && own.contains(x)) && String((x as HTMLInputElement).value || '').includes(needle));
                 };
                 return list.find(shows) || '';
-            }, needles).catch(() => '');
+            }, { list: needles, formSel }).catch(() => '');
+            /** The run's own mark inside what was typed: what a server keeps of a name it trims or splits. */
+            const ownNonce = anchor.includes(runNonce) && anchor !== runNonce ? runNonce : '';
             /*
              * ⛔ WHAT A FORM MADE IS WHAT IT MADE — NOT ONLY WHAT WAS TYPED INTO IT.
              *
@@ -3765,8 +4176,9 @@ export async function probeForms(
              * found again after the reload: on the page, in the browser's own
              * storage, or in what the server sends back.
              */
-            let needles = anchor ? [anchor] : [];
-            let shownAs = needles.length ? await visibleNeedle(needles) : '';
+            //  What was typed, and the run's mark inside it: a server that trims or splits a name still keeps the mark.
+            let needles = anchor ? [anchor, ...(ownNonce ? [ownNonce] : [])] : [];
+            let shownAs = needles.length ? await visibleNeedle(needles, f.sel) : '';
             /*
              * …or, with nothing of its own to show (a booking: a car, a customer, two dates — all already on
              * the page), the row it added. The eighth live check, 2026-11-10 (L160): «Add booking» was taken,
@@ -3806,20 +4218,42 @@ export async function probeForms(
              * closed its form at once and drew the bookings table after its GET answered; looked
              * for in that instant, the booking «never showed». What was made is waited for, briefly.
              */
-            const madeUntil = Math.min(deadline, Date.now() + 2500);
+            const madeUntil = Date.now() + 2500;
             while (!shownAs && eyeIsOpen()) {
                 if (tokensBefore.length) {
                     const made: string[] = await evalInPage(page, newRecordTokens, tokensBefore).catch(() => [] as string[]);
-                    if (made.length) { needles = made.slice(0, 6); shownAs = made[0]; break; }
+                    //  Beside what was typed, never instead of it (P280: the made mark was the typed name with a full stop).
+                    if (made.length) { needles = [...new Set([...needles, ...made.slice(0, 6)])]; shownAs = made[0]; break; }
                 }
                 //  After its own marks: a mark says which record it is; a count says only that one was added.
                 if (await rowAdded()) { byRows = true; shownAs = 'a new row'; break; }
                 if (Date.now() >= madeUntil) break;
                 await page.waitForTimeout(250).catch(() => { });
-                if (anchor) shownAs = await visibleNeedle([anchor]);
+                if (anchor) shownAs = await visibleNeedle(needles, f.sel);
             }
+            /*
+             * ⛔ «LOST» NEEDS PROOF THAT NOTHING WAS KEPT; WHAT THE QA COULD NOT LOOK FOR IS «NOT MEASURED».
+             *
+             * The exam, 2026-11-12/13 (P041, P096, P179, P189, P197, P280, P290, P499): eight sound apps were
+             * refused for records they kept — a mark cut wrongly, a signed-in server asked without its
+             * token, a booking that changes a row and adds none, a page searched after the QA's time had
+             * run out — and each builder proved the record in his own browser after a reload, then spent
+             * his remaining rounds pleasing the checker. A record is called lost only when nothing of the
+             * submit was kept anywhere it could be: no write the product's server (or another origin, or a
+             * redirect after a post) took, and nothing new in the browser's storage, cookies or IndexedDB.
+             * Otherwise what was not found is told as not measured, with what was looked for and where.
+             */
+            //  A write still unanswered may yet be kept: never the proof that nothing was.
+            const tookWrite = writes.kept() > keptBeforeSubmit || writes.pending() > 0;
+            //  With a mark to look for, the browser kept the record only if what it stored holds the mark; a «{}» it wrote is nothing.
+            const storageMoved = !!storageBeforeSubmit && storageBeforeSubmit !== await evalInPage(page, browserKept).catch(() => '?');
+            const storedSomething = storageMoved && (!needles.length || await evalInPage(page, storageHolds, needles).catch(() => true)
+                //  An IndexedDB is not read here: a page that keeps one may have kept the record in it.
+                || await evalInPage(page, browserHasIndexedDb).catch(() => true));
+            const taken = tookWrite || storedSomething;
+            const evidenceOf = (where: string) => ({ form: f.label, anchor, where, ...(needles[0] !== anchor ? { made: needles.slice(0, 3) } : {}), ...(byRows ? { by: 'rows' } : {}) });
             const unproven = (where: string) => {
-                const evidence = { form: f.label, anchor, where, ...(needles[0] !== anchor ? { made: needles.slice(0, 3) } : {}), ...(byRows ? { by: 'rows' } : {}) };
+                const evidence = { ...evidenceOf(where), kept: 'nothing' };
                 if (f.placesOrder) {
                     metrics.ordersNotKept = Number(metrics.ordersNotKept || 0) + 1;
                     (metrics.ordersNotKeptEvidence = metrics.ordersNotKeptEvidence || []).push(evidence);
@@ -3828,8 +4262,18 @@ export async function probeForms(
                 metrics.formsPersistenceUnproven++;
                 (metrics.formsPersistenceEvidence = metrics.formsPersistenceEvidence || []).push(evidence);
             };
-            if (!shownAs) {
-                unproven('after submit');
+            /** Kept somewhere, and not found again: told with the delivery, never refused (judgeBehaviour form_persistence_unmeasured). */
+            const unmeasured = (where: string, more: Record<string, any> = {}) => {
+                metrics.formsPersistenceUnmeasured = Number(metrics.formsPersistenceUnmeasured || 0) + 1;
+                if (f.placesOrder) return;
+                (metrics.formsPersistenceEvidence = metrics.formsPersistenceEvidence || []).push({
+                    ...evidenceOf(where), unmeasured: true, kept: tookWrite ? 'server' : 'browser', ...more,
+                });
+            };
+            //  Nothing of its own showed: with a mark to look for and a write taken, it is still looked for after a reload.
+            if (!shownAs && !(taken && needles.length)) {
+                if (taken) unmeasured('after submit');
+                else unproven('after submit');
             } else {
                 await eyes.say(page, 'أتحقق من حفظ النتيجة بعد تحديث الصفحة');
                 //  What the server sends the reloaded page: a record it returns is kept, whichever view the page opens on.
@@ -3846,7 +4290,14 @@ export async function probeForms(
                     } catch { /* a body that cannot be read says nothing */ }
                 };
                 try { page.on('response', onServed); } catch { /* a page without events */ }
-                const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })
+                /*
+                 * A record already sent is checked to the end: the forms budget ending in the middle of its
+                 * check left a page reloaded and never searched, and «found nowhere» said of it (the exam,
+                 * 2026-11-13, P179/P189/P197). Its own bounded time — a reload, a search, the server asked
+                 * — once per walk at most, since no other form starts past the deadline.
+                 */
+                const checkUntil = Math.max(deadline, Date.now() + 9000);
+                const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, checkUntil - Date.now())) })
                     .then((response: any) => !!response && response.ok()).catch(() => false);
                 /*
                  * 2.5 s, and longer while the page is still being answered (1.2 s after its last answer,
@@ -3854,11 +4305,14 @@ export async function probeForms(
                  * drew it after the fixed window had closed — «never shown» for a record it kept.
                  */
                 const reloadedAt = Date.now();
-                const persistenceUntil = () => Math.min(deadline, reloadedAt + 6000, Math.max(reloadedAt + 2500, lastServedAt + 1200));
+                const persistenceUntil = () => Math.min(checkUntil, reloadedAt + 6000, Math.max(reloadedAt + 2500, lastServedAt + 1200));
                 let found = '';
+                /** The reloaded page was looked at at least once: «found nowhere» is said only of a page searched. */
+                let searched = false;
                 do {
                     if (!reloaded || Date.now() >= persistenceUntil() || !eyeIsOpen()) break;
                     found = byRows ? (await rowAdded(true) ? 'a new row' : '') : await visibleNeedle(needles);
+                    searched = true;
                     if (!found) await page.waitForTimeout(100);
                 } while (!found && Date.now() < persistenceUntil() && eyeIsOpen());
                 /*
@@ -3871,13 +4325,13 @@ export async function probeForms(
                 if (!found && byRows && reloaded && eyeIsOpen() && !(await sameView(true))) {
                     //  Named like what the refresh took away — never like the site's own heading, still on screen.
                     const marked: number = await page.evaluate(markViewControls, await missingHeadings()).catch(() => 0);
-                    for (let i = 0; i < marked && !returnedToView && eyeIsOpen() && Date.now() < deadline; i++) {
+                    for (let i = 0; i < marked && !returnedToView && eyeIsOpen() && Date.now() < checkUntil; i++) {
                         await page.evaluate((n: number) => {
                             (document.querySelector(`[data-joe-viewback="${n}"]`) as HTMLElement | null)?.click();
                         }, i).catch(() => { });
                         //  A tab that fetches its list when opened is waited for while it is being answered.
                         const pressedAt = Date.now();
-                        const backUntil = () => Math.min(deadline, pressedAt + 8000, Math.max(pressedAt + 3000, lastServedAt + 1200));
+                        const backUntil = () => Math.min(checkUntil, pressedAt + 8000, Math.max(pressedAt + 3000, lastServedAt + 1200));
                         await page.waitForTimeout(300).catch(() => { });
                         while (!found && Date.now() < backUntil() && eyeIsOpen()) {
                             if (await sameView(true)) { returnedToView = true; found = await rowAdded(true) ? 'a new row' : ''; }
@@ -3887,21 +4341,13 @@ export async function probeForms(
                     await page.evaluate(() => document.querySelectorAll('[data-joe-viewback]').forEach(el => el.removeAttribute('data-joe-viewback'))).catch(() => { });
                 }
                 let keptBy = found ? 'page' : '';
+                /** What the server answered when its collection was asked: told with a record not found again. */
+                let serverAnswered: number[] = [];
+                /** The server took the write, and its own list of those records lacks this one: measured lost. */
+                let lostAtServer = false;
                 if (!found && reloaded) {
                     //  Kept by the browser: a form's own draft («draft», «autosave») is not a record.
-                    const stored = await page.evaluate((list: string[]) => {
-                        for (const store of [window.localStorage, window.sessionStorage]) {
-                            try {
-                                for (let i = 0; i < store.length; i++) {
-                                    const key = String(store.key(i) || '');
-                                    if (/draft|autosave|auto-save|unsaved|form-?state/i.test(key)) continue;
-                                    const value = String(store.getItem(key) || '');
-                                    if (list.some(n => value.includes(n))) return true;
-                                }
-                            } catch { /* a storage the page may not read */ }
-                        }
-                        return false;
-                    }, needles).catch(() => false);
+                    const stored = await evalInPage(page, storageHolds, needles).catch(() => false);
                     if (stored) keptBy = 'storage';
                     else if (served.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
                     /*
@@ -3923,21 +4369,31 @@ export async function probeForms(
                                 if (parent.length > u.origin.length + 1) asks.add(parent);
                             } catch { /* an address that cannot be read is not asked */ }
                         }
+                        /*
+                         * …with the page's own credentials. The exam, 2026-11-13 (P179, P189, P197): signed-in
+                         * apps keep a Bearer token in localStorage, and the QA asked their API with cookies
+                         * only — 401, «found nowhere». Asked as the page asks (watchWrites auth).
+                         */
                         //  Bounded: an endpoint that never answers (a stream, a long poll, a handler that threw) costs 3 s, never the walk.
-                        const bodies: string[] = await Promise.race([
-                            page.evaluate(async (list: string[]) => {
+                        const asked: { bodies: string[]; statuses: number[] } = await Promise.race([
+                            page.evaluate(async ({ list, auth }: { list: string[]; auth: Record<string, string> }) => {
                                 const out: string[] = [];
+                                const statuses: number[] = [];
                                 for (const at of list) {
                                     try {
-                                        const r = await fetch(at, { credentials: 'same-origin', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+                                        const r = await fetch(at, { credentials: 'same-origin', headers: { accept: 'application/json', ...auth }, signal: AbortSignal.timeout(3000) });
+                                        statuses.push(r.status);
                                         if (r.ok) out.push((await r.text()).slice(0, 400_000));
-                                    } catch { /* not answered */ }
+                                    } catch { statuses.push(0); }
                                 }
-                                return out;
-                            }, [...asks].slice(0, 6)).catch(() => [] as string[]),
-                            new Promise<string[]>(resolve => setTimeout(() => resolve([]), 12_000)),
+                                return { bodies: out, statuses };
+                            }, { list: [...asks].slice(0, 6), auth: writes.auth() }).catch(() => ({ bodies: [] as string[], statuses: [] as number[] })),
+                            new Promise<{ bodies: string[]; statuses: number[] }>(resolve => setTimeout(() => resolve({ bodies: [], statuses: [] }), 12_000)),
                         ]);
-                        if (bodies.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
+                        serverAnswered = asked.statuses;
+                        if (asked.bodies.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
+                        //  …and asked, it lists records under the very field the QA's mark was sent in, and not this one (serverListsWithout).
+                        else if (searched && serverListsWithout(writes.posted().slice(writtenBeforeSubmit), asked.bodies, runNonce)) lostAtServer = true;
                     }
                 }
                 try { page.off('response', onServed); } catch { /* the page may be gone */ }
@@ -3948,9 +4404,23 @@ export async function probeForms(
                  * on its own view, with no row more than before the submit.
                  */
                 if (!keptBy) {
-                    unproven(!reloaded ? 'reload failed'
+                    const where = !reloaded ? 'reload failed'
                         : byRows && !returnedToView && !(await sameView(true)) ? 'opened elsewhere'
-                        : 'after reload');
+                        : !searched ? 'not searched'
+                        : 'after reload';
+                    /*
+                     * Lost only when nothing was kept anywhere — or when the server, having answered the write,
+                     * lists its records under the field the QA's mark was sent in and this one is not among them
+                     * (a 201 that keeps nothing). Kept somewhere and not found again is not measured.
+                     */
+                    if (lostAtServer && f.placesOrder) {
+                        metrics.ordersNotKept = Number(metrics.ordersNotKept || 0) + 1;
+                        (metrics.ordersNotKeptEvidence = metrics.ordersNotKeptEvidence || []).push({ ...evidenceOf(where), kept: 'not listed' });
+                    } else if (lostAtServer) {
+                        metrics.formsPersistenceUnproven++;
+                        (metrics.formsPersistenceEvidence = metrics.formsPersistenceEvidence || []).push({ ...evidenceOf(where), kept: 'not listed', asked: serverAnswered.slice(0, 6) });
+                    } else if (taken) unmeasured(where, serverAnswered.length ? { asked: serverAnswered.slice(0, 6) } : {});
+                    else unproven(where);
                 } else {
                     metrics.formsPersisted++;
                     persistedThis = true;
@@ -3974,11 +4444,35 @@ export async function probeForms(
                     if (deleteSelector) {
                         await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
                         await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
-                        const removalDeadline = Date.now() + 1800;
+                        /*
+                         * 1.8 s after its DELETE is answered (6 s at most): the replay of the exam's P179
+                         * (2026-11-15, a signed-in React admin under load) answered «Delete» — confirm, DELETE,
+                         * reload the list — after the fixed 1.8 s had closed, and «could not be deleted» refused it.
+                         */
+                        const pressedAt = Date.now();
                         let removed = false;
-                        while (!removed && Date.now() < removalDeadline) {
+                        let answeredAt = 0;
+                        while (!removed && Date.now() < pressedAt + 6000) {
                             await page.waitForTimeout(150);
-                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), ownMark).catch(() => false);
+                            if (writes.pending() > 0) { answeredAt = 0; continue; }
+                            if (!answeredAt) answeredAt = Date.now();
+                            /*
+                             * Gone from the page's records — never counted in the message that says so: the replay
+                             * of P179 deleted the QA's account, the page said «Account joe.qa+… deleted.», and the
+                             * mark still on screen in that line was «could not be deleted».
+                             */
+                            removed = await page.evaluate((needle: string) => {
+                                const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice';
+                                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                                for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                                    const host = n.parentElement;
+                                    if (!host || !String(n.textContent || '').includes(needle)) continue;
+                                    if (host.closest(noise) || host.closest('script,style,template') || !host.getClientRects().length) continue;
+                                    return false;
+                                }
+                                return true;
+                            }, ownMark).catch(() => false);
+                            if (Date.now() > Math.max(pressedAt + 1800, answeredAt + 1800)) break;
                         }
                         if (removed) metrics.qaRecordsDeleted++;
                         else metrics.qaRecordsNotDeleted++;
@@ -4004,7 +4498,7 @@ export async function probeForms(
 /* ---- judgement, on what actually happened ------------------------------ */
 
 /** Controls that were never pressed: unreachable, declined by the product, consumed by the walk. */
-const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current']);
+const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current', 'idle']);
 
 /** The verdict, kept separate so both audits reach it by the same road. */
 export function judgeBehaviour(
@@ -4055,6 +4549,8 @@ export function judgeBehaviour(
         if (!previous || (!previous.worked && control.worked)
             //  A quiet press later known to be the link to the page already open (probeControls second look).
             || (!previous.worked && control.effect === 'current')
+            //  …or a reset never given anything to undo (probeControls: «idle»).
+            || (!previous.worked && control.effect === 'idle')
             || (previous.effect === 'not found' && control.effect !== 'not found')
             || (NOT_PRESSED.has(String(previous.effect || '')) && !NOT_PRESSED.has(String(control.effect || '')))) evidence.set(key, control);
     });
@@ -4204,7 +4700,8 @@ export function judgeBehaviour(
     }
     if ((metrics.formsNotReached || 0) > 0) {
         findings.push({
-            code: 'forms_not_reached', severity: 'major',
+            //  What the QA could not reach is told, never a refusal (the exam, 2026-11-12/13: P094, P195 refused on it alone).
+            code: 'forms_not_reached', severity: 'minor',
             ar: 'لم يمكن تحديد بعض النماذج بعد تغيّر الصفحة؛ لم تُختبر ولا أعدّها معطوبة.',
             en: 'Some forms could not be uniquely rediscovered after the page changed; they were not tested and are not judged dead.',
             hint: 'rediscover the current form identity before submitting; do not rewrite application handlers based on missing QA targets',
@@ -4287,11 +4784,15 @@ export function judgeBehaviour(
         hint: 'accept Arabic and every valid value a visitor may type; a pattern must not exclude non-Latin letters unless the request asks for it',
         evidence: refusedValid,
     });
-    const minorCases = caseFailures.filter(x => x.outcome === 'accepted_at_input' || x.outcome === 'refused_silently');
+    const minorCases = caseFailures.filter(x => x.outcome === 'accepted_at_input' || x.outcome === 'refused_silently' || x.outcome === 'refused_on_screen');
+    const minorAr = (x: any) => x.outcome === 'refused_silently' ? `«${x.field}» رفض «${x.value}» دون أن يقول للزائر لماذا`
+        : x.outcome === 'refused_on_screen' ? `«${x.form}»: ${x.ar}` : `«${x.field}» قبِل عند الكتابة: ${x.ar}`;
+    const minorEn = (x: any) => x.outcome === 'refused_silently' ? `"${x.field}" refused "${x.value}" without telling the visitor why`
+        : x.outcome === 'refused_on_screen' ? `"${x.form}": ${x.en}` : `"${x.field}" took at input: ${x.en}`;
     if (minorCases.length) findings.push({
         code: 'field_case_minor', severity: 'minor',
-        ar: `${minorCases.length} حالة تحقّق ضعيفة في الحقول: ${minorCases.slice(0, 4).map(x => x.outcome === 'refused_silently' ? `«${x.field}» رفض «${x.value}» دون أن يقول للزائر لماذا` : `«${x.field}» قبِل عند الكتابة: ${x.ar}`).join('، ')}`,
-        en: `${minorCases.length} weak field check(s): ${minorCases.slice(0, 4).map(x => x.outcome === 'refused_silently' ? `"${x.field}" refused "${x.value}" without telling the visitor why` : `"${x.field}" took at input: ${x.en}`).join('; ')}`,
+        ar: `${minorCases.length} حالة تحقّق ضعيفة في الحقول: ${minorCases.slice(0, 4).map(minorAr).join('، ')}`,
+        en: `${minorCases.length} weak field check(s): ${minorCases.slice(0, 4).map(minorEn).join('; ')}`,
         hint: 'tell the visitor what is wrong beside the field, and refuse what the field\'s meaning forbids',
         evidence: minorCases,
     });
@@ -4301,7 +4802,8 @@ export function judgeBehaviour(
          * whose work «appeared temporarily» (L162: Joe was told the second and
          * the first was true, and mended what was not broken).
          */
-        const evidence: any[] = Array.isArray(metrics.formsPersistenceEvidence) ? metrics.formsPersistenceEvidence : [];
+        //  Only what was measured lost: a record kept somewhere and not found again is told below, never here.
+        const evidence: any[] = (Array.isArray(metrics.formsPersistenceEvidence) ? metrics.formsPersistenceEvidence : []).filter((x: any) => !x?.unmeasured);
         const neverShown = evidence.filter(x => x?.where === 'after submit');
         //  Counted, not searched: a record with nothing of its own to look for was a row more, and after the refresh it was not.
         const counted = evidence.filter(x => x?.where === 'after reload' && x?.by === 'rows');
@@ -4309,7 +4811,13 @@ export function judgeBehaviour(
         //  Not counted at all: the refresh opened on another view, and no tab or link led back to the list.
         const elsewhere = evidence.filter(x => x?.where === 'opened elsewhere');
         const unreloaded = evidence.filter(x => x?.where === 'reload failed');
+        //  Shown, and the QA's time ran out before the reloaded page was searched: lost all the same, since nothing was kept.
+        const unsearched = evidence.filter(x => x?.where === 'not searched');
         const parts = { ar: [] as string[], en: [] as string[] };
+        if (unsearched.length) {
+            parts.ar.push(`ظهر ما صنعه ${unsearched.map(x => `«${x.form}»`).join('، ')}، ولم يُبحث عنه بعد التحديث لنفاد وقت الفحص`);
+            parts.en.push(`what ${unsearched.map(x => `"${x.form}"`).join(', ')} made showed, and the QA's time ran out before the refreshed page was searched`);
+        }
         if (elsewhere.length) {
             parts.ar.push(`أضاف ${elsewhere.map(x => `«${x.form}»`).join('، ')} صفاً، وبعد تحديث الصفحة فُتحت على عرض آخر ولم يوصل إليه أي تبويب أو رابط، فلم يُعدّ ما أُضيف`);
             parts.en.push(`${elsewhere.map(x => `"${x.form}"`).join(', ')} added a row, and after a refresh the page opened on another view that no tab or link led back from, so what was added could not be counted`);
@@ -4320,8 +4828,10 @@ export function judgeBehaviour(
         }
         if (neverShown.length) {
             parts.ar.push(`أُرسل ${neverShown.map(x => `«${x.form}»`).join('، ')} وقَبِله، ولم يظهر خارج النموذج ما صنعه: لا ما كتبه الفحص (${neverShown.map(x => `«${x.anchor}»`).join('، ')}) ولا سجلّ جديد`);
-            parts.en.push(`${neverShown.map(x => `"${x.form}"`).join(', ')} was sent and taken, and what it made never showed outside the form: neither what the QA typed (${neverShown.map(x => `"${x.anchor}"`).join(', ')}) nor a new record`);
+            parts.en.push(`${neverShown.map(x => `"${x.form}"`).join(', ')} was sent and the page accepted it, and what it made never showed outside the form: neither what the QA typed (${neverShown.map(x => `"${x.anchor}"`).join(', ')}) nor a new record`);
         }
+        //  The proof the refusal stands on, said once: the submit kept nothing anywhere a reload could bring back.
+        const keptNothing = evidence.length > 0 && evidence.every(x => x?.kept === 'nothing');
         if (gone.length) {
             parts.ar.push(`ظهر ما صنعه ${gone.map(x => `«${x.form}»`).join('، ')}، وبعد تحديث الصفحة لم يُعثر عليه: لا في الصفحة ولا في تخزين المتصفح ولا فيما أعاده الخادم`);
             parts.en.push(`what ${gone.map(x => `"${x.form}"`).join(', ')} made showed, and after a refresh it was found nowhere: not on the page, not in the browser's storage, not in what the server sent back`);
@@ -4329,6 +4839,15 @@ export function judgeBehaviour(
         if (counted.length) {
             parts.ar.push(`أضاف ${counted.map(x => `«${x.form}»`).join('، ')} صفاً إلى القائمة، وبعد تحديث الصفحة عادت القائمة نفسها بعدد صفوفها الذي كان قبل الإرسال`);
             parts.en.push(`${counted.map(x => `"${x.form}"`).join(', ')} added a row to the list, and after a refresh the same list was back to the rows it had before the submit`);
+        }
+        const notListed = evidence.filter(x => x?.kept === 'not listed');
+        if (notListed.length) {
+            parts.ar.push(`وقَبِل الخادم كتابة ${notListed.map(x => `«${x.form}»`).join('، ')}، ثم حين سُئل عن قائمتها بصلاحيات الصفحة نفسها أعاد سجلات أخرى بالحقل نفسه وليس هذا السجل بينها`);
+            parts.en.push(`the server answered the write of ${notListed.map(x => `"${x.form}"`).join(', ')}, and asked again for its list with the page's own credentials, it returned other records under the same field and not this one`);
+        }
+        if (keptNothing) {
+            parts.ar.push('ولم يُكتب منه شيء إلى أي خادم ولا في تخزين المتصفح، فلا يبقى بعد التحديث');
+            parts.en.push('and nothing of it was written to any server or kept in the browser\'s storage, so a refresh loses it');
         }
         findings.push({
             code: 'form_persistence_unproven', severity: 'major',
@@ -4340,6 +4859,30 @@ export function judgeBehaviour(
                     ? 'keep the view a visitor was on across a refresh (give each tab its own address, e.g. #orders, and open it from location.hash), and render the kept records there'
                     : 'persist the created record and render it again after reload; do not treat a transient success message as saved work',
             ...(evidence.length ? { evidence: evidence.slice(0, 6) } : {}),
+        });
+    }
+    /*
+     * Kept somewhere — a write the server took, something the browser stored — and not found again
+     * by the QA: not measured, told with the delivery, never a refusal (probeForms, «lost needs proof»).
+     */
+    const unmeasured: any[] = (Array.isArray(metrics.formsPersistenceEvidence) ? metrics.formsPersistenceEvidence : []).filter((x: any) => !!x?.unmeasured);
+    if (unmeasured.length) {
+        const why = (x: any, ar: boolean) => {
+            const where = String(x?.where || '');
+            const asked = Array.isArray(x?.asked) && x.asked.length ? (ar ? `، وأجاب الخادم حين سُئل: ${x.asked.join('، ')}` : `; the server answered ${x.asked.join(', ')} when asked`) : '';
+            if (where === 'after submit') return ar ? 'لم يظهر منه شيء خاص به أبحث عنه' : 'it showed nothing of its own to look for';
+            if (where === 'not searched') return ar ? 'نفد وقت الفحص قبل البحث عنه بعد التحديث' : 'the QA\'s time ran out before the refreshed page was searched';
+            if (where === 'reload failed') return ar ? 'لم تُفتح الصفحة من جديد عند التحديث' : 'the page did not open again when refreshed';
+            if (where === 'opened elsewhere') return ar ? 'فُتحت الصفحة بعد التحديث على عرض آخر لم يوصل إليه رابط' : 'after a refresh the page opened on another view no link led back from';
+            return (ar ? 'لم أجده بعد التحديث في الصفحة ولا في تخزين المتصفح ولا فيما أعاده الخادم' : 'after a refresh I did not find it on the page, in the browser\'s storage, or in what the server sent') + asked;
+        };
+        const kept = (x: any, ar: boolean) => x?.kept === 'browser' ? (ar ? 'حفظ المتصفح شيئاً' : 'the browser stored something') : (ar ? 'قبِل الخادم الكتابة' : 'the server took the write');
+        findings.push({
+            code: 'form_persistence_unmeasured', severity: 'minor',
+            ar: `لم يُقَس بقاء ما صنعه ${unmeasured.slice(0, 3).map(x => `«${x.form}» (${kept(x, true)}، و${why(x, true)})`).join('؛ ')} — لا أعدّه ضائعاً`,
+            en: `not measured whether what ${unmeasured.slice(0, 3).map(x => `"${x.form}" made survives a refresh (${kept(x, false)}, and ${why(x, false)})`).join('; ')} — not judged lost`,
+            hint: 'show the kept record where a visitor finds it again after a refresh — the new row or card, with what was entered — so it can be seen, not only stored',
+            evidence: unmeasured.slice(0, 6),
         });
     }
     if ((metrics.ordersNotKept || 0) > 0) {
