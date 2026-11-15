@@ -1547,7 +1547,11 @@ export async function inspectUi(
         //  Put back whatever happened — the caller's page, at its own size and scroll.
         if (opts?.restore) {
             try {
-                const actual = await applyViewportSize(page, openingViewport.width, openingViewport.height);
+                //  The size the caller asked for comes first (review r40-2, A7): the opening size falls back
+                //  to 1280x900 when the first read of the page failed, and that is not the caller's size.
+                const asked = Number(opts.restore.width) > 0 && Number(opts.restore.height) > 0;
+                const back = asked ? { width: Number(opts.restore.width), height: Number(opts.restore.height) } : openingViewport;
+                const actual = await applyViewportSize(page, back.width, back.height);
                 opts?.onViewport?.(Number(actual.width), Number(actual.height));
                 await page.waitForTimeout(250);
             } catch { /* the caller owns the page; a failed restore is reported by it */ }

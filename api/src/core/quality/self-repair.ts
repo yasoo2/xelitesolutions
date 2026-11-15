@@ -22,6 +22,7 @@
 import fs from 'fs';
 import path from 'path';
 import { repairProjectFiles, type Repair } from './ui-repair';
+import { isJoeAppKit } from '../../shared/utils/project-tree';
 
 /** Every source file a UI repair could possibly touch, relative to the project. */
 export function collectSources(dir: string): Record<string, string> {
@@ -38,7 +39,8 @@ export function collectSources(dir: string): Record<string, string> {
             if (skip.has(e.name)) continue;
             const childAbs = path.join(abs, e.name);
             const childRel = rel ? `${rel}/${e.name}` : e.name;
-            if (e.isDirectory()) { walk(childAbs, childRel, depth + 1); continue; }
+            //  Joe's print kit is not his source: a repair is never appended to its print.css (design arabic-pdf v9 §3.1).
+            if (e.isDirectory()) { if (!isJoeAppKit(childRel)) walk(childAbs, childRel, depth + 1); continue; }
             if (!/\.(html|jsx|tsx|css)$/i.test(e.name)) continue;
             try { out[childRel] = fs.readFileSync(childAbs, 'utf-8'); } catch { /* unreadable */ }
         }

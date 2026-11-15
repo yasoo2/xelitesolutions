@@ -42,11 +42,13 @@ describe('the inspector tells; it does not refuse', () => {
 
     it('⛔ NEGATIVE — told, but a kind Joe\'s own repair BROUGHT still puts that repair back', () => {
         const small = { id: 'small_targets', severity: 'medium', detailEn: '21 tap target(s) under 40px' };
+        //  Both walks' inspections complete (review r40-2, A5): only then is a told kind the repair's doing.
+        const walk = (findings: any[]) => ({ findings, uiInspection: 'complete' });
         //  the repair answered the targets and made a table spill off the phone: not better
-        expect(mendIsBetter([small], [{ id: 'mobile_overflow', severity: 'medium' }])).toBe(false);
-        expect(whyMendNotBetter([small], [{ id: 'mobile_overflow', severity: 'medium' }])).toMatch(/did not before: mobile_overflow/);
+        expect(mendIsBetter(walk([small]), walk([{ id: 'mobile_overflow', severity: 'medium' }]))).toBe(false);
+        expect(whyMendNotBetter(walk([small]), walk([{ id: 'mobile_overflow', severity: 'medium' }]))).toMatch(/did not before: mobile_overflow/);
         //  a told line that was there before is not the repair's doing
-        expect(mendIsBetter([small, { id: 'a11y_no_main', severity: 'low' }], [{ id: 'a11y_no_main', severity: 'low' }])).toBe(true);
+        expect(mendIsBetter(walk([small, { id: 'a11y_no_main', severity: 'low' }]), walk([{ id: 'a11y_no_main', severity: 'low' }]))).toBe(true);
     });
 
     it('⛔ POSITIVE — the mender answers the one that refuses', () => {

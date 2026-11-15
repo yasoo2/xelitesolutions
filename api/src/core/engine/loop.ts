@@ -20,6 +20,7 @@ import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
 import { firstMessage, languageReminder, languageSection, noteInWrongScript, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
+import { pdfBriefAfterWrite, pdfBriefAtStart, type PdfBriefState } from './pdf-brief';
 import { operatorFirstMessage, operatorSystemPrompt } from './operate';
 import type { FinishArgs } from './finish';
 import type {
@@ -96,6 +97,8 @@ const NETWORK_CODE = /^(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|E
 /** Words of a setting, a request or a machine that waiting does not change. */
 const NEVER_WAITED_TEXT = /ECONNREFUSED|out of memory|\boom\b|insufficient (?:memory|vram)|cuda error|must be (?:between|at (?:least|most)|one of|a |an |positive|greater|less|lower|higher)|\binvalid\b|is required|not supported|unsupported|not implemented/iu;
 const PROVIDER_TRANSIENT_TEXT = /\b(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ECONNABORTED|UND_ERR_(?:SOCKET|CLOSED|CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT))\b|connection error|socket hang up|fetch failed|network (?:error|failure)|request timed out|rate[- ]?limit(?:ed|s)?\b|too many requests|overloaded_error|(?:the\s+)?(?:api|model|engine|server|servers|service)\s+(?:is|are)\s+(?:currently\s+|temporarily\s+)?overloaded|^\s*overloaded\.?\s*$|temporarily unavailable|service unavailable|bad gateway|gateway time-?out|internal server error/iu;
+/** A gateway's own failure status in the words, as a number standing alone or by its name. */
+const GATEWAY_STATUS_TEXT = /(?<![\w.-])(?:502|503|504|529)(?![\w.-])(?!\s*(?:ms|s|sec|seconds?|tokens?|bytes?|mb|gb|kb)\b)|bad gateway|service unavailable|gateway time-?out/iu;
 /** One of the waited statuses in the failure's words: at its start, in brackets, or after «status», «HTTP», «error», «code». */
 const STATUS_IN_TEXT = /(?:^\s*|\((?=\d{3}\))|\b(?:status(?:\s*code)?|http(?:\/[\d.]+)?|error|code)\s*[:=]?\s*)(?:408|429|500|502|503|504|529)\b(?!\s*(?:ms|s|sec|seconds?|tokens?|bytes?|mb|gb|kb)\b)/iu;
 
@@ -111,7 +114,10 @@ export function transientModelFailure(e: unknown): boolean {
     const text = `${code} ${String(err?.cause?.code ?? '')} ${said}`;
     //  A connection refused means nothing is listening (a local server that is not started):
     //  waiting minutes does not start it; nor does it fix a setting or free a machine's memory.
-    if (NEVER_WAITED_TEXT.test(text)) return false;
+    //  …but «invalid» beside a gateway's own status (502, 503, 504, 529) is the gateway's bad minute:
+    //  «Invalid response from upstream: 502 Bad Gateway» (the second review of 2026-11-15) is waited out.
+    if (NEVER_WAITED_TEXT.test(text) && !(GATEWAY_STATUS_TEXT.test(text) && !NEVER_WAITED_TEXT.test(text.replace(/\binvalid\b/giu, ' ')))) return false;
+    if (GATEWAY_STATUS_TEXT.test(text) && /\binvalid\b/iu.test(text)) return true;
     if (NETWORK_CODE.test(code) || NETWORK_CODE.test(String(err?.cause?.code ?? ''))) return true;
     //  The provider's words come after the engine's own prefix («The Claude API call failed: …»).
     const theirs = said.replace(/^.*?\bAPI call failed(?:\s*\(\d+\))?:\s*/iu, '');
@@ -325,9 +331,13 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
 
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
+    //  The Arabic-PDF brief and kit, once per run (pdf-brief.ts): '' for every other request.
+    const pdfBrief: PdfBriefState = { given: false };
+    const pdfFacts = { runId: req.runId, request: req.request, language: req.language, projectDir: req.projectDir, change: req.change, signal: req.signal, cancelled };
+    const pdfOpening = req.operate ? '' : await pdfBriefAtStart(pdfBrief, pdfFacts).catch(() => '');
     const opening = req.operate
         ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
-        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change);
+        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change, pdfOpening || undefined);
     conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
     req.emit({ type: 'plan', plan: state.plan });
 
@@ -455,6 +465,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             idle = 0;
 
             let progressed = false;
+            /** Files this step's file_write / file_edit wrote: the Arabic-PDF brief's hook reads them as they now are. */
+            const wroteFiles: string[] = [];
             const results: { role: 'tool'; tool_call_id: string; content: string }[] = [];
             const images: { path: string; mime: string; from: string }[] = [];
             for (const call of turn.toolCalls) {
@@ -489,6 +501,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 }
                 const durationMs = now() - started;
                 state.toolMs += durationMs;
+                if (outcome.ok && (call.name === 'file_write' || call.name === 'file_edit') && typeof (args as any)?.path === 'string') wroteFiles.push((args as any).path);
                 absorbFacts(state, outcome.facts);
                 if (madeProgress(outcome)) progressed = true;
 
@@ -551,6 +564,11 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             if (!ending && results.length && turn.text && noteInWrongScript(turn.text, req.replyLanguage || req.language)) {
                 const last = results[results.length - 1];
                 last.content = `${last.content}\n\n${languageReminder(req.replyLanguage || req.language)}`;
+            }
+            //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
+            if (!ending && !req.operate && results.length && wroteFiles.length && !pdfBrief.given) {
+                const brief = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
+                if (brief) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${brief}`; }
             }
             for (const r of results) conv.push(r);
             if (!ending && images.length && deps.model.vision) {

@@ -25,7 +25,7 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
 import { isArabicReply } from '../../../shared/reply-language';
-import { refuses } from '../../../core/engine/browser-mend';
+import { refuses, refusingScore } from '../../../core/engine/browser-mend';
 
 export async function recoverPackagedQaAuth(packagedDir: string): Promise<any | null> {
     const dbFile = path.join(packagedDir, 'db.js');
@@ -331,6 +331,24 @@ export class ProjectRepairTool extends BaseTool {
             term(`repair: baseline build preflight failed for ${dir}`);
             return { ok: false, output: { message, before: before.score, after: before.score, changed: [], remaining: before.findings || [], buildPreflightFailed: true }, logs } as any;
         }
+        /**
+         * WHAT THE LOOP IS HANDED, AND JUDGED BY: WHAT REFUSES (review r40-2, A4).
+         *
+         * Both readings handed every finding to repairRound, so a repair opened for one refusing
+         * finding also rewrote CSS for the told low_contrast and mobile_overflow, and their counts
+         * decided the rollback. The round gets the refusing findings; the score is theirs alone;
+         * `all` keeps every finding, so the told lines are still told with the repair.
+         */
+        const reading = (a: any) => {
+            const all = ((a?.findings || []) as any[]).map((f: any) => ({
+                id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, detailEn: f.detailEn, message: f.message,
+            }));
+            const kept = all.filter(refuses);
+            return {
+                score: refusingScore(a), auditScore: Number(a?.score || 0),
+                findingIds: kept.map(f => f.id), findings: kept, all, skipped: a?.skipped,
+            };
+        };
         const measure = async () => {
             const measured = await auditBuiltApp(auditDir, {
                 request: requestText,
@@ -345,24 +363,17 @@ export class ProjectRepairTool extends BaseTool {
                     if (where === 'watching') say(isAr ? '👁️ القياس المقيس يجري الآن أمامك في لوحة المتصفّح' : '👁️ The measured round is running in the Browser panel');
                 },
             });
-            return {
-                score: Number(measured.score || 0),
-                findingIds: (measured.findings || []).map((f: any) => String(f.id)),
-                findings: (measured.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, message: f.message })),
-                skipped: measured.skipped,
-            };
+            return reading(measured);
         };
+        const firstReading = reading(before);
         const loop = await improveUntilItStops(
-            {
-                score: Number(before.score || 0),
-                findingIds: (before.findings || []).map((f: any) => String(f.id)),
-                findings: (before.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, message: f.message })),
-                skipped: before.skipped,
-            },
+            firstReading,
             {
                 say,
                 measure,
                 repair: async (round: number, _ids: string[], findings: any[]) => {
+                    //  A round handed no finding writes nothing: never ui-repair's untargeted blanket.
+                    if (!findings.length) return [];
                     const repaired = await repairRound(dir, round, { isArabic: isAr, findings });
                     for (const file of repaired.changed) term(`repair: round ${round} edited ${file}`);
                     return repaired.changed;
@@ -376,9 +387,12 @@ export class ProjectRepairTool extends BaseTool {
         );
         term(improveSummary(loop, isAr));
 
-        const finalMeasurement = loop.final || before;
-        const gained = !finalMeasurement.skipped && finalMeasurement.score > before.score;
-        const remaining = (finalMeasurement.findings || []) as any[];
+        const finalMeasurement = loop.final || firstReading;
+        const gained = !finalMeasurement.skipped && finalMeasurement.score > firstReading.score;
+        //  The number the owner reads is the audit's own; the loop judged its rounds on what refuses.
+        const finalScore = Number(finalMeasurement.auditScore ?? finalMeasurement.score);
+        //  Every finding left — the told ones are told below, never dropped.
+        const remaining = (finalMeasurement.all || finalMeasurement.findings || []) as any[];
         //  What refuses is what verify.ts refuses (browser-mend.ts): the inspector's lines and a
         //  minor finding of taste are told with the repair, never «not accepted» (design v3 §2.3).
         const refusing = remaining.filter(refuses);
@@ -393,8 +407,8 @@ export class ProjectRepairTool extends BaseTool {
         const said = (f: any) => findingText(f, isAr);
         const lines: string[] = [];
         lines.push(isAr
-            ? `🔁 دورة التحسين المقيسة: ${before.score}/100 → ${finalMeasurement.score}/100 عبر ${loop.rounds.length} جولة، وتوقفت لأن: ${loop.stoppedBecause}.`
-            : `🔁 Measured improvement loop: ${before.score}/100 → ${finalMeasurement.score}/100 across ${loop.rounds.length} round(s), stopped because: ${loop.stoppedBecause}.`);
+            ? `🔁 دورة التحسين المقيسة: ${before.score}/100 → ${finalScore}/100 عبر ${loop.rounds.length} جولة، وتوقفت لأن: ${loop.stoppedBecause}.`
+            : `🔁 Measured improvement loop: ${before.score}/100 → ${finalScore}/100 across ${loop.rounds.length} round(s), stopped because: ${loop.stoppedBecause}.`);
         if (paidFiles.length) {
             lines.push(isAr
                 ? `عُدّلت ${paidFiles.length} ملفات مرتبطة بالمشكلة؛ أسماؤها وتغييراتها في Logs.`
@@ -421,7 +435,7 @@ export class ProjectRepairTool extends BaseTool {
             const entry = projects[sessionKey];
             if (entry) {
                 entry.lastAudit = {
-                    score: finalMeasurement.score, at: Date.now(),
+                    score: finalScore, at: Date.now(),
                     findings: remaining.slice(0, 12).map((f: any) => ({ severity: f.severity, message: String(f.detail || '').slice(0, 200) })),
                 };
             }
@@ -435,7 +449,7 @@ export class ProjectRepairTool extends BaseTool {
             output: {
                 message: lines.join('\n'),
                 before: before.score,
-                after: finalMeasurement.score,
+                after: finalScore,
                 changed: paidFiles,
                 rounds: loop.rounds,
                 stoppedBecause: loop.stoppedBecause,

@@ -56,4 +56,28 @@ describe('the page decides its own direction', () => {
         expect(tag).toMatch(/lang="he"/);
         expect(tag).toMatch(/dir="rtl"/);
     });
+    /**
+     *  Review r40-2 (C6), 2026-11-15: Vite's shell (SystemTools.ts, TemplateManagerTool) is
+     *  `<html lang="en">` around an empty `<div id="root">`. The lang is the template's default,
+     *  not the page's decision — the page has no words of its own — so an Arabic React app lost
+     *  dir="rtl" after every mend and was laid out left to right.
+     */
+    test('a Vite shell carrying the template\'s lang="en" follows the reply language: Arabic', () => {
+        const tag = tagOf(repairHtmlShell(shell('<html lang="en">', '<div id="root"></div><script type="module" src="/src/main.jsx"></script>', 'Vite + React'), { isArabic: true }).text);
+        expect(tag).toMatch(/dir="rtl"/);
+        expect(tag).toMatch(/lang="ar"/);
+        expect(tag).not.toMatch(/lang="en"/);
+    });
+    test('a template shell whose only words are the template\'s (its <noscript>) follows the reply language too', () => {
+        const tag = tagOf(repairHtmlShell(shell('<html lang="en">', '<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>'), { isArabic: true }).text);
+        expect(tag).toMatch(/dir="rtl"/);
+        expect(tag).toMatch(/lang="ar"/);
+    });
+    test('the same shell in an English reply is left exactly as it is', () => {
+        const html = shell('<html lang="en">', '<div id="root"></div><script type="module" src="/src/main.jsx"></script>');
+        expect(tagOf(repairHtmlShell(html, { isArabic: false }).text)).toBe('<html lang="en">');
+    });
+    test('an empty shell that chose another lang keeps it', () => {
+        expect(tagOf(repairHtmlShell(shell('<html lang="fr">', '<div id="root"></div>'), { isArabic: true }).text)).toBe('<html lang="fr">');
+    });
 });

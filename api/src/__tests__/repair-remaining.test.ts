@@ -115,8 +115,9 @@ describe('and the repair itself is honest', () => {
 
     it('never claims a gain it did not measure and rolls back a non-gain', () => {
         const src = TOOL();
-        expect(src).toMatch(/const finalMeasurement = loop\.final \|\| before/);
-        expect(src).toMatch(/const gained = !finalMeasurement\.skipped && finalMeasurement\.score > before\.score/);
+        //  Both sides read the same way (review r40-2, A4): what refuses, scored alone.
+        expect(src).toMatch(/const finalMeasurement = loop\.final \|\| firstReading/);
+        expect(src).toMatch(/const gained = !finalMeasurement\.skipped && finalMeasurement\.score > firstReading\.score/);
         expect(src).toMatch(/rollback,/);
         expect(src).toMatch(/stoppedBecause: loop\.stoppedBecause/);
     });

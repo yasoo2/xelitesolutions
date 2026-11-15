@@ -54,6 +54,78 @@ export function refuses(f: MendFinding): boolean {
     return !(String(f.severity || '') === 'low' && TOLD_NOT_REFUSED.has(String(f.id || '')));
 }
 
+/** What one finding costs the score — app-audit.ts scoreOf, the same numbers. */
+const SCORE_COST: Record<string, number> = { high: 15, medium: 8, low: 3 };
+
+/**
+ * THE SCORE A REPAIR ROUND IS JUDGED BY: WHAT REFUSES, NOTHING TOLD.
+ *
+ * Review r40-2 (A2), 2026-11-15: the improve loops kept or rolled back a round
+ * on the audit's own score, and that score pays for every told line too — so a
+ * contrast line sampled differently on the second walk could roll back a real
+ * fix of the buttons. The told lines cost nothing here: the score is the one
+ * the refusing findings alone earn, and the audit's own when nothing is told.
+ */
+export function refusingScore(audit: { score?: number; findings?: MendFinding[] } | null | undefined): number {
+    const all = (audit?.findings || []) as MendFinding[];
+    const score = Number(audit?.score || 0);
+    const told = all.filter(f => !refuses(f));
+    if (!told.length) return score;
+    const kept = all.filter(refuses);
+    const priced = all.every(f => String(f.severity || '') in SCORE_COST);
+    let s = priced
+        ? Math.max(0, kept.reduce((n, f) => n - SCORE_COST[String(f.severity)], 100))
+        : Math.min(100, score + told.reduce((n, f) => n + (SCORE_COST[String(f.severity || '')] || 0), 0));
+    if (kept.some(f => f.id === 'qa_budget_exhausted')) s = Math.min(s, 49);
+    return s;
+}
+
+/**
+ * WHAT AN IMPROVE LOOP IS HANDED: THE FINDINGS THAT REFUSE, THEIR IDS, AND THEIR SCORE.
+ *
+ * Review r40-2 (A2): `findings` was filtered and `findingIds` was not, and the
+ * loop stops only when `findingIds` is empty. So a round whose refusing finding
+ * was fixed ran once more on a told `low_contrast` with no findings at all —
+ * and ui-repair, handed no findings, applies its untargeted blanket to the
+ * user's stylesheets. A told line never opens a round, never feeds one, and is
+ * never what a round is kept or rolled back for (design v3 §2.3).
+ */
+export function refusingMeasurement(audit: { score?: number; findings?: MendFinding[] } | null | undefined): {
+    score: number; findingIds: string[]; findings: Array<{ id: string; evidence?: any }>;
+} {
+    const kept = ((audit?.findings || []) as MendFinding[]).filter(refuses);
+    return {
+        score: refusingScore(audit),
+        findingIds: kept.map(f => String(f.id)),
+        findings: kept.map(f => ({ id: String(f.id), evidence: f.evidence })),
+    };
+}
+
+/**
+ * Where app-audit.ts writes the walk's inspection status on the findings list it returns
+ * (`complete`, `partial: …`, `failed: …`): verify.ts hands mendIsBetter the bare lists, and the
+ * status has to travel with them. Not enumerable: never printed, never serialised.
+ */
+export const INSPECTION_STATUS = Symbol.for('joe.uiInspection');
+
+/** Marks a walk's findings list with the status of the inspection that measured it. */
+export function markInspection<T extends unknown[]>(findings: T, status: string): T {
+    try {
+        Object.defineProperty(findings, INSPECTION_STATUS, { value: String(status || ''), enumerable: false, configurable: true, writable: true });
+    } catch { /* a frozen list stays unmarked: not a complete inspection */ }
+    return findings;
+}
+
+/** A walk as mendIsBetter reads it: the audit, or its findings list (marked by app-audit.ts). */
+export type MendMeasured = MendFinding[] | { findings?: MendFinding[]; uiInspection?: string } | null | undefined;
+
+function measuredWalk(m: MendMeasured): { findings: MendFinding[]; inspected: boolean } {
+    const findings = (Array.isArray(m) ? m : (m?.findings || [])) as MendFinding[];
+    const own = !Array.isArray(m) && m && typeof m.uiInspection === 'string' ? m.uiInspection : undefined;
+    const status = own ?? (findings as any)[INSPECTION_STATUS];
+    return { findings, inspected: status === 'complete' };
+}
+
 /** What this file's mender answers beyond ui-repair's own list: repairHtmlShell writes the viewport meta (ui-repair.ts is not edited for it). */
 const MENDS_HERE: ReadonlySet<string> = new Set(['no_viewport_meta']);
 
@@ -117,29 +189,40 @@ export function findingWeight(f: MendFinding & { detail?: string; detailEn?: str
  * Design v3 (2026-11-15): the inspector's lines are told, never refusals — but
  * a kind of them that Joe's OWN repair brought (a table that now spills off the
  * phone, words that now fail contrast) is still a page made worse, so that
- * repair is put back. A told line never refuses a delivery; it can veto a mend.
+ * repair is put back. A told line never refuses a delivery; it can veto a mend
+ * only when BOTH walks' inspections were complete (review r40-2, A5): a first
+ * inspection cut at its deadline before 390 px, or one that failed, has no
+ * phone or contrast lines at all, so a complete second walk «brought» a line
+ * that was there all along — and the mend of a refusing finding was put back
+ * for it. Pass the audits (or the lists app-audit.ts marks), not copies.
  */
-function inspectorKindsBrought(before: MendFinding[], after: MendFinding[]): string[] {
-    const had = new Set(before.map(f => String(f.id || '')));
-    return [...new Set(after.map(f => String(f.id || '')).filter(id => INSPECTOR_TOLD.has(id) && !had.has(id)))];
+function inspectorKindsBrought(beforeWalk: MendMeasured, afterWalk: MendMeasured): string[] {
+    const b = measuredWalk(beforeWalk), a = measuredWalk(afterWalk);
+    if (!b.inspected || !a.inspected) return [];
+    const had = new Set(b.findings.map(f => String(f.id || '')));
+    return [...new Set(a.findings.map(f => String(f.id || '')).filter(id => INSPECTOR_TOLD.has(id) && !had.has(id)))];
 }
 
-export function mendIsBetter(before: MendFinding[], after: MendFinding[]): boolean {
+export function mendIsBetter(beforeWalk: MendMeasured, afterWalk: MendMeasured): boolean {
+    const before = measuredWalk(beforeWalk).findings, after = measuredWalk(afterWalk).findings;
     const was = before.filter(refuses), now = after.filter(refuses);
     const wasIds = new Set(was.map(f => String(f.id || '')));
     if (now.some(f => !wasIds.has(String(f.id || '')))) return false;
-    if (inspectorKindsBrought(before, after).length) return false;
+    if (inspectorKindsBrought(beforeWalk, afterWalk).length) return false;
     if (now.length < was.length) return true;
     const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
     if (now.length === was.length && weight(now) < weight(was)) return true;
-    return now.length === was.length && after.length < before.length;
+    //  a tie on what refuses is broken by the minor taste it cleared — never by the inspector's sampled lines
+    const notInspector = (fs: MendFinding[]) => fs.filter(f => !INSPECTOR_TOLD.has(String(f.id || ''))).length;
+    return now.length === was.length && notInspector(after) < notInspector(before);
 }
 
 /** Why a repair was put back, in words the builder can act on (mendIsBetter's reasons). */
-export function whyMendNotBetter(before: MendFinding[], after: MendFinding[]): string {
+export function whyMendNotBetter(beforeWalk: MendMeasured, afterWalk: MendMeasured): string {
+    const before = measuredWalk(beforeWalk).findings, after = measuredWalk(afterWalk).findings;
     const was = before.filter(refuses), now = after.filter(refuses);
     const wasIds = new Set(was.map(f => String(f.id || '')));
-    const brought = [...new Set([...now.map(f => String(f.id || '')).filter(id => !wasIds.has(id)), ...inspectorKindsBrought(before, after)])];
+    const brought = [...new Set([...now.map(f => String(f.id || '')).filter(id => !wasIds.has(id)), ...inspectorKindsBrought(beforeWalk, afterWalk)])];
     if (brought.length) return `the page measured after it showed what it did not before: ${brought.join(', ')}`;
     const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
     return `the same ${now.length} blocking finding(s) stayed, ${weight(now)} instance(s) against ${weight(was)} before`;
