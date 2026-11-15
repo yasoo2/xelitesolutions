@@ -94,8 +94,98 @@ export function readAsRequirements(unread: string[], met: string[]): string[] {
         if (held.some(quote => quote.includes(words))) return true;
         //  …or every word of it that names something, in any order, by ONE requirement.
         const own = contentWords(item);
-        return own.length > 0 && heldWords.some(set => own.every(word => set.has(word)));
+        return own.length > 0 && heldWords.some(set => own.every(word => set.has(word) || Array.from(set).some(other => joinedTo(other, word))));
     });
+}
+
+/**
+ * «بوحدات الدم» holds «وحدات الدم»: an Arabic word written joined to the
+ * letters that cling to it (بـ، لـ، كـ، فـ، وـ — one or two of them). The
+ * 500 exam, 2026-11-13 (P139): the judge's met requirement «نقاط وصول خاصة
+ * بوحدات الدم» did not hold his record «وحدات الدم», so it read nothing.
+ */
+function joinedTo(written: string, word: string): boolean {
+    if (word.length < 3 || written.length <= word.length || !written.endsWith(word)) return false;
+    return /^[وفبلك]{1,2}$/u.test(written.slice(0, written.length - word.length));
+}
+
+/**
+ * ⛔ A RECORD SERVED, TESTED AND JUDGED MET IS MEASURED — WHATEVER ITS ARABIC NAME.
+ *
+ * The 500 exam, 2026-11-12/13 (P129, P139, P149, P188): «العروض», «وحدات
+ * الدم», «الدخول» have no dictionary English, so the records reader's only
+ * Latin name for them is a transliteration («whdat_dms»), and no route can be
+ * matched to it. P139 served and tested /api/blood-units (29 tests passing),
+ * the judge found «نقاط وصول خاصة بوحدات الدم» met on the source — and the
+ * delivery was refused as «not measured, so not verified: whdat_dms», words
+ * that told the builder nothing it could do; P129 burnt 73 minutes on it.
+ *
+ * Such a record is measured by three instruments together, none of which
+ * alone is enough: the delivered server registers a route no named record
+ * claims and the project's own tests call it; those tests ran and passed; and
+ * a requirement the judge found met on the source holds his words of the
+ * record. A record no such route serves, a failing or unrun suite, or a judge
+ * who found nothing met leaves it «not measured», told how to measure it.
+ */
+export interface UnverifiedRecord {
+    /** «key — his words», as the delivery names it. */
+    label: string;
+    /** His words of the record: his Arabic label, or its key. */
+    words: string;
+    serving: boolean;
+    presence: boolean;
+    tests: boolean;
+    /** Routes the delivered server registers, named for none of his records, that its own tests call. */
+    routes: string[];
+    /** How the builder makes it measurable. */
+    how?: string;
+}
+
+const ROUTES_MARK = ' — its tests call routes named for none of his records: ';
+
+/** One record the coverage could not measure, in the words the delivery and the builder read. */
+export function unverifiedRecordText(record: UnverifiedRecord): string {
+    const what = [record.serving ? 'serving not measured' : '', record.presence ? 'presence not measured' : '', record.tests ? 'tests not measured' : ''].filter(Boolean).join(', ');
+    return `${record.label} (${what || 'not measured'})`
+        + (record.routes.length ? `${ROUTES_MARK}${record.routes.join(', ')}` : '')
+        + (record.how ? ` — ${record.how}` : '');
+}
+
+/** The record an unverified item names, read back; null for anything else (a rule, a capability). */
+export function readUnverifiedRecord(item: string): UnverifiedRecord | null {
+    const text = String(item || '');
+    const head = text.match(/^(.+?) \(((?:serving|presence|tests) not measured(?:, (?:serving|presence|tests) not measured)*)\)/u);
+    if (!head) return null;
+    const label = head[1].trim();
+    const at = text.indexOf(ROUTES_MARK);
+    const routes = at < 0 ? [] : text.slice(at + ROUTES_MARK.length).split(' — ')[0].split(',').map(s => s.trim()).filter(Boolean);
+    return {
+        label,
+        words: label.includes(' — ') ? label.slice(label.indexOf(' — ') + 3).trim() : label,
+        serving: head[2].includes('serving'),
+        presence: head[2].includes('presence'),
+        tests: head[2].includes('tests'),
+        routes,
+    };
+}
+
+/** The unverified records a served route its passing tests call, with a requirement judged met, measured. */
+export function verifiedAsRequirements(unverified: string[], met: string[], testsPassed: boolean): string[] {
+    if (!testsPassed) return [];
+    return (unverified || []).filter(item => {
+        const record = readUnverifiedRecord(item);
+        if (!record || record.presence || !record.routes.length || !record.words) return false;
+        return readAsRequirements([record.words], met).length === 1;
+    });
+}
+
+/** What he named that no instrument measured, once the records served, tested and judged met are read. */
+export function stillUnverified(measurements: DeliveryMeasurement[]): string[] {
+    const unverified = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unverified || []) : [])));
+    const tests = measurements.filter(m => m.instrument === 'tests');
+    const testsPassed = tests.length > 0 && tests.every(m => m.ok === true);
+    const read = new Set(verifiedAsRequirements(unverified, measurements.flatMap(m => m.instrument === 'acceptance' && m.ok === true ? (m.met || []) : []), testsPassed));
+    return unverified.filter(item => !read.has(item));
 }
 
 /**
@@ -205,7 +295,7 @@ export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
     const required = Array.from(new Set<DeliveryInstrument>([input.primary === 'program' ? 'program' : 'live', ...(input.required || [])]));
     const unmeasured = required.filter(instrument => !has(instrument));
     const unread = stillUnread(measurements);
-    const unverified = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unverified || []) : [])));
+    const unverified = stillUnverified(measurements);
     const coverageFailed = failures.some(m => m.instrument === 'coverage');
     const base = input.phaseVerified === true && input.requestFidelityBlocked !== true;
     const verified = base && failures.length === 0 && unmeasured.length === 0 && unread.length === 0 && unverified.length === 0;

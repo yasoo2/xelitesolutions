@@ -53,6 +53,7 @@ import { isRealScript } from './placeholder-script';
 import { pythonTestCommand } from './python-test-runner';
 import { isMachineStateDirectory } from '../../shared/utils/project-tree';
 import { closeOf, loopRoutes, routeTablesIn, topLevelParts, type RouteTable } from './loop-routes';
+import { unverifiedRecordText } from './delivery-verdict';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -1066,7 +1067,14 @@ function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<
              * were not read, and the CRM was refused seven times, 155 minutes,
              * «جهات الاتصال (serving not measured)». A two-item pair of a name
              * and his word, in either order, binds the name to his record.
+             *
+             * His word, never a Latin name beside another: P149's
+             * `['services', 'offers', 'reviews']` bound «offers» to «الخدمات»
+             * through its English name, and P078's `['prayers', 'lessons', …]`
+             * bound «prayers» to «الدروس» (the 500 exam, 2026-11-12/13). A list
+             * of names is a list, not a name and its label.
              */
+            if (!/[؀-ۿ]/u.test(label)) continue;
             const lab = escapeRe(label);
             const pairAfter = new RegExp(`\\[\\s*(["'\`])([A-Za-z][\\w-]{1,40})\\1\\s*,\\s*["'\`]${lab}["'\`]\\s*[\\],]`, 'gu');
             for (const m of text.matchAll(pairAfter)) bind(record.key, m[2]);
@@ -1189,7 +1197,10 @@ const RECORD_ALSO: Record<string, string[]> = {
 
 /** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, the names a build also gives it, and keys bound to his label. */
 export function identifiersFor(record: RequestedRecord, labelKeys: string[] = [], all: RequestedRecord[] = []): string[] {
-    const named = [record.key, latinEnglish(record), hisWordsFor(record), ...labelKeys].flatMap(forms);
+    //  A key that is only a transliteration («mwaqyt_slaas») comes after the names the source binds his
+    //  label to: the probe asks a bounded number of names, and P078's «prayers» was the ninth.
+    const ownNames = [record.key, latinEnglish(record), hisWordsFor(record)];
+    const named = (labelKeys.length && transliteratedOnly(record) ? [...labelKeys, ...ownNames] : [...ownNames, ...labelKeys]).flatMap(forms);
     const taken = new Set(takenIdentifiers(record, all));
     const words = hisNamingWords(record).flatMap(forms).filter(id => !taken.has(id.toLowerCase()));
     //  …never a name another of his records owns («grades» and «marks» listed apart stay apart).
@@ -1211,6 +1222,9 @@ export function transliteratedOnly(record: RequestedRecord, labelKeys: string[] 
 
 export type ProbeResult = 'served' | 'absent' | 'inconclusive';
 
+/** The pause before a GET that got no answer is asked once more (a server restarting between two runs). */
+export const PROBE_RETRY_PAUSE_MS = 1000;
+
 const routeLike = (status: number, contentType: string) =>
     ((status >= 200 && status < 300) || status === 401 || status === 403 || status === 405) && !/text\/html/iu.test(contentType);
 
@@ -1231,6 +1245,22 @@ export interface ProbePath { path: string; refutable: boolean }
  *   - A record with no registered route is probed under the prefixes the
  *     tree's own routes use; «absent» only from such a prefix. With no
  *     routes at all the probe can prove a record, never refute it.
+ *
+ * ⛔ AN UNANSWERED QUESTION IS NOT AN ANSWER.
+ *
+ * The 500 exam, 2026-11-12 (P078, a mosque dashboard): every record was
+ * served by `/api/:kind` behind a table of kinds, and each section also had a
+ * page route `/prayers` that sends index.html. The probe asked `/prayers`, got
+ * the page, called the route «registered but does not answer» and never asked
+ * `/api/prayers` — three served records «not served», seven refusals in 40
+ * minutes, the verdict flipping as the server restarted between runs.
+ *   - A registered path that answers with a page is a page: it neither serves
+ *     the record nor refutes it, and the record is then asked for under the
+ *     prefixes the tree's routes use, as a record with no route is.
+ *   - A GET that gets no answer (a timeout, a refused connection while the
+ *     server restarts) is asked once more after a short pause. Still silent,
+ *     it proves nothing: a record any of whose questions went unanswered is
+ *     «inconclusive» — not measured — never «absent».
  */
 export async function probeServedResources(
     baseUrl: string,
@@ -1246,7 +1276,7 @@ export async function probeServedResources(
     const note = (key: string, line: string) => { if (opts.details) (opts.details[key] ||= []).push(line); };
     // node:http, not fetch: the same transport in the API process and in tests,
     // no automatic redirect following, and a hard per-answer bound.
-    const get = (url: string): Promise<{ status: number; type: string; location: string } | null> => new Promise(resolve => {
+    const getOnce = (url: string): Promise<{ status: number; type: string; location: string } | null> => new Promise(resolve => {
         if (opts.signal?.aborted) return resolve(null);
         let settled = false;
         const finish = (value: { status: number; type: string; location: string } | null) => {
@@ -1276,30 +1306,49 @@ export async function probeServedResources(
         opts.signal?.addEventListener('abort', onAbort, { once: true });
         req.end();
     });
+    //  A GET with no answer is asked once more after a pause; a server that
+    //  stayed silent twice in a row is gone, and is not asked again — what is
+    //  left is not measured (a dead server must not hold the delivery minutes).
+    let silentInARow = 0;
+    const get = async (url: string): Promise<{ status: number; type: string; location: string } | null> => {
+        if (silentInARow >= 2 || opts.signal?.aborted) return null;
+        let answer = await getOnce(url);
+        if (!answer && !opts.signal?.aborted) {
+            await new Promise(resolve => setTimeout(resolve, PROBE_RETRY_PAUSE_MS));
+            answer = await getOnce(url);
+        }
+        silentInARow = answer ? 0 : silentInARow + 1;
+        return answer;
+    };
     const nonce = `__joe_absent_${Date.now().toString(36)}`;
-    const controls = new Map<string, boolean>();
-    /** Does this parent answer an absent path as absent (true), or is it a catch-all / silent (false)? */
-    const conclusiveParent = async (parent: string): Promise<boolean> => {
+    const controls = new Map<string, 'yes' | 'no' | 'silent'>();
+    /** Does this parent answer an absent path as absent ('yes'), is it a catch-all ('no'), or did it not answer ('silent')? */
+    const parentControl = async (parent: string): Promise<'yes' | 'no' | 'silent'> => {
         if (!controls.has(parent)) {
             const control = await get(`${base}${parent}${nonce}`);
-            controls.set(parent, !!control && !routeLike(control.status, control.type));
+            controls.set(parent, !control ? 'silent' : routeLike(control.status, control.type) ? 'no' : 'yes');
         }
-        return controls.get(parent) === true;
+        return controls.get(parent)!;
     };
-    const answers = async (pathname: string): Promise<boolean> => {
+    const conclusiveParent = async (parent: string): Promise<boolean> => (await parentControl(parent)) === 'yes';
+    /** route: it serves; page: an HTML page answered; other: it answered, and serves nothing; silent: no answer. */
+    type Answer = 'route' | 'page' | 'other' | 'silent';
+    const classify = (answer: { status: number; type: string } | null): Answer =>
+        !answer ? 'silent' : routeLike(answer.status, answer.type) ? 'route'
+            : answer.status >= 200 && answer.status < 300 && /text\/html/iu.test(answer.type) ? 'page' : 'other';
+    const answers = async (pathname: string): Promise<Answer> => {
         const first = await get(`${base}${pathname}`);
-        if (!first) return false;
-        if (routeLike(first.status, first.type)) return true;
+        const kind = classify(first);
+        if (kind !== 'other' || !first) return kind;
         if (first.status >= 300 && first.status < 400 && first.location) {
             let next = '';
             try { next = new URL(first.location, `${base}${pathname}`).pathname; } catch { next = ''; }
-            if (next === `${pathname}/` || `${next}/` === pathname) {
-                const second = await get(`${base}${next}`);
-                return !!second && routeLike(second.status, second.type);
-            }
+            if (next === `${pathname}/` || `${next}/` === pathname) return classify(await get(`${base}${next}`));
         }
-        return false;
+        return 'other';
     };
+    const silent = new Set<string>();
+    const silence = (key: string, line: string) => { if (!silent.has(key)) note(key, line); silent.add(key); };
     const parentOf = (pathname: string) => {
         const segments = pathname.split('/').filter(Boolean);
         return `${joinPath(...segments.slice(0, -1))}/`.replace(/^\/\/$/u, '/');
@@ -1313,42 +1362,76 @@ export async function probeServedResources(
     for (const record of records) {
         if (opts.signal?.aborted) break;
         const paths = (record.paths || []).filter(p => p.path && !isParamSegment(p.path.split('/').filter(Boolean).pop() || ''));
+        //  A registered path that answered with a page, registered on the application ('refutable').
+        let pageAt = '';
         if (paths.length) {
             let refuted = false;
             for (const candidate of paths) {
                 const pathname = joinPath(candidate.path);
-                if (await answers(pathname) || await answers(`${pathname}/`)) {
+                const bare = await answers(pathname);
+                const kind = bare === 'route' ? bare : (await answers(`${pathname}/`) === 'route' ? 'route' : bare);
+                if (kind === 'route') {
                     result[record.key] = 'served';
                     note(record.key, `probe: GET ${pathname} answered`);
                     break;
+                }
+                if (kind === 'silent') {
+                    silence(record.key, `probe: GET ${pathname} got no answer, asked twice — not measured`);
+                    continue;
+                }
+                if (kind === 'page') {
+                    note(record.key, `probe: GET ${pathname} answers with a page, not with records`);
+                    if (candidate.refutable && !pageAt) pageAt = pathname;
+                    continue;
                 }
                 if (candidate.refutable && await conclusiveParent(parentOf(pathname))) {
                     refuted = true;
                     note(record.key, `probe: GET ${pathname} is registered but does not answer`);
                 }
             }
-            if (result[record.key] !== 'served' && refuted) result[record.key] = 'absent';
-            continue;
+            if (result[record.key] === 'served' || silent.has(record.key)) continue;
+            if (!pageAt) {
+                if (refuted) result[record.key] = 'absent';
+                continue;
+            }
+            //  Its route is a page: its records are asked for where the tree's routes serve them.
+            if (refuted) result[record.key] = 'absent';
         }
+        const tried: string[] = [];
         for (const prefix of used.length ? used : ['/api/', '/']) {
-            if (!(await conclusiveParent(prefix))) continue;
+            const control = await parentControl(prefix);
+            if (control === 'silent') silence(record.key, `probe: GET under ${prefix} got no answer, asked twice — not measured`);
+            if (control !== 'yes') continue;
             for (const id of record.ids.slice(0, 8)) {
-                if (await answers(`${prefix}${id}`)) {
+                const kind = await answers(`${prefix}${id}`);
+                if (kind === 'route') {
                     result[record.key] = 'served';
                     servedUnder.add(prefix);
                     note(record.key, `probe: GET ${prefix}${id} answered`);
                     break;
                 }
+                if (kind === 'silent') silence(record.key, `probe: GET ${prefix}${id} got no answer, asked twice — not measured`);
             }
             if (result[record.key] === 'served') break;
-            unprovenUnder.set(record.key, [...(unprovenUnder.get(record.key) || []), prefix]);
+            tried.push(prefix);
         }
+        if (result[record.key] === 'served') continue;
+        if (silent.has(record.key)) { result[record.key] = 'inconclusive'; continue; }
+        if (pageAt) {
+            //  Only a page answers at its registered route, and nothing under the prefixes the tree's routes use.
+            if (tried.some(prefix => used.includes(prefix))) {
+                result[record.key] = 'absent';
+                note(record.key, `probe: nothing answers under ${tried.join(', ')}`);
+            }
+            continue;
+        }
+        if (tried.length) unprovenUnder.set(record.key, tried);
     }
     // A prefix the tree's routes use, or where another of his records answered,
     // is where his records live: nothing answering there is absent. Elsewhere a
     // silence proves nothing.
     for (const [key, prefixesTried] of unprovenUnder) {
-        if (result[key] === 'served') continue;
+        if (result[key] === 'served' || silent.has(key)) continue;
         const proving = prefixesTried.filter(prefix => used.includes(prefix) || servedUnder.has(prefix));
         if (proving.length) {
             result[key] = 'absent';
@@ -1619,6 +1702,10 @@ export interface RecordCoverage {
     tested: boolean | null;
     present: boolean | null;
     evidence: string[];
+    /** Not measured, its only Latin name a transliteration: the routes no named record claims that the project's tests call. */
+    routes?: string[];
+    /** Not measured: how the builder makes it measurable. */
+    how?: string;
 }
 
 export interface RequestCoverageReport {
@@ -1735,6 +1822,58 @@ export function probePathsFor(evidence: CoverageEvidence, ids: string[], taken: 
     return out.filter(p => { const k = `${p.path}|${p.refutable}`; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
+/** A path segment that names no record: the API's own prefix, a version, health, sign-in. */
+const NOT_A_RESOURCE_SEGMENT = /^(?:api|rest|v\d+|health|healthz|status|ping|auth|login|logout|register|signup|signin|me|session|sessions|token|refresh|search|stats|summary)$/iu;
+
+/** The segment a route names its records by: its last fixed segment that is not the API's own word, or '' when a parameter stands there. */
+function resourceSegment(routePath: string): string {
+    const segments = String(routePath || '').split('/').filter(Boolean);
+    for (let i = segments.length - 1; i >= 0; i--) {
+        if (isParamSegment(segments[i])) continue;
+        if (NOT_A_RESOURCE_SEGMENT.test(segments[i])) continue;
+        return segments[i];
+    }
+    return '';
+}
+
+/**
+ * ⛔ A ROUTE THAT NAMES ITS RECORD BY A PARAMETER COULD SERVE ANY OF THEM.
+ *
+ * P078 (the 500 exam, 2026-11-12): `/api/:kind` behind a table of kinds
+ * serves every record; no fixed path names one. Its silence is no proof that
+ * a record is not served — the live probe decides, or the record is «not
+ * measured». The record's place is a parameter when every fixed segment
+ * before it is the API's own word (`/api/:kind`, `/v1/:resource`).
+ */
+function recordByParameter(route: HarvestedRoute): boolean {
+    if (route.dynamic || !['get', 'all', 'route', 'api_route'].includes(route.method)) return false;
+    const segments = route.path.split('/').filter(Boolean);
+    const first = segments.findIndex(isParamSegment);
+    return first >= 0 && segments.slice(0, first).every(s => NOT_A_RESOURCE_SEGMENT.test(s));
+}
+
+/**
+ * The routes that could be a record's when its only Latin name is a
+ * transliteration: registered by the delivered server, named for none of his
+ * records, and called by the project's own tests (`/api/blood-units` for
+ * «وحدات الدم», P139). Shown as «METHOD path», a GET first.
+ */
+function unclaimedTestedRoutes(evidence: CoverageEvidence, records: RequestedRecord[], liveTests: string): string[] {
+    const claimed = new Set(records.flatMap(r => identifiersFor(r, evidence.labelKeys[r.key] || [], records)).map(id => id.toLowerCase()));
+    const byResource = new Map<string, HarvestedRoute[]>();
+    for (const route of evidence.routes) {
+        if (route.dynamic || route.method === 'use') continue;
+        const resource = resourceSegment(route.path);
+        if (!resource || claimed.has(resource.toLowerCase())) continue;
+        if (!new RegExp(`/${escapeRe(resource)}(?![A-Za-z0-9_-])`, 'iu').test(liveTests)) continue;
+        byResource.set(resource, [...(byResource.get(resource) || []), route]);
+    }
+    return Array.from(byResource.values()).slice(0, 4).map(routes => {
+        const shown = routes.find(r => ['get', 'all', 'route', 'api_route'].includes(r.method)) || routes[0];
+        return `${shown.method.toUpperCase()} ${shown.path}`;
+    });
+}
+
 export function judgeRequestCoverage(input: {
     records: RequestedRecords;
     evidence: CoverageEvidence;
@@ -1751,6 +1890,11 @@ export function judgeRequestCoverage(input: {
     // call, the database): it could serve any record, so its silence proves
     // nothing — the live probe decides, or the record is «not measured» (P157).
     const unreadRoute = evidence.routes.find(route => route.dynamic && ['get', 'all', 'route', 'use'].includes(route.method));
+    const byParameter = evidence.routes.find(recordByParameter);
+    //  One route no named record claims stands for one record whose name is a transliteration, never for two.
+    const transliterated = records.entities.filter(record => transliteratedOnly(record, evidence.labelKeys[record.key] || [])).length;
+    const testedRoutes = unclaimedTestedRoutes(evidence, records.entities, liveTests);
+    const unclaimed = testedRoutes.length >= transliterated ? testedRoutes : [];
     const out: RecordCoverage[] = records.entities.map(record => {
         const labelKeys = evidence.labelKeys[record.key] || [];
         const ids = identifiersFor(record, labelKeys, records.entities);
@@ -1775,8 +1919,9 @@ export function judgeRequestCoverage(input: {
                 // write-only or nested route is what the GET probe cannot see.
                 served = readable.length ? false : unseen.length ? true : mounts.length ? null : false;
             } else {
-                served = (readable.length || unseen.length) ? true : (mounts.length || unreadRoute) ? null : evidence.routes.length ? false : null;
+                served = (readable.length || unseen.length) ? true : (mounts.length || unreadRoute || byParameter) ? null : evidence.routes.length ? false : null;
                 if (served === null && !mounts.length && unreadRoute) why.push(`route ${unreadRoute.method.toUpperCase()} ${unreadRoute.path} (${path.basename(unreadRoute.file)}) — its path is built at run time`);
+                else if (served === null && !mounts.length && byParameter) why.push(`route ${byParameter.method.toUpperCase()} ${byParameter.path} (${path.basename(byParameter.file)}) — a parameter names its record, so only the live server can tell`);
             }
             if (served === false && onlyTransliterated && !readable.length) served = null;
             if (served === null) why.push(onlyTransliterated ? 'its only Latin name is a transliteration — not measured' : 'the source and the probe could not tell — not measured');
@@ -1801,7 +1946,21 @@ export function judgeRequestCoverage(input: {
             if (tested === null) why.push(run?.noRunner ? 'no runner for this project\'s tests — tests not measured' : 'its tests were not run — not measured');
             if (tested === false && onlyTransliterated && !mentioned) tested = null;
         }
-        return { key: record.key, ar: record.ar, en: record.en, item: record.item, served, tested, present, evidence: why };
+        //  Not measured, and why it could not be — in words the builder can act on (P139).
+        const notMeasured = (servedApplies && served === null) || (!servedApplies && present === null) || (records.testsRequested && tested === null);
+        let routes: string[] | undefined;
+        let how: string | undefined;
+        if (notMeasured && onlyTransliterated) {
+            routes = servedApplies ? unclaimed : [];
+            const his = record.ar || record.item;
+            const name = (routes.length === 1 ? resourceSegment(routes[0].split(' ').pop() || '') : '') || 'its-route-name';
+            how = servedApplies
+                ? `his word has no English name to match a route by: bind it to its route's name in the source ({ key: '${name}', ar: '${his}' }), or serve it under a route the project's passing tests call, with a requirement holding «${his}» judged met`
+                : `his word has no English name to look for: write «${his}» in the page, or bind it to its name in the source ({ key: '${name}', ar: '${his}' })`;
+        } else if (notMeasured && servedApplies && served === null && (input.probeDetails?.[record.key] || []).some(line => /got no answer/u.test(line))) {
+            how = 'the live server did not answer the probe, asked twice — it is measured again on the next run';
+        }
+        return { key: record.key, ar: record.ar, en: record.en, item: record.item, served, tested, present, evidence: why, ...(routes ? { routes } : {}), ...(how ? { how } : {}) };
     });
     const serverFiles = evidence.serverFiles || [];
     const patternResources = Array.from(new Set(evidence.routes
@@ -1847,11 +2006,15 @@ export function coverageError(report: RequestCoverageReport): string {
 
 /** What could not be measured, named: records the probe could not see, and stated rules no instrument measures yet. */
 export function coverageUnverified(report: RequestCoverageReport): string[] {
-    const records = (report.unverified || []).map(record => {
-        const label = record.ar && record.ar !== record.key ? `${record.key} — ${record.ar}` : record.key;
-        const what = [record.served === null && report.servedApplies ? 'serving not measured' : '', record.present === null && !report.servedApplies ? 'presence not measured' : '', record.tested === null && report.testsRequested ? 'tests not measured' : ''].filter(Boolean).join(', ');
-        return `${label} (${what || 'not measured'})`;
-    });
+    const records = (report.unverified || []).map(record => unverifiedRecordText({
+        label: record.ar && record.ar !== record.key ? `${record.key} — ${record.ar}` : record.key,
+        words: record.ar || record.key,
+        serving: record.served === null && !!report.servedApplies,
+        presence: record.present === null && !report.servedApplies,
+        tests: record.tested === null && !!report.testsRequested,
+        routes: record.routes || [],
+        how: record.how,
+    }));
     return [...records, ...(report.capabilities || []).map(c => `${c} (not measured)`)];
 }
 
