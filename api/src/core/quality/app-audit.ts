@@ -108,6 +108,16 @@ export interface AppAudit {
     formsPersistenceUnproven?: number;
     qaRecordsDeleted?: number;
     qaRecordsNotDeleted?: number;
+    /**
+     * What the QA did not delete, told to the owner and never refusing (the fourth review of 2026-11-15, S4):
+     * records of his it edited, its own test records it left in his app, the deletes the network stopped
+     * (behaviour-audit guardDeletes), and the lost-looking records a list could not prove lost.
+     */
+    qaRecordsEdited?: number;
+    qaRecordsLeft?: number;
+    qaDeletesBlocked?: number;
+    formsListUnprovenLoss?: number;
+    qaRecordsTold?: Array<{ form: string; why: string; kind: 'edited' | 'left' }>;
     /** Semantic fields challenged with invalid and valid values. */
     semanticFieldsTested?: number;
     /** Wrong and valid values tried in the fields (qa-field-cases.ts), and those sent with their form. */
@@ -1445,6 +1455,13 @@ export async function auditBuiltApp(
             for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'formsPersisted', 'formsPersistenceUnproven', 'qaRecordsDeleted', 'qaRecordsNotDeleted', 'semanticFieldsTested', 'semanticValidationFailures', 'fieldCasesTried', 'fieldCasesSubmitted', 'fieldCasesFailed', 'markupTried', 'formsRevealed', 'intentsJudged', 'intentsMet']) {
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
+            //  …and what the QA left or edited in his app, and the deletes the network stopped: counted and told, never refusing (S4).
+            for (const k of ['qaRecordsEdited', 'qaRecordsLeft', 'qaDeletesBlocked', 'formsListUnprovenLoss']) {
+                behaviourMetrics[k] = Number(behaviourMetrics[k] || 0) + Number(p.metrics[k] || 0);
+            }
+            for (const k of ['qaRecordsEditedEvidence', 'qaRecordsLeftEvidence', 'qaDeletesBlockedEvidence']) {
+                behaviourMetrics[k] = [...(behaviourMetrics[k] || []), ...(p.metrics[k] || []).map((x: any) => ({ ...x, route }))].slice(0, 40);
+            }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
             behaviourMetrics.fieldCaseFailures.push(...(p.metrics.fieldCaseFailures || []).map((x: any) => ({ ...x, route })));
             behaviourMetrics.intentFailures = [...(behaviourMetrics.intentFailures || []), ...(p.metrics.intentFailures || []).map((x: any) => ({ ...x, route }))];
@@ -2511,6 +2528,14 @@ export async function auditBuiltApp(
             formsPersistenceUnproven: behaviourMetrics.formsPersistenceUnproven,
             qaRecordsDeleted: behaviourMetrics.qaRecordsDeleted,
             qaRecordsNotDeleted: behaviourMetrics.qaRecordsNotDeleted,
+            qaRecordsEdited: Number(behaviourMetrics.qaRecordsEdited || 0),
+            qaRecordsLeft: Number(behaviourMetrics.qaRecordsLeft || 0),
+            qaDeletesBlocked: Number(behaviourMetrics.qaDeletesBlocked || 0),
+            formsListUnprovenLoss: Number(behaviourMetrics.formsListUnprovenLoss || 0),
+            qaRecordsTold: [
+                ...(behaviourMetrics.qaRecordsEditedEvidence || []).map((x: any) => ({ form: String(x.form || ''), why: String(x.why || ''), kind: 'edited' as const })),
+                ...(behaviourMetrics.qaRecordsLeftEvidence || []).map((x: any) => ({ form: String(x.form || ''), why: String(x.why || ''), kind: 'left' as const })),
+            ].slice(0, 12),
             semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
             //  The case matrix and the widths, counted for the owner (certificate.ts qaCoverageLine).
             fieldCasesTried: behaviourMetrics.fieldCasesTried,
@@ -2683,11 +2708,40 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
         : (isAr ? 'في متصفّح خاصّ لم تره' : 'in a private browser you could not see');
     if (!a.findings.length) {
         return isAr
-            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${suite}${external}`
-            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${suite}${external}`;
+            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${qaRecordsToldLine(a, isAr)}${suite}${external}`
+            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${qaRecordsToldLine(a, isAr)}${suite}${external}`;
     }
     const lines = a.findings.map(f => `   • ${findingText(f, isAr)}`).join('\n');
+    const told = qaRecordsToldLine(a, isAr);
     return isAr
-        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${suite}${external}`
-        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${suite}${external}`;
+        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${told}${suite}${external}`
+        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${told}${suite}${external}`;
+}
+
+/*
+ * ⛔ WHAT THE QA LEFT OR CHANGED IN HIS APP IS TOLD TO HIM — NEVER A REFUSAL.
+ *
+ * The fourth review of 2026-11-15 (S4): a record the QA edited, or a test record of its own it left
+ * (it could not prove at the network that the record was its own, or the delete was stopped), was said
+ * once in the chat, if the eye was open, and nowhere in the report. Now the report says how many, in
+ * which forms, and why — a line of the summary, never a finding that refuses.
+ */
+export function qaRecordsToldLine(a: Pick<AppAudit, 'qaRecordsEdited' | 'qaRecordsLeft' | 'qaDeletesBlocked' | 'formsListUnprovenLoss' | 'qaRecordsTold'>, isAr: boolean): string {
+    const edited = Number(a.qaRecordsEdited || 0), left = Number(a.qaRecordsLeft || 0), blocked = Number(a.qaDeletesBlocked || 0), unproven = Number(a.formsListUnprovenLoss || 0);
+    if (!edited && !left && !blocked && !unproven) return '';
+    const forms = (kind: 'edited' | 'left') => [...new Set((a.qaRecordsTold || []).filter(t => t.kind === kind).map(t => t.form).filter(Boolean))].slice(0, 4);
+    const named = (list: string[]) => list.length ? (isAr ? ` (${list.map(f => `«${f}»`).join('، ')})` : ` (${list.map(f => `"${f}"`).join(', ')})`) : '';
+    const parts: string[] = [];
+    if (isAr) {
+        if (edited) parts.push(`عدّل الفحص ${edited} سجلاً كان موجوداً في تطبيقك${named(forms('edited'))} ولم يحذفه`);
+        if (left) parts.push(`وترك ${left} سجل اختبار أنشأه في تطبيقك دون حذف${named(forms('left'))} — لم يثبت عند الشبكة أنه سجله وحده، فاحذفه بنفسك إن شئت`);
+        if (blocked) parts.push(`وأوقف ${blocked} طلب حذف لم يسمِّ سجلاً أنشأه الفحص`);
+        if (unproven) parts.push(`و${unproven} سجل لم تُظهره القائمة ولم يثبت ضياعه`);
+        return `\nℹ️ للعلم فقط، لا يمنع التسليم: ${parts.join('، ').replace(/^و/, '')}.`;
+    }
+    if (edited) parts.push(`the QA changed ${edited} record(s) that were already in your app${named(forms('edited'))} and did not delete them`);
+    if (left) parts.push(`it left ${left} test record(s) of its own in your app${named(forms('left'))} — it could not prove at the network that they were its own; delete them yourself if you like`);
+    if (blocked) parts.push(`it stopped ${blocked} delete request(s) that named no record it made`);
+    if (unproven) parts.push(`${unproven} record(s) a list did not show were not proven lost`);
+    return `\nℹ️ For your information, not a refusal: ${parts.join('; ')}.`;
 }

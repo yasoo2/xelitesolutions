@@ -15,6 +15,13 @@
  * scans after a write are bounded: a path is never rescanned at the same size and
  * time, each hint kind starts at most one child per run, and once the request is
  * left-to-right and a scanned file said so too, no written file is scanned again.
+ *
+ * THE KIT LANDS ONLY WITH ITS BRIEF (review 4 of r40, S5). The run-start scan runs
+ * beside the run, so it returns only the decision (pdfStartScan): it never writes into
+ * the project. The loop gives the brief (pdfGiveBrief, which places the kit) at the
+ * moment the brief joins the conversation — the first message, or the end of a step —
+ * so the kit never appears while a step's build, git or verification walk runs, and
+ * never for a run that is ending, ended, failed or was cancelled.
  */
 import fs from 'fs';
 import path from 'path';
@@ -64,11 +71,17 @@ const variantOf = (request: string): 'print' | 'document' => {
     return (require('./select') as typeof import('./select')).asksForDocument(request) ? 'document' : 'print';
 };
 
-async function giveBrief(state: PdfBriefState, facts: RunFacts): Promise<string> {
-    //  A run that ended (or was cancelled) while its scan ran gets nothing written into its project.
+/**
+ * The brief, with the kit placed now: called only where the brief joins the conversation
+ * (the loop's first message or a step's end, and pdfBriefAfterWrite, which the loop awaits
+ * there). '' when it was given already, when the run ended, or when the run ends during
+ * the copy (placeAppKit then takes back what it wrote).
+ */
+export async function pdfGiveBrief(state: PdfBriefState, facts: RunFacts): Promise<string> {
+    //  A run that ended (or was cancelled) gets nothing written into its project.
     if (state.given || facts.signal?.aborted) return '';
-    const kit = await placeAppKit(facts.projectDir).catch(() => ({ dir: '', written: [] as string[], kept: [] as string[] }));
-    if (!kit.dir) return '';
+    const kit = await placeAppKit(facts.projectDir, facts.signal).catch(() => ({ dir: '', written: [] as string[], kept: [] as string[] }));
+    if (!kit.dir || facts.signal?.aborted) return '';
     state.given = true;
     return outsideBrief(variantOf(facts.request), kit.dir);
 }
@@ -83,28 +96,28 @@ export async function pdfRunStart(facts: RunFacts): Promise<void> {
 }
 
 /**
- * Run start, the part the loop does NOT await: the request's scan child, and the brief
- * when the request asks for a PDF or printing and speaks a right-to-left language. ''
- * for nothing. The loop starts it beside the first model call and gives the brief when
- * it answers.
+ * Run start, the part the loop does NOT await: the request's scan child, and only its
+ * DECISION — true when the request asks for a PDF or printing and speaks a right-to-left
+ * language, so the brief (and with it the kit) is to be given. Nothing is placed here:
+ * the loop starts it beside the first model call and, once it answered, gives the brief
+ * with pdfGiveBrief at the next point where a brief can join the conversation.
  */
-export async function pdfStartScan(state: PdfBriefState, facts: RunFacts): Promise<string> {
-    if (facts.change?.repository || !appKitSource()) return '';
-    if (!mayAskPdf(facts.request)) { state.asksPdf = false; return ''; }
+export async function pdfStartScan(state: PdfBriefState, facts: RunFacts): Promise<boolean> {
+    if (facts.change?.repository || !appKitSource()) return false;
+    if (!mayAskPdf(facts.request)) { state.asksPdf = false; return false; }
     const [line] = await scanText([{ kind: 'request', text: facts.request, language: facts.language }], { deadlineAt: Date.now() + 15_000, signal: facts.signal, cancelled: facts.cancelled });
     state.asksPdf = line?.asksPdf === true;
     if (typeof line?.speaksRtl === 'boolean') state.speaksRtl = line.speaksRtl;
-    if (!state.asksPdf || state.speaksRtl !== true || state.given) return '';
-    return giveBrief(state, facts);
+    return state.asksPdf && state.speaksRtl === true && !state.given;
 }
 
 /**
- * Both parts at once, awaited: the PDFs remembered, then the request's scan (tests,
- * and any caller that wants the brief in its first message).
+ * Both parts at once, awaited: the PDFs remembered, then the request's scan, then the
+ * brief with its kit (tests, and any caller that wants the brief in its first message).
  */
 export async function pdfBriefAtStart(state: PdfBriefState, facts: RunFacts): Promise<string> {
     await pdfRunStart(facts);
-    return pdfStartScan(state, facts);
+    return (await pdfStartScan(state, facts)) ? pdfGiveBrief(state, facts) : '';
 }
 
 /** Files a step wrote, read at most this much each (the file as it now is). */
@@ -154,5 +167,5 @@ export async function pdfBriefAfterWrite(state: PdfBriefState, facts: RunFacts, 
     if (state.given) return '';
     if (!fileLines.some(l => (l.mechanisms || []).length)) return '';
     if (state.speaksRtl !== true && !fileLines.some(l => l.rtl === true)) return '';
-    return giveBrief(state, facts);
+    return pdfGiveBrief(state, facts);
 }

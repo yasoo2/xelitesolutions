@@ -153,11 +153,17 @@ describe('8 — the run-start scan never holds the builder\'s first call', () =>
         return { model, tools: [planUpdateTool, finishTool(passing)], processes: reg, browser, machine: { platform: 'linux', shell: 'bash' } };
     }
 
-    it('an Arabic PDF request: the first call starts before the scan answers; the brief and the kit come with a later step; the run start is kept with the run', async () => {
+    it('an Arabic PDF request: the first call starts before the scan answers; the brief and the kit come together with a later step, never mid-step; the run start is kept with the run', async () => {
         if (!findJoeAsset(path.join('app-kit', 'print.css'))) return;
         const dir = project();
         const kit = path.join(dir, 'vendor', 'joe-kit', 'print.css');
-        const seen: { firstHasBrief?: boolean; kitAtFirstCall?: boolean; briefAtStep?: number } = {};
+        const seen: { firstHasBrief?: boolean; kitAtFirstCall?: boolean; kitAfterScanInStep0?: boolean; briefAtStep?: number; kitWithBrief?: boolean } = {};
+        //  The real scan child, watched: `answered` once its answer is back (review 4 of r40, S5).
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const outsideScan = require('../core/quality/outside-scan') as typeof import('../core/quality/outside-scan');
+        const realScan = outsideScan.scanText;
+        let answered = false;
+        const scanSpy = jest.spyOn(outsideScan, 'scanText').mockImplementation(((...a: Parameters<typeof realScan>) => realScan(...a).then(r => { answered = true; return r; })) as any);
         let k = 0;
         const model: EngineModel = {
             label: 'fake:pdf', vision: false, contextTokens: () => 64_000,
@@ -167,13 +173,17 @@ describe('8 — the run-start scan never holds the builder\'s first call', () =>
                 if (step === 0) {
                     seen.firstHasBrief = /joe-kit/u.test(text);
                     seen.kitAtFirstCall = fs.existsSync(kit);
-                    //  A model call takes seconds; the scan answers meanwhile.
-                    for (let t = 0; t < 300 && !fs.existsSync(kit); t++) await new Promise(r => setTimeout(r, 100));
+                    //  A model call takes seconds; the scan answers meanwhile — and the kit still
+                    //  waits for the step's end, where the brief is given (review 4 of r40, S5).
+                    for (let t = 0; t < 300 && !answered; t++) await new Promise(r => setTimeout(r, 100));
+                    await new Promise(r => setTimeout(r, 400));
+                    seen.kitAfterScanInStep0 = fs.existsSync(kit);
                     return { text: '', toolCalls: [{ id: 'c0', name: 'nothing_here', arguments: '{}' }], durationMs: 1 };
                 }
                 //  The brief joins the result of the step during which the scan answered.
                 if (/joe-kit/u.test(text) || step >= 12) {
                     seen.briefAtStep = /joe-kit/u.test(text) ? step : -1;
+                    seen.kitWithBrief = fs.existsSync(kit);
                     return { text: 'done', toolCalls: [{ id: `c${step}`, name: 'task_finish', arguments: JSON.stringify({ summary: 'done' }) }], durationMs: 1 };
                 }
                 await new Promise(r => setTimeout(r, 500));
@@ -181,14 +191,20 @@ describe('8 — the run-start scan never holds the builder\'s first call', () =>
             },
         };
         const events: EngineEvent[] = [];
-        const result = await runEngine({
-            runId: 'run-pdf-parallel', request: 'اعمل تطبيق فواتير مع زر طباعة', language: 'ar', projectDir: dir,
-            deadlineAt: Date.now() + 10 * 60_000, signal: new AbortController().signal, emit: (e: EngineEvent) => events.push(e), joe: {},
-        } as any, deps(model));
-        expect(result.status).toBe('delivered');
+        let result: Awaited<ReturnType<typeof runEngine>> | undefined;
+        try {
+            result = await runEngine({
+                runId: 'run-pdf-parallel', request: 'اعمل تطبيق فواتير مع زر طباعة', language: 'ar', projectDir: dir,
+                deadlineAt: Date.now() + 10 * 60_000, signal: new AbortController().signal, emit: (e: EngineEvent) => events.push(e), joe: {},
+            } as any, deps(model));
+        } finally { scanSpy.mockRestore(); }
+        expect(result?.status).toBe('delivered');
+        expect(answered).toBe(true);
         expect(seen.firstHasBrief).toBe(false);
         expect(seen.kitAtFirstCall).toBe(false);
-        expect(seen.briefAtStep).toBeGreaterThanOrEqual(1);
+        expect(seen.kitAfterScanInStep0).toBe(false);
+        expect(seen.briefAtStep).toBe(1);
+        expect(seen.kitWithBrief).toBe(true);
         expect(fs.existsSync(kit)).toBe(true);
         const kept = JSON.parse(fs.readFileSync(path.join(dir, '.joe', 'pdfs-at-run-start.json'), 'utf8'));
         expect(kept.runs.map((r: any) => r.runId)).toContain('run-pdf-parallel');
