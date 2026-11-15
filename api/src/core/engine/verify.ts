@@ -29,7 +29,7 @@ import type { CheckResult, EngineResult, ProcessInfo, Requirement, ToolContext, 
 import { reportText, type FinishArgs, type Verifier } from './finish';
 import { deliveryFooter, deliveryProofPaths, instrumentName, qaCoverageLine, qaCoverageOf } from './certificate';
 import {
-    DeliveryLedger, DELIVERY_PRIORITY, browserQaTargetUrl, deliveryVerdict, mayRunBrowserQa, readAsRequirements, stillUnread, verifiedLiveUrl,
+    DeliveryLedger, DELIVERY_PRIORITY, browserQaTargetUrl, deliveryVerdict, mayRunBrowserQa, readAsRequirements, stillUnread, stillUnverified, verifiedLiveUrl,
     type DeliveryInstrument, type DeliveryMeasurement, type DeliveryVerdict,
 } from '../quality/delivery-verdict';
 import { deliveryRun, type DeliveryRunState } from '../quality/delivery-run';
@@ -1292,7 +1292,8 @@ function reportChecks(
                 ? failed.map(m => `${m.target ? `${path.basename(m.target)}: ` : ''}${m.error || 'failed'}`).join(' | ')
                 : (passed.get(instrument) || 'passed');
             const unread = instrument === 'coverage' ? stillUnread(all) : [];
-            const unverified = measured.flatMap(m => m.unverified || []);
+            //  What the verdict still counts as unverified: a record the passing tests and a met requirement read is not (delivery-verdict stillUnverified).
+            const unverified = instrument === 'coverage' ? stillUnverified(all) : measured.flatMap(m => m.unverified || []);
             if (instrument === 'coverage') {
                 const asked = measured.flatMap(m => m.unread || []);
                 const read = readAsRequirements(asked, all.flatMap(m => m.instrument === 'acceptance' ? (m.met || []) : []));
