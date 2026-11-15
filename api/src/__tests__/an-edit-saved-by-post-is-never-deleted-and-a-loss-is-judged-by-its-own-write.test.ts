@@ -212,6 +212,9 @@ const bookApi = (bookings: any[], keeps: boolean): Handler => (req, body, res) =
     const url = String(req.url);
     if (url === '/api/bookings' && req.method === 'POST') { const b = { id: bookings.length + 1, ...JSON.parse(body || '{}') }; if (keeps) bookings.push(b); return json(res, b, 201); }
     if (url === '/api/bookings' && req.method === 'GET') return json(res, bookings);
+    //  A booking asked by its id: the app's own route, answering the bookings it keeps.
+    const one = url.match(/^\/api\/bookings\/(\d+)$/);
+    if (one && req.method === 'GET') { const b = bookings.find(x => String(x.id) === one[1]); return b ? json(res, b) : json(res, { error: 'not found' }, 404); }
     if (url === '/api/notifications' && req.method === 'POST') return json(res, { ok: true }, 201);
     //  The owner's inbox: a visitor sees none.
     if (url === '/api/notifications' && req.method === 'GET') return json(res, []);
@@ -226,11 +229,22 @@ test('a kept booking followed by a notification POST whose list is empty is neve
     expect(codes).not.toContain('form_persistence_unproven');
 });
 
-test('…and the same booking never kept, its own list empty, is still lost', async () => {
+/*
+ * The fourth review of 2026-11-15 (S2): the by-id 404 proves the loss only from a route that answers a
+ * record its list holds — so the list holds another visitor's booking, and the route answers it.
+ */
+test('…and the same booking never kept, its own list holding another booking the route answers, is still lost', async () => {
+    const bookings: any[] = [{ id: 1, service: 'shave', slot: '11:00' }];
+    const { codes } = await walk(BOOK, bookApi(bookings, false));
+    expect(bookings.length).toBe(1);
+    expect(codes).toContain('form_persistence_unproven');
+});
+
+test('…but never kept on an empty list, the by-id 404 proves nothing (no record the route could answer): not measured', async () => {
     const bookings: any[] = [];
     const { codes } = await walk(BOOK, bookApi(bookings, false));
     expect(bookings.length).toBe(0);
-    expect(codes).toContain('form_persistence_unproven');
+    expect(codes).not.toContain('form_persistence_unproven');
 });
 
 /* ---- C8: the QA's own asks excuse nothing of the product's ----------------------------------- */

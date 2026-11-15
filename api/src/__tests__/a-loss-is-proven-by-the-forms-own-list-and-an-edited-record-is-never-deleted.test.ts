@@ -78,6 +78,9 @@ const NOTES = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  * answers its 201 with the note's id and knows no note it did not keep.
  */
 const notesApi = (notes: any[], keeps: boolean, answersId = true): Handler => (req, body, res) => {
+    //  A note asked by its id: answered when kept, the app's own JSON 404 when not.
+    const one = String(req.url).match(/^\/api\/notes\/(\d+)$/);
+    if (one) { const n = notes.find(x => String(x.id) === one[1]); return n ? json(res, n) : json(res, { error: 'not found' }, 404); }
     if (String(req.url).startsWith('/api/notes/')) return json(res, { error: 'not found' }, 404);
     if (req.url !== '/api/notes') return false;
     if (req.method === 'POST') {
@@ -88,12 +91,24 @@ const notesApi = (notes: any[], keeps: boolean, answersId = true): Handler => (r
     return json(res, notes);
 };
 
-test('a 201 whose collection, asked again, is an empty list is lost (the review, finding 1)', async () => {
-    const notes: any[] = [];
+/*
+ * The fourth review of 2026-11-15 (S2): a by-id 404 proves the loss only when the same route answers a
+ * record its list holds — an app with no such route, or one hiding what it holds, proves nothing. So the
+ * list here holds the owner's note, the route answers it, and says «not found» of the QA's own.
+ */
+test('a 201 whose collection, asked again, holds another note and not this one — its id 404 from the route that answers the other — is lost (the review, finding 1)', async () => {
+    const notes: any[] = [{ id: 1, title: 'Seed note' }];
     const { codes, findings } = await walk(NOTES, notesApi(notes, false));
-    expect(notes.length).toBe(0);
+    expect(notes.length).toBe(1);
     expect(codes).toContain('form_persistence_unproven');
-    expect(findings.find(f => f.code === 'form_persistence_unproven')!.en).toMatch(/the collection it was written to returned an empty list/);
+    expect(findings.find(f => f.code === 'form_persistence_unproven')!.en).toMatch(/returned other records under the same field and not this one/);
+});
+
+test('…but the same 201 on an empty list, whose by-id route can answer no record at all, is not measured (the fourth review, S2)', async () => {
+    const notes: any[] = [];
+    const { codes } = await walk(NOTES, notesApi(notes, false));
+    expect(notes.length).toBe(0);
+    expect(codes).not.toContain('form_persistence_unproven');
 });
 
 test('…but a 201 that names no id, on a list that showed this visitor nothing before, is not measured: the list may be another visitor\'s (the third review, finding 4)', async () => {
@@ -259,7 +274,8 @@ const reviewsApi = (all: any[], keeps: boolean, listsAll: boolean): Handler => (
     if (req.method === 'POST') {
         const r = { id: all.length + 1, ...JSON.parse(body || '{}'), status: 'pending' };
         if (keeps) all.push(r);
-        return json(res, { id: r.id, status: 'pending' }, 201);
+        //  A site that lists every review answers the new one's id alone; a moderated one says it is pending.
+        return json(res, listsAll ? { id: r.id } : { id: r.id, status: 'pending' }, 201);
     }
     return json(res, listsAll ? all : all.filter(r => r.status === 'approved'));
 };

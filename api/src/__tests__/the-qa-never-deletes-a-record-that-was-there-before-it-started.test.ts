@@ -199,8 +199,9 @@ test('a moderated review and a guest\'s order are not lost by a list never meant
     expect(listProvesLoss(lacks, { answeredIds: ['3'], byIdStatuses: [200], listsBefore: [], at: [at] })).toBe('');
     expect(listProvesLoss(lacks, { answeredIds: ['3'], byIdStatuses: [401], listsBefore: [], at: [at] })).toBe('');
     expect(listProvesLoss(lacks, { answeredIds: ['3'], byIdStatuses: [], listsBefore: [], at: [at] })).toBe('');
-    //  …and a 404 for that very id is the proof.
-    expect(listProvesLoss(lacks, { answeredIds: ['3'], byIdStatuses: [404], listsBefore: [], at: [at] })).toBe('others');
+    //  …and a 404 for that very id is the proof — the app's own JSON 404, from a route that answers a record the list holds (the fourth review, S2).
+    expect(listProvesLoss(lacks, { answeredIds: ['3'], byIdStatuses: [404], byIdJson: [true], controlStatus: 200, listsBefore: [], at: [at] })).toBe('others');
+    expect(listProvesLoss(lacks, { answeredIds: ['3'], byIdStatuses: [404], listsBefore: [], at: [at] })).toBe('');
     //  No id: the page's own list, read before the submit, must have shown this visitor records.
     const orders = 'http://x/api/orders';
     expect(listProvesLoss('empty', { answeredIds: [], byIdStatuses: [], listsBefore: [{ at: orders, body: '[]' }], at: [orders] })).toBe('');
@@ -230,16 +231,21 @@ function bookingPage(): string {
   load();
 </script></body></html>`;
 }
-/** A guest's bookings: the list is a signed-in member's ([] for a guest); a booking asked by its id answers 401 when kept, 404 when not. */
-const guestApi = (kept: any[], keeps: boolean): Handler => (req, body, res) => {
+/**
+ * A guest's bookings: the list is a signed-in member's ([] for a guest); a booking asked by its id answers
+ * 401 when kept, 404 when not. `listed`: the list shows everyone this booking instead (a public board),
+ * which its by-id route answers — the route is real, and its 404 for the QA's booking proves the loss.
+ */
+const guestApi = (kept: any[], keeps: boolean, listed: any[] = []): Handler => (req, body, res) => {
     const url = String(req.url);
     if (url === '/api/bookings' && req.method === 'POST') {
         const b = { id: 7, name: String(JSON.parse(body || '{}').name || '') };
         if (keeps) kept.push(b);
         return json(res, b, 201);
     }
-    if (url === '/api/bookings') return json(res, []);
+    if (url === '/api/bookings') return json(res, listed);
     const m = url.match(/^\/api\/bookings\/(\d+)$/);
+    if (m && listed.some(b => String(b.id) === m[1])) return json(res, listed.find(b => String(b.id) === m[1]));
     if (m) return kept.some(b => String(b.id) === m[1]) ? json(res, { error: 'sign in' }, 401) : json(res, { error: 'not found' }, 404);
     return false;
 };
@@ -252,9 +258,9 @@ test('a guest\'s booking, kept, on a list that shows a guest nothing, is not mea
     expect(Number(result.metrics.formsPersistenceUnmeasured || 0)).toBeGreaterThanOrEqual(1);
 });
 
-test('…and the same booking, its id asked and answered 404, is lost', async () => {
+test('…and the same booking, its id asked and answered 404 by the route that answers the booking its list shows, is lost', async () => {
     const kept: any[] = [];
-    const { codes } = await walk(bookingPage(), guestApi(kept, false));
+    const { codes } = await walk(bookingPage(), guestApi(kept, false, [{ id: 1, name: 'Sara' }]));
     expect(kept.length).toBe(0);
     expect(codes).toContain('form_persistence_unproven');
 });
