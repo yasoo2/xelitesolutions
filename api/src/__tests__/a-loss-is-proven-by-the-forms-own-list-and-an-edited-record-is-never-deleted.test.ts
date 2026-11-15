@@ -72,9 +72,19 @@ const NOTES = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title
   });
 </script></body></html>`;
 
-const notesApi = (notes: any[], keeps: boolean): Handler => (req, body, res) => {
+/*
+ * The third review of 2026-11-15 (findings 3, 4): an empty list proves a loss only when the id the POST
+ * answered, asked, is 404 — or, with no id, when the page read that list non-empty before. This server
+ * answers its 201 with the note's id and knows no note it did not keep.
+ */
+const notesApi = (notes: any[], keeps: boolean, answersId = true): Handler => (req, body, res) => {
+    if (String(req.url).startsWith('/api/notes/')) return json(res, { error: 'not found' }, 404);
     if (req.url !== '/api/notes') return false;
-    if (req.method === 'POST') { if (keeps) notes.push({ title: String(JSON.parse(body || '{}').title || '') }); return json(res, { ok: true }, 201); }
+    if (req.method === 'POST') {
+        const note = { id: notes.length + 1, title: String(JSON.parse(body || '{}').title || '') };
+        if (keeps) notes.push(note);
+        return json(res, answersId ? note : { ok: true }, 201);
+    }
     return json(res, notes);
 };
 
@@ -84,6 +94,14 @@ test('a 201 whose collection, asked again, is an empty list is lost (the review,
     expect(notes.length).toBe(0);
     expect(codes).toContain('form_persistence_unproven');
     expect(findings.find(f => f.code === 'form_persistence_unproven')!.en).toMatch(/the collection it was written to returned an empty list/);
+});
+
+test('…but a 201 that names no id, on a list that showed this visitor nothing before, is not measured: the list may be another visitor\'s (the third review, finding 4)', async () => {
+    const notes: any[] = [];
+    const { codes, result } = await walk(NOTES, notesApi(notes, false, false));
+    expect(notes.length).toBe(0);
+    expect(codes).not.toContain('form_persistence_unproven');
+    expect(Number(result.metrics.formsPersistenceUnmeasured || 0)).toBeGreaterThanOrEqual(1);
 });
 
 test('…and the same server keeping it is proven kept', async () => {
@@ -124,9 +142,10 @@ const redirectApi = (bookings: any[], keeps: boolean): Handler => (req, body, re
 };
 
 test('a POST answered 303 that keeps nothing is asked of its collection, and lost (finding 1)', async () => {
-    const bookings: any[] = [];
+    //  The list showed this visitor a booking before the submit: it would show his (the third review, finding 4).
+    const bookings: any[] = [{ name: 'Seed guest' }];
     const { codes } = await walk(REDIRECTED, redirectApi(bookings, false));
-    expect(bookings.length).toBe(0);
+    expect(bookings.length).toBe(1);
     expect(codes).toContain('form_persistence_unproven');
 });
 
@@ -148,7 +167,9 @@ const CHOICES = `<!doctype html><html lang="en"><head><meta charset="utf-8"><tit
   <button>Book</button>
 </form>
 <p id="msg" role="status"></p>
+<h2>Bookings</h2><ul id="booked"></ul>
 <script>
+  fetch('/api/bookings').then(function (r) { return r.json(); }).then(function (list) { document.getElementById('booked').innerHTML = list.map(function (b) { return '<li>' + b.service + ' at ' + b.slot + '</li>'; }).join(''); });
   document.getElementById('f').addEventListener('submit', function (e) {
     e.preventDefault();
     var form = this, msg = document.getElementById('msg');
@@ -164,10 +185,11 @@ const choicesApi = (bookings: any[], keeps: boolean): Handler => (req, body, res
     return json(res, bookings);
 };
 
-test('a form of choices whose 201 never shows and whose collection is empty is lost — never silently «not measured» (finding 1)', async () => {
-    const bookings: any[] = [];
+test('a form of choices whose 201 never shows and whose collection lacks it is lost — never silently «not measured» (finding 1)', async () => {
+    //  The list the page read showed a booking before the submit (the third review, finding 4).
+    const bookings: any[] = [{ service: 'colour', slot: '15:00' }];
     const { codes, findings } = await walk(CHOICES, choicesApi(bookings, false));
-    expect(bookings.length).toBe(0);
+    expect(bookings.length).toBe(1);
     expect(codes).toContain('form_persistence_unproven');
     //  No text of the QA's to name: told as no new record, never as «what the QA typed ("")».
     expect(findings.find(f => f.code === 'form_persistence_unproven')!.en).not.toMatch(/\(""\)/);
@@ -230,6 +252,9 @@ function reviews(listsAll: boolean): string {
 }
 
 const reviewsApi = (all: any[], keeps: boolean, listsAll: boolean): Handler => (req, body, res) => {
+    //  A review asked by its id: answered when it is shown, 404 when not kept or held (the third review, finding 3).
+    const one = String(req.url).match(/^\/api\/reviews\/(\d+)$/);
+    if (one) { const r = all.find(x => String(x.id) === one[1]); return r && (listsAll || r.status === 'approved') ? json(res, r) : json(res, { error: 'not found' }, 404); }
     if (req.url !== '/api/reviews') return false;
     if (req.method === 'POST') {
         const r = { id: all.length + 1, ...JSON.parse(body || '{}'), status: 'pending' };
