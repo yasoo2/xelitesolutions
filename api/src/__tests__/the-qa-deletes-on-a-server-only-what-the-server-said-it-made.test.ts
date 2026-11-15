@@ -22,6 +22,7 @@ import { chromium } from 'playwright';
 import {
     probeForms, judgeBehaviour, saysSuccess, isVisibleFormRefusal, listProvesLoss, ownRowVerdict, ownRowFacts,
     shownRecordIds, formEditedRecord, recordIdOfUrl, currentLinkFacts, deleteRequestVerdict, answerHoldsRecord, formBodyPairs,
+    startWalkWatch,
 } from '../core/quality/behaviour-audit';
 import fs from 'fs';
 import os from 'os';
@@ -60,6 +61,8 @@ async function walk(page: string, api: Handler) {
         const consoleErrors: string[] = [];
         tab.on('pageerror', e => pageErrors.push(String(e)));
         tab.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+        //  Watched from its first load, as app-audit watches it (the fifth review of 2026-11-15, S6: nothing is asked again).
+        startWalkWatch(tab);
         await tab.goto(`http://127.0.0.1:${(server.address() as any).port}/`, { waitUntil: 'networkidle' });
         const result = await probeForms(tab, { budgetMs: 60_000 });
         const findings = judgeBehaviour([], result.metrics as any, [], result.forms as any).findings;
@@ -172,10 +175,13 @@ test('(B1, twin) the QA\'s own create answered {id: 42}: its delete, DELETE /api
     expect(Number(result.metrics.qaDeletesBlocked || 0)).toBe(0);
 });
 
-test('(B1) a create that answers no id is never deleted on the server: the delete is stopped, the row left and told', async () => {
+test('(B1) a create whose answer and whose list name no id is never deleted on the server: the delete is stopped, the row left and told', async () => {
     const notes = [{ id: 1, title: 'Owner note' }];
     const deleted: string[] = [];
-    const { result, pageErrors, consoleErrors } = await walk(NOTES(), notesApi(notes, deleted, false));
+    //  The list it reads again carries no id either (the fifth review, S2: an id read from that list would be the QA's).
+    const api = notesApi(notes, deleted, false);
+    const noIds: Handler = (req, body, res) => (req.url === '/api/x' && req.method === 'GET' ? json(res, notes.map(n => ({ title: n.title }))) : api(req, body, res));
+    const { result, pageErrors, consoleErrors } = await walk(NOTES(), noIds);
     expect(deleted).toEqual([]);
     expect(notes.map(n => n.id)).toEqual([1, 42]);
     expect(Number(result.metrics.qaRecordsDeleted || 0)).toBe(0);
@@ -230,7 +236,8 @@ test('(B1) a delete button wired to the owner\'s record (DELETE /api/x/1) next t
 });
 
 test('the network rule: only a request naming the QA\'s own ids, and no other record, is let through', () => {
-    const own = ['42'];
+    //  A pair since the fifth review of 2026-11-15 (B1): the collection the create went to, and the id given there.
+    const own = [{ collection: 'x', id: '42' }];
     expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x/42' }, own)).toBe('allow');
     expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x/1' }, own)).toBe('block');
     expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x/42' }, [])).toBe('block');
@@ -238,17 +245,19 @@ test('the network rule: only a request naming the QA\'s own ids, and no other re
     expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/api/x/delete', body: JSON.stringify({ ids: [42, 1] }) }, own)).toBe('block');
     expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/api/x/delete', body: 'id=42' }, own)).toBe('allow');
     expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x?id=42' }, own)).toBe('allow');
-    expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/rest/v1/notes?id=eq.42' }, own)).toBe('allow');
-    expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/rest/v1/notes?id=eq.1' }, own)).toBe('block');
+    expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/rest/v1/notes?id=eq.42' }, [{ collection: 'notes', id: '42' }])).toBe('allow');
+    expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/rest/v1/notes?id=eq.1' }, [{ collection: 'notes', id: '42' }])).toBe('block');
     //  A number that is not under a record's key names nothing: «?page=42» is no record 42.
     expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x/7?page=42' }, own)).toBe('block');
-    expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/graphql', body: JSON.stringify({ query: 'mutation { deleteNote(id: 42) { ok } }' }) }, own)).toBe('allow');
-    expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/graphql', body: JSON.stringify({ query: 'mutation { deleteNote(id: 1) { ok } }' }) }, own)).toBe('block');
-    expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/graphql', body: JSON.stringify({ query: 'mutation($noteId: ID!) { deleteNote(id: $noteId) { ok } }', variables: { noteId: '42' } }) }, own)).toBe('allow');
+    const note = [{ collection: 'note', id: '42' }];
+    expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/graphql', body: JSON.stringify({ query: 'mutation { deleteNote(id: 42) { ok } }' }) }, note)).toBe('allow');
+    expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/graphql', body: JSON.stringify({ query: 'mutation { deleteNote(id: 1) { ok } }' }) }, note)).toBe('block');
+    expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/graphql', body: JSON.stringify({ query: 'mutation($noteId: ID!) { deleteNote(id: $noteId) { ok } }', variables: { noteId: '42' } }) }, note)).toBe('allow');
     //  An audit-log write naming nothing is no delete of the QA's record.
     expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/api/activity', body: JSON.stringify({ action: 'delete' }) }, own)).toBe('block');
-    //  Prefixed ids are the same record (M3).
-    expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x/note-42' }, own)).toBe('allow');
+    //  A prefixed id is matched as written, never as its number (the fifth review, S1).
+    expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x/note-42' }, own)).toBe('block');
+    expect(deleteRequestVerdict({ method: 'DELETE', url: 'http://h/api/x/note-42' }, [{ collection: 'x', id: 'note-42' }])).toBe('allow');
     expect(deleteRequestVerdict({ method: 'POST', url: 'http://h/api/x/remove', body: '------b\r\nContent-Disposition: form-data; name="id"\r\n\r\n42\r\n------b--' }, own)).toBe('allow');
 });
 
@@ -365,13 +374,13 @@ test('(S3) a row\'s ids are its own — never a linked car\'s or customer\'s —
     }
 });
 
-test('(S3b, B1 guard 3) the row\'s text only vetoes: a page of three pushing one row off is no edit when the server\'s ids are new; an owner\'s row gaining a label is', () => {
+test('(S3b, B1 guard 3) the row\'s text only vetoes: a page of three pushing one row off is no edit when the row carries the server\'s new id; an owner\'s row gaining a label is', () => {
     const mark = 'qa7xk2a';
-    //  A QA create on a «latest 3» list: the last row pushed off; the id the server named is new.
+    //  A QA create on a «latest 3» list: the last row pushed off; the row carries the id the server gave the QA's create.
     expect(ownRowVerdict({
-        mark, rowText: `qa title ${mark} delete`, rowIds: [], markedIds: ['104'], typed: [`QA title ${mark}`],
+        mark, rowText: `qa title ${mark} delete`, rowIds: ['104'], markedIds: ['104'], typed: [`QA title ${mark}`],
         beforeIds: ['101', '102', '103'], beforeRows: ['buy milk delete', 'walk dog delete', 'read book delete'],
-        nowRows: [`qa title ${mark} delete`, 'buy milk delete', 'walk dog delete'],
+        nowRows: [`qa title ${mark} delete`, 'buy milk delete', 'walk dog delete'], allowedIds: ['104'],
     })).toEqual({ ok: true, edited: false, why: '' });
     //  An owner's edited booking that gained «notes:», with a blind before-set: vetoed.
     expect(ownRowVerdict({
@@ -435,7 +444,9 @@ test('(S4) what the QA edited or left in his app is a told line of the report, i
 test('(S4) through the whole walk: the test record the QA left is counted in the audit (mergeProbe) and told in its Arabic report', async () => {
     const notes = [{ id: 1, title: 'Owner note' }];
     const deleted: string[] = [];
-    const api = notesApi(notes, deleted, false);
+    //  A create whose answer and list name no id (the fifth review reads an id from either).
+    const ids = notesApi(notes, deleted, false);
+    const api: Handler = (req, body, res) => (req.url === '/api/x' && req.method === 'GET' ? json(res, notes.map(n => ({ title: n.title }))) : ids(req, body, res));
     const page = NOTES();
     const server = http.createServer((req, res) => {
         let body = '';
