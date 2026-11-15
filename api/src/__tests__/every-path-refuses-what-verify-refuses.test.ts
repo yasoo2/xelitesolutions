@@ -45,16 +45,18 @@ describe('one rule for what refuses, on every path', () => {
     it('⛔ the edit path opens a repair round, and feeds it, only on what refuses', () => {
         const e = code('modules', 'tools', 'definitions', 'ProjectEditTool.ts');
         expect(e).toContain('worthRepairing((audit?.findings || []).filter(refuses))');
-        expect(e).toContain('findings: (audit.findings || []).filter(refuses).map(');
-        expect(e).toContain('findings: (measured.findings || []).filter(refuses).map(');
+        //  Review r40-2 (A2): ids, findings and score of every reading from refusingMeasurement (browser-mend.ts).
+        expect(e).toContain('const firstMeasurement = refusingMeasurement(audit);');
+        expect(e).toContain('const reading = refusingMeasurement(measured);');
     });
 
     it('⛔ the build path opens a repair round, and feeds it, only on what refuses', () => {
         const b = code('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        expect(b).toContain("import { refuses } from '../../../core/engine/browser-mend';");
+        expect(b).toContain("import { refuses, refusingMeasurement } from '../../../core/engine/browser-mend';");
         expect(b).toContain('worthRepairing(audit.findings.filter(refuses))');
-        expect(b).toContain('findings: (a.findings || []).filter(refuses).map(');
-        expect((b.match(/findings: \(audit\.findings \|\| \[\]\)\.filter\(refuses\)\.map\(/g) || []).length).toBe(2);
+        //  Review r40-2 (A2): every reading the loop is handed is reactLoopMeasurement's (refusing only).
+        expect(b).toContain('const reading = reactLoopMeasurement(a, termFails, ');
+        expect(b).toContain('const firstReading = reactLoopMeasurement(audit, firstTermFails, ');
         expect(b).not.toMatch(/findings: \((?:a|audit)\.findings \|\| \[\]\)\.map\(/);
     });
 });

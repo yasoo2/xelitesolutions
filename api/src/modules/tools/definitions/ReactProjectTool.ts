@@ -44,7 +44,7 @@ import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { artifactRootDir } from '../../../shared/artifact-root';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
-import { refuses } from '../../../core/engine/browser-mend';
+import { refuses, refusingMeasurement } from '../../../core/engine/browser-mend';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
@@ -424,6 +424,45 @@ export function canBuildDependencyFreeRecordsApp(
 /** A static recovery artifact has no React source tree for the repair loop to edit. */
 export function sourceRepairAllowedForArtifact(artifactMode: string | null | undefined): boolean {
     return artifactMode !== 'static_records';
+}
+
+/**
+ * ⛔ WHAT THE BUILD'S DELIVERY GATE READS FROM THE LAST AUDIT: WHAT REFUSES (review r40-2, A1).
+ *
+ * `openQualityFindings` was every finding, so any told line of the revived
+ * inspector (a11y_no_main, low_contrast, mobile_tap_targets…) — on most pages —
+ * made qualityDeliveryBlocked true and refused a React delivery verify.ts would
+ * accept. The told lines are told with the delivery (formatAudit lists them),
+ * at every severity; they are neither open, nor blockers, nor in the record.
+ */
+export function reactQualityGate(audit: any): { open: any[]; blockers: any[]; told: any[] } {
+    const all = ((audit?.findings || []) as any[]).filter((f: any) => f && f.id);
+    const open = all.filter(refuses);
+    return { open, blockers: open.filter((f: any) => f.severity === 'high'), told: all.filter((f: any) => !refuses(f)) };
+}
+
+/**
+ * What the build's improve loop is handed, and keeps or rolls back a round on (review r40-2, A2):
+ * the refusing findings with their own score, blended with the terminal's, and the terminal's
+ * failing checks. A told line is neither an id that keeps the loop running nor a finding fed to it.
+ */
+export function reactLoopMeasurement(audit: any, terminalFails: string[], blend: (browser: number) => number): {
+    score: number; findingIds: string[]; findings: Array<{ id: string; evidence?: any }>;
+} {
+    const m = refusingMeasurement(audit);
+    return { score: blend(m.score), findingIds: [...m.findingIds, ...terminalFails], findings: m.findings };
+}
+
+/**
+ * What the model rounds may be asked about (review r40-2, A3): the refusing findings only. low_contrast,
+ * mobile_overflow, mobile_tap_targets and mobile_header_fragmented are in the CSS round's own list, and
+ * a told line must never be paid for in a model round, nor written into the user's stylesheet.
+ */
+export function modelRepairable(audit: any): { behaviour: any[]; css: any[] } {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { cssRepairable, handlerRepairable } = require('../../../core/quality/model-round');
+    const refusing = ((audit?.findings || []) as any[]).filter((f: any) => f && f.id).filter(refuses);
+    return { behaviour: handlerRepairable(refusing), css: cssRepairable(refusing) };
 }
 
 function scriptSafeJson(value: unknown): string {
@@ -7721,7 +7760,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             }
             const supportsSourceRepair = sourceRepairAllowedForArtifact(artifactMode);
             const sourceBehaviourFindings = !audit.skipped && supportsSourceRepair
-                ? require('../../../core/quality/model-round').handlerRepairable(audit.findings || [])
+                ? modelRepairable(audit).behaviour
                 : [];
             // Verification measures and never repairs: the door's terminal
             // reading is the verdict, and the repair rounds do not open.
@@ -7812,15 +7851,15 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     if (t) terminalAudit = t;
                     const { failingIds } = require('../../../core/quality/terminal-audit');
                     const termFails: string[] = t && !t.skipped ? failingIds(t) : [];
-                    return {
-                        score: blend(Number(a.score || 0), t),
-                        findingIds: [...(a.findings || []).map((f: any) => f.id), ...termFails],
-                        // …and the offenders each finding named, so the next
-                        // round is surgery rather than another blanket.
-                        findings: (a.findings || []).filter(refuses).map((f: any) => ({ id: f.id, evidence: f.evidence })),
-                    };
+                    //  What refuses, with the offenders each finding named, so the next round is surgery
+                    //  rather than another blanket — and never a told line (review r40-2, A2).
+                    const reading = reactLoopMeasurement(a, termFails, (n: number) => blend(n, t));
+                    readings.set(reading, a);
+                    return reading;
                 };
                 let lastAudit: any = audit;
+                /** Each reading the loop was handed, with the audit it was read from. */
+                const readings = new Map<any, any>();
 
                 // The FIRST reading is taken with both eyes too, so round 1's
                 // «before» is the same number every later round is judged by.
@@ -7835,12 +7874,9 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 }
                 const firstTermFails: string[] = firstTerminal && !firstTerminal.skipped
                     ? require('../../../core/quality/terminal-audit').failingIds(firstTerminal) : [];
+                const firstReading = reactLoopMeasurement(audit, firstTermFails, (n: number) => blend(n, firstTerminal));
                 loop = await improveUntilItStops(
-                    {
-                        score: blend(Number(audit.score || 0), firstTerminal),
-                        findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
-                        findings: (audit.findings || []).filter(refuses).map((f: any) => ({ id: f.id, evidence: f.evidence })),
-                    },
+                    firstReading,
                     {
                         say: term,
                         // The measurement itself — the one wire that made the
@@ -7866,12 +7902,16 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                             //  `handlerRepairable` before the deterministic round
                             //  is allowed to end the round on a colour tweak.
                             const {
-                                askForCss, cssRepairable, askForHandler, handlerRepairable, fileForBehaviour,
+                                askForCss, askForHandler, fileForBehaviour,
                             } = require('../../../core/quality/model-round');
-                            const known = await repairRound(proj, round, {
-                                isArabic: isAr, findings,
-                                protectedFiles: trustedRecordsFiles.map(file => file.rel),
-                            });
+                            //  A round handed no browser finding (the terminal's alone) does not run the
+                            //  deterministic repairer: with no findings it is ui-repair's untargeted blanket.
+                            const known = findings.length
+                                ? await repairRound(proj, round, {
+                                    isArabic: isAr, findings,
+                                    protectedFiles: trustedRecordsFiles.map(file => file.rel),
+                                })
+                                : { changed: [] as string[], repairs: [] as any[] };
                             /**
                              *  ⛔ A COSMETIC FIX USED TO END THE ROUND, AND THE
                              *  DEAD BUTTON NEVER GOT PAST IT.
@@ -7906,7 +7946,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                              *  the pair together, so nothing about the safety
                              *  changes.
                              */
-                            const severeFirst = handlerRepairable(lastAudit?.findings || []).length > 0;
+                            const severeFirst = modelRepairable(lastAudit).behaviour.length > 0;
                             if (known.changed.length && !severeFirst) return known.changed;
                             /**
                              * THE CEILING OF EIGHT, LIFTED.
@@ -7948,7 +7988,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                              *  pressing the button again. It is allowed to be
                              *  wrong; it is not allowed to be believed.
                              */
-                            const behaviourLeft = handlerRepairable(lastAudit?.findings || []);
+                            const behaviourLeft = modelRepairable(lastAudit).behaviour;
                             if (behaviourLeft.length) {
                                 const srcDir = path.join(proj, 'src');
                                 const sources: Record<string, string> = {};
@@ -7990,7 +8030,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                                     }
                                 }
                             }
-                            const rich = cssRepairable((lastAudit?.findings || []).filter((f: any) => f && f.id));
+                            const rich = modelRepairable(lastAudit).css;
                             if (!rich.length) {
                                 term('improve: no stylesheet-repairable findings remain; unresolved functional/semantic findings stay open');
                                 return known.changed;
@@ -8025,17 +8065,17 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         },
                     },
                 );
-                loop = normaliseImproveResult(loop, {
-                    score: blend(Number(audit.score || 0), firstTerminal),
-                    findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
-                    findings: (audit.findings || []).filter(refuses).map((f: any) => ({ id: f.id, evidence: f.evidence })),
-                });
+                //  The audit the kept reading was taken from — before normalising copies the readings.
+                const keptAudit = loop?.final && !loop.final.skipped ? readings.get(loop.final) : undefined;
+                loop = normaliseImproveResult(loop, firstReading);
                 term(improveSummary(loop, isAr));
                 if (sessionId) broadcastThinkingDetail(sessionId, improveSummary(loop, isAr));
 
                 // The verdict the report publishes is the LAST measurement the
-                // loop actually kept — never the best number it ever saw.
-                if (loop.final && !loop.final.skipped && loop.final.score !== audit.score) audit = lastAudit;
+                // loop actually kept — never the best number it ever saw, and
+                // never the rejected one a rollback undid (the first reading
+                // keeps the first audit).
+                if (keptAudit) audit = keptAudit;
                 const paid = loop.rounds.filter((r: any) => r.verdict === 'improved');
                 if (paid.length) {
                     selfRepair = {
@@ -8675,7 +8715,10 @@ Use the actual definitions above. Do not rewrite these files or implement persis
          * thing does not work, and the message leads with that instead of
          * burying it under a list of filenames.
          */
-        const openQualityFindings = ((audit?.findings || []) as any[]);
+        //  What refuses (browser-mend.ts): a told line of the inspector is told with the delivery, never
+        //  open, never a blocker, never in the record (review r40-2, A1; design v3 §2).
+        const qualityGate = reactQualityGate(audit);
+        const openQualityFindings = qualityGate.open;
         const recordsPresentationMode = recordsPresentationSource();
         const trustedRecordsPresentation = recordsPresentationMode === 'model' || recordsPresentationMode === 'request_derived';
         if (recordsPresentation && recordsPresentationMode !== 'model') modelAuthoredEngine = false;
@@ -8684,7 +8727,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             ...(trustedRecordsPresentation ? [] : ['records_presentation_not_authored']),
         ] : [];
         if (recordsPresentationFindings.length) term(`presentation delivery blocked: ${recordsPresentationFindings.join(', ')}`);
-        const blockers = openQualityFindings.filter(f => f.severity === 'high');
+        const blockers = qualityGate.blockers;
         const terminalQualityFindings: string[] = (() => {
             const verdict = terminalAudit || doorTerminal;
             if (!verdict || verdict.skipped) return [];

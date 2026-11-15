@@ -27,6 +27,7 @@ import { HANDOFF_SCHEME, isExpectedRefusal, sameDocumentUrl } from './behaviour-
 import { productProfile, proveJourneys } from './qa-product-profile';
 import { AuditEyes, evalInPage } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
+import { markInspection } from '../engine/browser-mend';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
@@ -2262,7 +2263,9 @@ export async function auditBuiltApp(
             const inspected = await inspectUi(page, {
                 eyes, restore: desktop,
                 // A deadline inside every step, not a race: the lines found before it are kept.
-                deadline: Date.now() + 30_000,
+                // Never past the walk's own ceiling (review r40-2, A6): verify measures up to three
+                // walks and a mend's re-measure, and 30 s each on top of a spent budget was minutes.
+                deadline: Date.now() + Math.min(30_000, Math.max(0, walkCeiling - Date.now())),
                 // The panel draws every frame at the size the session declares;
                 // without this the phone screenshot arrives in a desktop frame.
                 onViewport: (w, h) => {
@@ -2477,6 +2480,9 @@ export async function auditBuiltApp(
             }
         }
 
+        //  The list carries the inspection's status (browser-mend.ts): verify.ts hands mendIsBetter the bare
+        //  lists, and a told kind is the mend's doing only when both walks were inspected whole (review r40-2, A5).
+        markInspection(findings, uiInspection);
         return {
             score: scoreOf(findings), findings,
             ...(look ? { look } : {}),

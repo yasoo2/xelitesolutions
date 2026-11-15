@@ -91,13 +91,24 @@ export function repairHtmlShell(html: string, opts: { isArabic?: boolean; title?
          */
         const langAttr = (before.match(/\blang\s*=\s*["']?([A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)/i) || [])[1] || '';
         const body = (text.match(/<body\b[^>]{0,4000}>([\s\S]*)/i) || [])[1] ?? text;
-        const words = body.replace(/<script\b[\s\S]*?(?:<\/script>|$)|<style\b[\s\S]*?(?:<\/style>|$)|<[^>]{0,4000}>/gi, ' ');
+        //  A template's <noscript> sentence («You need to enable JavaScript…») is the template's words, not the page's.
+        const words = body.replace(/<script\b[\s\S]*?(?:<\/script>|$)|<style\b[\s\S]*?(?:<\/style>|$)|<noscript\b[\s\S]*?(?:<\/noscript>|$)|<[^>]{0,4000}>/gi, ' ');
         const rtlLetters = (words.match(/[֐-׿؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g) || []).length;
         const latinLetters = (words.match(/[A-Za-z]/g) || []).length;
-        const pageRtl = langAttr
+        const appShell = rtlLetters + latinLetters === 0;
+        /*
+         * Review r40-2 (C6): Vite's shell (and the templates') is <html lang="en"> around an empty
+         * <div id="root">. That lang is the template's default, not the page's decision — the page has
+         * no words of its own — so an Arabic React app lost dir="rtl" after every mend. On an app shell
+         * with no dir of its own, lang="en" follows the reply language like a shell with no lang; any
+         * other lang, or a dir, is a choice somebody made and is kept.
+         */
+        const templateLang = appShell && /^en(?:-|$)/i.test(langAttr) && !/\bdir\s*=/i.test(before);
+        const pageRtl = langAttr && !templateLang
             ? RTL_LANG.test(langAttr)
-            : rtlLetters + latinLetters === 0 ? isAr : rtlLetters >= latinLetters;
+            : appShell ? isAr : rtlLetters >= latinLetters;
         if (!langAttr) tag = tag.replace(/<html\b/i, `<html lang="${pageRtl ? (/[֐-׿]/.test(words) && !/[؀-ۿ]/.test(words) ? 'he' : 'ar') : 'en'}"`);
+        else if (templateLang && pageRtl) tag = tag.replace(/(\blang\s*=\s*["']?)[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*/i, '$1ar');
         if (pageRtl && !/\bdir\s*=/.test(tag)) tag = tag.replace(/<html\b/i, '<html dir="rtl"');
         if (tag !== before) {
             text = text.replace(before, tag);

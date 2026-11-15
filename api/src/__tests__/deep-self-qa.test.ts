@@ -333,7 +333,9 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(VIEWPORTS.map(v => v.w)).toEqual([1280, 820, 390]);
         const u = U();
         expect(u).toMatch(/await measureAtViewport\(page, vp\.w, vp\.h/);
-        expect(u).toMatch(/await applyViewportSize\(page, openingViewport\.width, openingViewport\.height\)/);
+        //  Review r40-2 (A7): back to the size the caller asked for; the opening size only when none was asked.
+        expect(u).toMatch(/await applyViewportSize\(page, back\.width, back\.height\)/);
+        expect(u).toContain('const back = asked ? { width: Number(opts.restore.width), height: Number(opts.restore.height) } : openingViewport;');
         expect(u).toContain('const viewportCdpOwnedPages = new WeakSet<object>()');
         expect(u).not.toContain('replaceViewportCdpSession(page)');
         expect(u).toContain('[BrowserQA][viewport] fresh-session recovery');

@@ -742,12 +742,13 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                         //  What the repair wrote is its own, kept or undone by it — never put back as a QA record.
                         keptOnPurpose.push(...m.changed.map(f => path.resolve(mendRoot, f)));
                         const again = await measure();
-                        if (!again.skipped && mendIsBetter(audit.findings, again.findings)) {
+                        //  Whole audits, so the comparison reads each walk's own inspection status (a told kind is counted only when both were complete).
+                        if (!again.skipped && mendIsBetter(audit, again)) {
                             audit = again;
                             mended = m.repairs;
                             note(`browser QA: Joe repaired it himself (${m.changed.join(', ')}): ${m.repairs.join('; ')}`);
                         } else {
-                            const why = again.skipped ? `the page could not be measured after it (${again.skipped})` : whyMendNotBetter(audit.findings, again.findings);
+                            const why = again.skipped ? `the page could not be measured after it (${again.skipped})` : whyMendNotBetter(audit, again);
                             //  Putting it back can fail too: then the builder is told the files may still be changed, never «it could not run».
                             const undone = await m.undo().then(() => '', (e: unknown) => message(e));
                             mendPutBack = undone
