@@ -33,6 +33,7 @@ import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
 import { reloadKeepsSession, showsSignInForm, signInThroughPage } from './sign-in';
 import { readRtl, rtlFindings, type RtlReading } from './rtl-audit';
+import { attachPdfCapture, type CapturedPdf } from './outside-probe';
 
 export interface AppAuditFinding {
     id: string;
@@ -138,6 +139,8 @@ export interface AppAudit {
     statesVisited?: number;
     exploratoryActions?: number;
     controlsDiscovered?: number;
+    /** PDFs the walk's page received, kept from the bytes the browser already had (outside-probe.ts; design arabic-pdf v9 §4.2). */
+    pdfs?: CapturedPdf[];
     /** Every control, with what actually changed — what a proof can read. */
     controls?: ControlResult[];
     /** Stateful disclosure/accordion evidence gathered in each tested context. */
@@ -641,6 +644,11 @@ export async function auditBuiltApp(
         lookPath?: string;
         /** Where to save the same landing view on a phone, as the phone pass first loads it: the delivery's proof. */
         phoneLookPath?: string;
+        /**
+         * Keep the PDFs the walk's page receives (responses and downloads) in this folder,
+         * from the bytes the browser already has — no request of its own (outside-probe.ts).
+         */
+        pdfCaptureDir?: string;
         /** Trusted maintained profile expected to produce observable live data. */
         externalApi?: {
             capability: 'weather' | 'currency' | 'ip';
@@ -1013,6 +1021,8 @@ export async function auditBuiltApp(
             } catch { /* headers optional */ }
         };
         page.on('response', onResponse);
+        //  Beside it, and taken off with it: the PDFs this walk receives (design arabic-pdf v9 §4.2).
+        const pdfCapture = opts?.pdfCaptureDir ? attachPdfCapture(page, opts.pdfCaptureDir) : null;
         // A borrowed panel page is long-lived: its listeners must not pile up
         // one audit at a time.
         // The real unhook is installed below, once every listener exists; this
@@ -1046,6 +1056,7 @@ export async function auditBuiltApp(
                 page.off('pageerror', onPageError); page.off('console', onConsole);
                 page.off('response', onResponse); page.off('dialog', onDialog);
             } catch { /* the page may already be gone */ }
+            pdfCapture?.stop();
         };
         /**
          * DID I EVEN LAND ON THE SYSTEM? — «انه بدائي وفاشل».
@@ -2515,6 +2526,7 @@ export async function auditBuiltApp(
             exploratoryActions: behaviourMetrics.exploratoryActions,
             controlsDiscovered: behaviourMetrics.controlsDiscovered,
             controls: allControls,
+            ...(pdfCapture ? { pdfs: await pdfCapture.settle() } : {}),
             ...(opts?.externalApi ? {
                 externalApiRuntime: externalRuntimeEvidence || externalApiRuntimeFromBrowserEvidence(
                     opts.externalApi,

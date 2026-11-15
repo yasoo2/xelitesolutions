@@ -46,7 +46,9 @@ import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from 
 import { runPython } from '../quality/python-runtime';
 import { auditBuiltApp, COVERAGE_RETRY_TIMEOUT_MS, type AppAudit } from '../quality/app-audit';
 import { addressIsFree, appDataChanges, discardSnapshot, restoreAppData, restoreLine, snapshotAppData, type AppDataSnapshot } from '../quality/qa-leaves-no-trace';
-import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
+import { isJoeAppKit, listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
+import { lookAtPdfs, type PdfLook } from '../quality/outside-probe';
+import { outsideLines, type PdfRecordEntry } from '../quality/outside-parts';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { mendable, mendIsBetter, mendPage, refuses, whyMendNotBetter, type Mender } from './browser-mend';
@@ -105,6 +107,11 @@ export interface DeliveryRecord {
     roleViews?: Array<{ role: string; screens: string[] }>;
     /** The run's own servers this verification stopped before its live run. */
     stoppedServers: string[];
+    /**
+     * What Joe saw in the app's PDFs (design arabic-pdf v9 §4–§5): told only, on a
+     * verified right-to-left delivery with a PDF mechanism or a PDF — never a verdict.
+     */
+    pdf?: PdfRecordEntry[];
     /** What the measurements printed along the way (bounded; the count of lines left out is kept). */
     log: string[];
 }
@@ -683,10 +690,14 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             //  A system behind a sign-in is tested signed in, with the account
             //  the builder gave (quality/sign-in.ts); without one, a product
             //  that shows a sign-in is not proven past its door.
+            //  The PDFs a walk receives are kept for the look at Arabic PDFs (outside-probe.ts): one folder a walk, this check's only.
+            const pdfDir = path.join(ctx.stateDir || path.join(root, '.joe'), 'proof', 'outside');
+            await fs.promises.rm(pdfDir, { recursive: true, force: true }).catch(() => { /* none kept */ });
+            let walks = 0;
             const options = (timeoutMs: number): AuditOptions => ({
                 request, watchSessionId: eye.sessionId, serveUrl: qaTarget, artifactRootDir: root,
                 requireVisibleBrowser: true, timeoutMs, onProgress: (m: string) => note(`browser QA: ${m}`),
-                lookPath, phoneLookPath: proof.phone,
+                lookPath, phoneLookPath: proof.phone, pdfCaptureDir: path.join(pdfDir, `walk-${++walks}`),
                 ...(signIn ? { credentials: { identity: signIn.identity, password: signIn.password } } : {}),
                 requireAuthenticatedCoverage: true,
             });
@@ -841,6 +852,22 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     });
     let verdict = judge();
     /*
+     * THE LOOK AT AN ARABIC PDF (design arabic-pdf v9 §4): on a verified delivery
+     * only, never in his own repository; it reads the PDFs the delivery wrote and the
+     * PDF bytes the Browser QA walk already received, and sends nothing to the app.
+     * It changes no verdict: its lines reach the chat, the notes and record.pdf.
+     */
+    let pdfLook: PdfLook | null = null;
+    if (verdict.verified && !repository) {
+        const servedDir = servedInterfaceDirectory(root);
+        pdfLook = await lookAtPdfs({
+            root, stateDir: ctx.stateDir || path.join(root, '.joe'), runId: ctx.runId, request, language: ctx.language,
+            servedIndex: servedDir && fs.existsSync(path.join(servedDir, 'index.html')) ? path.join(servedDir, 'index.html') : null,
+            captured: browserAudit?.pdfs || [], deadlineAt: ctx.deadlineAt, signal: ctx.signal, cancelled: ctx.cancelled,
+        }).catch((e: unknown) => ({ entries: [], notes: [`pdf look: could not run: ${message(e)}`], proofs: [] }));
+        for (const line of pdfLook?.notes || []) note(line);
+    }
+    /*
      * The app he receives starts from his records, never the QA's — and a delivery
      * says it is live only while its server answers. The records are put back before
      * the verdict is final: a server stopped for it that does not come back is a
@@ -907,6 +934,8 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
         ...(signIn && browserAudit?.authenticated ? { signedInAs: signIn.identity } : {}),
         ...(roleViews ? { roleViews } : {}),
         stoppedServers,
+        //  A delivery the restore turned down carries none: its lines were the builder's notes only.
+        ...(verdict.verified && pdfLook?.entries.length ? { pdf: pdfLook.entries } : {}),
         log,
     };
     return { passed: verdict.verified, checks, unproven, at: Date.now(), delivery: record };
@@ -1035,7 +1064,7 @@ const NOT_A_DELIVERED_DOCUMENT = /^(?:readme|changelog|contributing|license|joe-
 export async function deliveredDocuments(root: string): Promise<Array<{ path: string; words: number }>> {
     const files = await listProjectFiles(root, {
         skipDirectory: name => name === 'node_modules' || name === 'dist' || name.startsWith('.'),
-        keepFile: (_relative, name) => (DOCUMENT_FILE.test(name) || BINARY_DOCUMENT_FILE.test(name)) && !NOT_A_DELIVERED_DOCUMENT.test(name),
+        keepFile: (relative, name) => (DOCUMENT_FILE.test(name) || BINARY_DOCUMENT_FILE.test(name)) && !NOT_A_DELIVERED_DOCUMENT.test(name) && !isJoeAppKit(relative),
     });
     const out: Array<{ path: string; words: number }> = [];
     for (const rel of files) {
@@ -1072,7 +1101,7 @@ export async function judgeSource(root: string): Promise<{ text: string; leftOut
     //  forever — so its own files are read too, by the same walker.
     const files = await listProjectFiles(root, {
         skipDirectory: name => name === 'dist' || name.startsWith('.'),
-        keepFile: (_relative, name) => JUDGE_CODE_FILE.test(name) || (JUDGE_DOC_OR_CONFIG_FILE.test(name) && !LOCKFILE.test(name)),
+        keepFile: (relative, name) => !isJoeAppKit(relative) && (JUDGE_CODE_FILE.test(name) || (JUDGE_DOC_OR_CONFIG_FILE.test(name) && !LOCKFILE.test(name))),
     });
     const read: Array<{ path: string; text: string }> = [];
     const leftOut: string[] = [];
@@ -1112,7 +1141,7 @@ export async function beforeThisChange(root: string, snapshotId: string): Promis
         try { entries = await fs.promises.readdir(abs, { withFileTypes: true }); } catch { return out; }
         for (const e of entries) {
             const r = rel ? `${rel}/${e.name}` : e.name;
-            if (e.isDirectory()) { if (!e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== 'dist') await walk(path.join(abs, e.name), r, out); }
+            if (e.isDirectory()) { if (!e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== 'dist' && !isJoeAppKit(r)) await walk(path.join(abs, e.name), r, out); }
             else if (e.isFile() && judged(r)) out.push(r);
         }
         return out;
@@ -1499,6 +1528,8 @@ export function deliveryOutput(input: DeliveryOutputInput): { ok: boolean; error
             words.verified(taskReceipts.map(r => instrumentName(r.tool.replace(/^delivery:/u, ''), lang)), record.liveUrl || ''),
             //  What the browser check tried, in numbers (certificate.ts qaCoverageLine).
             taskReceipts.some(r => r.tool.replace(/^delivery:/u, '') === 'browser') ? qaCoverageLine(qaCoverageOf(record.browserQa), lang) : '',
+            //  What Joe saw in the app's PDFs, told only (design arabic-pdf v9 §5).
+            outsideLines(record.pdf, lang).join('\n'),
             ...deliveryFooter({ howToRun: result!.howToRun, durationMs: result!.durationMs, costUsd: result!.costUsd, language: lang }),
         ].filter(Boolean).join('\n\n')
         : [

@@ -51,7 +51,7 @@ import { emptyTestRun, judgeTestRun } from './test-run-evidence';
 import { pythonExecutable } from './python-executable';
 import { isRealScript } from './placeholder-script';
 import { pythonTestCommand } from './python-test-runner';
-import { isMachineStateDirectory } from '../../shared/utils/project-tree';
+import { isJoeAppKitDir, isMachineStateDirectory } from '../../shared/utils/project-tree';
 import { closeOf, loopRoutes, routeTablesIn, topLevelParts, type RouteTable } from './loop-routes';
 import { unverifiedRecordText } from './delivery-verdict';
 
@@ -398,7 +398,7 @@ async function sourceFiles(root: string, includePublic: boolean): Promise<string
                 for (const entry of entries) {
                     const full = path.join(dir, entry.name);
                     if (entry.isDirectory()) {
-                        if (entry.name.startsWith('.') || isMachineStateDirectory(entry.name) || BUILD_OUTPUT.has(entry.name)) continue;
+                        if (entry.name.startsWith('.') || isMachineStateDirectory(entry.name) || BUILD_OUTPUT.has(entry.name) || isJoeAppKitDir(full)) continue;
                         // A build-free site keeps its pages in public/; a bundled one's public/ is copied output.
                         if (entry.name === 'public' && !includePublic) continue;
                         next.push(full);

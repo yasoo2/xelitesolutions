@@ -27,6 +27,7 @@ import { intentProbe } from '../orchestrator/promptNormalizer';
 import { requestedRecords } from './request-coverage';
 import fs from 'fs';
 import path from 'path';
+import { isJoeAppKitDir } from '../../shared/utils/project-tree';
 
 export interface Capability {
     id: string;
@@ -919,7 +920,7 @@ export function readProjectSource(dirs: string[], options: ProjectSourceReadOpti
             if (out.length > maxScanBytes) return;
             if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || (e.name === 'public' && (bundled || codeOnly)) || (codeOnly && e.name === 'build')) continue;
             const full = path.join(dir, e.name);
-            if (e.isDirectory()) { visit(full, depth + 1); continue; }
+            if (e.isDirectory()) { if (!isJoeAppKitDir(full)) visit(full, depth + 1); continue; }
             if (!extension.test(e.name) || NOT_EVIDENCE.test(e.name) || VENDORED.test(e.name)) continue;
             const normalized = full.toLowerCase();
             if (normalized.includes('/__tests__/') || normalized.includes('/tests/') || /(?:^|[._-])(test|spec)(?:[._-]|$)/i.test(e.name)) continue;
