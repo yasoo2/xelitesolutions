@@ -1,0 +1,1 @@
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 Tahoma,sans-serif}header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#065f46;color:#fff}header button{min-height:44px;min-width:44px;background:transparent;border:1px solid #fff;color:#fff;border-radius:8px}header nav{display:none}header nav.open{display:block}main{padding:16px}

@@ -1,0 +1,13 @@
+{
+ "truth": "BROKEN: at 390 the bookings table makes the page pan (its «إلغاء الحجز» only by panning); the 7-day calendar and the nav are sound and must stay so",
+ "targets": [
+  {
+   "sel": "table tr:nth-child(2) button",
+   "at": 390
+  },
+  {
+   "sel": ".site-nav a:last-child",
+   "at": 390
+  }
+ ]
+}

@@ -736,7 +736,8 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 const mendRoot = [...auditRoots].sort((a, b) => b.length - a.length)
                     .find(r => path.resolve(auditDir) === path.resolve(r) || isWithinRoot(path.resolve(auditDir), path.resolve(r))) || root;
                 try {
-                    const m = await mender(mendRoot, audit.findings, isAr, note, auditDir);
+                    //  Only what refuses is mended: a told line (ui-inspection's) never rides along unmeasured (design v3 §2.2).
+                    const m = await mender(mendRoot, audit.findings.filter(refuses), isAr, note, auditDir);
                     if (m) {
                         //  What the repair wrote is its own, kept or undone by it — never put back as a QA record.
                         keptOnPurpose.push(...m.changed.map(f => path.resolve(mendRoot, f)));

@@ -2256,7 +2256,9 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 // evidence-driven loop here: repair source, rebuild, remeasure,
                 // and roll back any round that does not improve the result.
                 const { worthRepairing, collectSources } = require('../../../core/quality/self-repair');
-                if (!audit?.skipped && worthRepairing(audit?.findings || [])) {
+                //  Only what refuses opens a repair and reaches it: the inspector's lines are told (design v3 §2.3).
+                const { refuses } = require('../../../core/engine/browser-mend');
+                if (!audit?.skipped && worthRepairing((audit?.findings || []).filter(refuses))) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
                         ? 'أصلح عيوب الجودة التي قاسها المتصفح، ثم أعيد الاختبار نفسه.'
                         : 'Repairing the browser-measured quality findings, then rerunning the same audit.');
@@ -2276,7 +2278,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
                     const firstMeasurement = {
                         score: Number(audit.score || 0),
                         findingIds: (audit.findings || []).map((f: any) => String(f.id)),
-                        findings: (audit.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
+                        findings: (audit.findings || []).filter(refuses).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
                     };
                     improvement = await improveUntilItStops(firstMeasurement, {
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
@@ -2300,7 +2302,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
                             return {
                                 score: Number(measured.score || 0),
                                 findingIds: (measured.findings || []).map((f: any) => String(f.id)),
-                                findings: (measured.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
+                                findings: (measured.findings || []).filter(refuses).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
                             };
                         },
                     });

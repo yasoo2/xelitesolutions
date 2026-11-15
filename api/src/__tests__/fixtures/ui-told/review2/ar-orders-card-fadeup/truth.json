@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: at 390 the «الحالة»/«إجراءات» columns (تعديل/حذف) are cut by the card (overflow:hidden) and nothing scrolls them in — the card merely faded up on load",
+ "targets": [
+  {
+   "sel": "tbody tr:first-child .del",
+   "at": 390
+  }
+ ]
+}

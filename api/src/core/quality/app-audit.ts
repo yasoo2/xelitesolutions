@@ -129,6 +129,11 @@ export interface AppAudit {
     }>;
     forms?: FormResult[];
     viewports?: string[];
+    /**
+     * What the UI inspection measured (ui-inspection.ts, design v3 §3.2): 'complete', or
+     * 'partial: …' / 'skipped: …' / 'failed: …' with the reason. The design pass is skipped unless complete.
+     */
+    uiInspection?: string;
     /** State-driven browser exploration evidence, separate from the baseline walk. */
     statesVisited?: number;
     exploratoryActions?: number;
@@ -199,6 +204,8 @@ export interface AppAuditPass {
     id: 'runtime' | 'behaviour' | 'design';
     label: string;
     status: 'passed' | 'failed' | 'skipped';
+    /** Why a pass was skipped, when the reason is not the walk's budget (the UI inspection's own status). */
+    reason?: string;
     measured: number;
     findingIds: string[];
 }
@@ -2239,10 +2246,23 @@ export async function auditBuiltApp(
         opts?.onProgress?.('inspecting');
         if (!eyeIsOpen()) return eyeRequiredResult();
         let ui: { findings: any[]; metrics: Record<string, any> } = { findings: [], metrics: {} };
+        /**
+         * WHAT THE INSPECTION MEASURED, SAID — never silent (design v3 §3.2).
+         *
+         * Since at least 2026-10-22 a throw inside inspectUi was swallowed right
+         * here, so contrast, structure, the three widths and the viewport meta
+         * measured nothing in any real walk and nobody was told. Its status now
+         * travels with the audit, and the design pass is «skipped» unless it is
+         * complete. `viewport_emulation_failed` is the instrument, not the app:
+         * it becomes this status and is not a told line.
+         */
+        let uiInspection = 'complete';
         try {
             const desktop = deliveryViewport;
-            ui = await inspectUi(page, {
+            const inspected = await inspectUi(page, {
                 eyes, restore: desktop,
+                // A deadline inside every step, not a race: the lines found before it are kept.
+                deadline: Date.now() + 30_000,
                 // The panel draws every frame at the size the session declares;
                 // without this the phone screenshot arrives in a desktop frame.
                 onViewport: (w, h) => {
@@ -2250,7 +2270,13 @@ export async function auditBuiltApp(
                     try { require('../../modules/browser/manager').setSessionViewport(opts.watchSessionId, w, h); } catch { /* cosmetic */ }
                 },
             });
-        } catch { /* the inspection is additive — never the reason a build fails */ }
+            uiInspection = String(inspected.status || 'complete');
+            ui = { findings: inspected.findings.filter((f: any) => f.code !== 'viewport_emulation_failed'), metrics: inspected.metrics };
+        } catch (e: any) {
+            //  the inspection is additive — never the reason a build fails, and never a silence either
+            uiInspection = `failed: ${String(e?.message || e).slice(0, 160)}`;
+            console.warn(`[BrowserQA][ui-inspection] ${uiInspection}`);
+        }
         /**
          * AND THE DESIGN ITSELF — «حتى يخرج بنتيجه مبهره».
          *
@@ -2484,6 +2510,7 @@ export async function auditBuiltApp(
             calculatorEvidence: behaviourMetrics.calculatorEvidence,
             forms: allForms,
             viewports: ui.metrics.viewports || [],
+            uiInspection,
             statesVisited: behaviourMetrics.statesVisited,
             exploratoryActions: behaviourMetrics.exploratoryActions,
             controlsDiscovered: behaviourMetrics.controlsDiscovered,
@@ -2517,9 +2544,11 @@ export async function auditBuiltApp(
                 {
                     id: 'design',
                     label: 'visual, accessibility and responsive',
-                    status: behaviourMetrics.budgetExhausted
+                    //  A pass the inspection did not complete is not a pass, and not a failure either.
+                    status: behaviourMetrics.budgetExhausted || uiInspection !== 'complete'
                         ? 'skipped'
                         : ui.findings.length || dom.small.length || dom.h1s !== 1 || dom.fontLoaded === false ? 'failed' : 'passed',
+                    ...(uiInspection !== 'complete' && !behaviourMetrics.budgetExhausted ? { reason: uiInspection } : {}),
                     measured: (ui.metrics.viewports || []).length,
                     findingIds: findings.filter(f => ui.findings.some((u: any) => u.code === f.id) || ['small_targets', 'h1_count', 'webfont_missing'].includes(f.id)).map(f => f.id),
                 },

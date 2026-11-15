@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN-ish: the third product card and its «Add to cart» are beyond the right edge (page pans)",
+ "targets": [
+  {
+   "sel": ".grid .card:nth-child(3) button",
+   "at": 390
+  }
+ ]
+}

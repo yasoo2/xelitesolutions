@@ -44,6 +44,7 @@ import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { artifactRootDir } from '../../../shared/artifact-root';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
+import { refuses } from '../../../core/engine/browser-mend';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
@@ -7725,7 +7726,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             // Verification measures and never repairs: the door's terminal
             // reading is the verdict, and the repair rounds do not open.
             if (verifyExisting && doorTerminal) terminalAudit = doorTerminal;
-            if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
+            if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings.filter(refuses)) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
@@ -7816,7 +7817,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         findingIds: [...(a.findings || []).map((f: any) => f.id), ...termFails],
                         // …and the offenders each finding named, so the next
                         // round is surgery rather than another blanket.
-                        findings: (a.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
+                        findings: (a.findings || []).filter(refuses).map((f: any) => ({ id: f.id, evidence: f.evidence })),
                     };
                 };
                 let lastAudit: any = audit;
@@ -7838,7 +7839,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     {
                         score: blend(Number(audit.score || 0), firstTerminal),
                         findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
-                        findings: (audit.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
+                        findings: (audit.findings || []).filter(refuses).map((f: any) => ({ id: f.id, evidence: f.evidence })),
                     },
                     {
                         say: term,
@@ -8027,7 +8028,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 loop = normaliseImproveResult(loop, {
                     score: blend(Number(audit.score || 0), firstTerminal),
                     findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
-                    findings: (audit.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
+                    findings: (audit.findings || []).filter(refuses).map((f: any) => ({ id: f.id, evidence: f.evidence })),
                 });
                 term(improveSummary(loop, isAr));
                 if (sessionId) broadcastThinkingDetail(sessionId, improveSummary(loop, isAr));

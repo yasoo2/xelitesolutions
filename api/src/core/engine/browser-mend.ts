@@ -34,10 +34,28 @@ export const TOLD_NOT_REFUSED: ReadonlySet<string> = new Set([
     'h1_count', 'heavy_images', 'form_no_validation', 'field_case_minor', 'route_headings', 'control_job_unseen', 'journey_not_proven', 'order_not_kept', 'controls_not_reached',
 ]);
 
-/** Whether a finding refuses the delivery: everything except a minor finding of taste. */
+/**
+ * The inspector's findings (ui-inspection.ts): told with the delivery, never a refusal — design v3
+ * (D:\Joe\eval\egm\designs\2026-11-15-ui-inspection-revival-v3.md). Refusing on visual judgement kept
+ * meeting pages it got wrong; a told line costs a visitor nothing when it is silent. `no_viewport_meta`
+ * is not here: it is a DOM fact, the mender answers it, and it refuses as before. An id leaves this set
+ * only by the promotion rule of v3 §7 (30 live deliveries told true, 0 false, and a design of its own).
+ */
+export const INSPECTOR_TOLD: ReadonlySet<string> = new Set([
+    'low_contrast', 'mobile_overflow', 'content_unreachable', 'text_clipped', 'mobile_tap_targets',
+    'mobile_small_text', 'mobile_header_fragmented', 'generic_image_composition', 'viewport_emulation_failed',
+    'a11y_no_main', 'a11y_duplicate_ids', 'a11y_positive_tabindex', 'a11y_aria_hidden_focusable',
+    'a11y_heading_skip', 'a11y_images_without_alt', 'a11y_inputs_without_labels', 'a11y_placeholder_as_label',
+]);
+
+/** Whether a finding refuses the delivery: everything except the inspector's told lines and a minor finding of taste. */
 export function refuses(f: MendFinding): boolean {
+    if (INSPECTOR_TOLD.has(String(f.id || ''))) return false;
     return !(String(f.severity || '') === 'low' && TOLD_NOT_REFUSED.has(String(f.id || '')));
 }
+
+/** What this file's mender answers beyond ui-repair's own list: repairHtmlShell writes the viewport meta (ui-repair.ts is not edited for it). */
+const MENDS_HERE: ReadonlySet<string> = new Set(['no_viewport_meta']);
 
 export interface Mend {
     /** What was repaired, in the reader's language. */
@@ -95,11 +113,22 @@ export function findingWeight(f: MendFinding & { detail?: string; detailEn?: str
  * two after, and the old rule counted kinds only. A repair that leaves fewer
  * instances of the same kinds, and adds no kind of its own, made the page
  * better and is kept; one that adds a kind is put back, whatever it fixed.
+ *
+ * Design v3 (2026-11-15): the inspector's lines are told, never refusals — but
+ * a kind of them that Joe's OWN repair brought (a table that now spills off the
+ * phone, words that now fail contrast) is still a page made worse, so that
+ * repair is put back. A told line never refuses a delivery; it can veto a mend.
  */
+function inspectorKindsBrought(before: MendFinding[], after: MendFinding[]): string[] {
+    const had = new Set(before.map(f => String(f.id || '')));
+    return [...new Set(after.map(f => String(f.id || '')).filter(id => INSPECTOR_TOLD.has(id) && !had.has(id)))];
+}
+
 export function mendIsBetter(before: MendFinding[], after: MendFinding[]): boolean {
     const was = before.filter(refuses), now = after.filter(refuses);
     const wasIds = new Set(was.map(f => String(f.id || '')));
     if (now.some(f => !wasIds.has(String(f.id || '')))) return false;
+    if (inspectorKindsBrought(before, after).length) return false;
     if (now.length < was.length) return true;
     const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
     if (now.length === was.length && weight(now) < weight(was)) return true;
@@ -110,7 +139,7 @@ export function mendIsBetter(before: MendFinding[], after: MendFinding[]): boole
 export function whyMendNotBetter(before: MendFinding[], after: MendFinding[]): string {
     const was = before.filter(refuses), now = after.filter(refuses);
     const wasIds = new Set(was.map(f => String(f.id || '')));
-    const brought = [...new Set(now.map(f => String(f.id || '')).filter(id => !wasIds.has(id)))];
+    const brought = [...new Set([...now.map(f => String(f.id || '')).filter(id => !wasIds.has(id)), ...inspectorKindsBrought(before, after)])];
     if (brought.length) return `the page measured after it showed what it did not before: ${brought.join(', ')}`;
     const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
     return `the same ${now.length} blocking finding(s) stayed, ${weight(now)} instance(s) against ${weight(was)} before`;
@@ -121,7 +150,7 @@ export function mendable(findings: MendFinding[]): boolean {
     let can: ReadonlySet<string> = new Set();
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     try { can = require('../quality/ui-repair').REPAIRS_THIS_FILE_CAN_MAKE || new Set(); } catch { /* no repairer */ }
-    return findings.some(f => can.has(String(f.id || '')));
+    return findings.some(f => can.has(String(f.id || '')) || MENDS_HERE.has(String(f.id || '')));
 }
 
 async function rebuild(root: string, say: (line: string) => void): Promise<boolean> {

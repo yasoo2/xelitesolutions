@@ -25,6 +25,7 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
 import { isArabicReply } from '../../../shared/reply-language';
+import { refuses } from '../../../core/engine/browser-mend';
 
 export async function recoverPackagedQaAuth(packagedDir: string): Promise<any | null> {
     const dbFile = path.join(packagedDir, 'db.js');
@@ -378,6 +379,10 @@ export class ProjectRepairTool extends BaseTool {
         const finalMeasurement = loop.final || before;
         const gained = !finalMeasurement.skipped && finalMeasurement.score > before.score;
         const remaining = (finalMeasurement.findings || []) as any[];
+        //  What refuses is what verify.ts refuses (browser-mend.ts): the inspector's lines and a
+        //  minor finding of taste are told with the repair, never «not accepted» (design v3 §2.3).
+        const refusing = remaining.filter(refuses);
+        const told = remaining.filter((f: any) => !refuses(f));
         const blockers = remaining.filter((f: any) => f.severity === 'high');
         const paidFiles = Array.from(new Set(loop.rounds
             .filter((r: any) => r.verdict === 'improved')
@@ -396,16 +401,20 @@ export class ProjectRepairTool extends BaseTool {
                 : `Edited ${paidFiles.length} files tied to the finding; names and changes are in Logs.`);
         }
         lines.push(improveSummary(loop, isAr));
-        if (remaining.length) {
+        if (refusing.length) {
             lines.push(isAr
-                ? `⛔ لم أقبل الإصلاح — بقيت ${remaining.length} مشكلة أو فجوة تغطية:`
-                : `⛔ Repair not accepted — ${remaining.length} defect or coverage gap remains:`);
-            for (const f of remaining) lines.push(`   • ${said(f)}`);
+                ? `⛔ لم أقبل الإصلاح — بقيت ${refusing.length} مشكلة أو فجوة تغطية:`
+                : `⛔ Repair not accepted — ${refusing.length} defect or coverage gap remains:`);
+            for (const f of refusing) lines.push(`   • ${said(f)}`);
             lines.push(isAr
                 ? '   ↳ لم أنتقل للخطوة التالية، والأدلة الكاملة محفوظة في Logs.'
                 : '   ↳ I did not move to the next phase; the complete evidence remains in Logs.');
         } else {
-            lines.push(isAr ? '✅ ولم يبقَ شيء.' : '✅ Nothing left.');
+            lines.push(isAr ? '✅ ولم يبقَ ما يمنع التسليم.' : '✅ Nothing left that refuses the delivery.');
+        }
+        if (told.length) {
+            lines.push(isAr ? `ℹ️ ملاحظات تُذكر مع التسليم ولا تمنعه (${told.length}):` : `ℹ️ Told with the delivery, not refusing it (${told.length}):`);
+            for (const f of told) lines.push(`   • ${said(f)}`);
         }
 
         try {
@@ -419,9 +428,9 @@ export class ProjectRepairTool extends BaseTool {
         } catch { /* memory is a bonus */ }
 
         return {
-            ok: remaining.length === 0,
-            ...(remaining.length ? {
-                error: `quality_findings_survived: ${remaining.slice(0, 5).map((f: any) => String(f.id || 'unnamed')).join(', ')}`,
+            ok: refusing.length === 0,
+            ...(refusing.length ? {
+                error: `quality_findings_survived: ${refusing.slice(0, 5).map((f: any) => String(f.id || 'unnamed')).join(', ')}`,
             } : {}),
             output: {
                 message: lines.join('\n'),
@@ -432,7 +441,8 @@ export class ProjectRepairTool extends BaseTool {
                 stoppedBecause: loop.stoppedBecause,
                 remaining: remaining.map((f: any) => f.id),
                 blockersBefore: blockersBefore.map((f: any) => f.id),
-                verificationFailed: remaining.length > 0,
+                told: told.map((f: any) => f.id),
+                verificationFailed: refusing.length > 0,
             },
             logs,
         } as any;

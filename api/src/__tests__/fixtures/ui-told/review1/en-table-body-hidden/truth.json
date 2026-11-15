@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: Delete is beyond the right edge and the page cannot be panned (overflow-x hidden on html/body)",
+ "targets": [
+  {
+   "sel": "tbody tr:first-child button.del",
+   "at": 390
+  }
+ ]
+}
