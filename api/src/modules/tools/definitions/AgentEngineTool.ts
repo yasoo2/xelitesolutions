@@ -61,6 +61,27 @@ export function phoneWrittenFromFact(from: unknown): string {
     return `THE OWNER IS WRITING FROM HIS PHONE ${name}(app:${id}), in the Joe app on it. «This phone», «my phone», «here», and anything he asks to do on a phone (the flashlight, the volume, an app, his emails…) mean this one: pass "serial": "app:${id}" to the android_ tools.`;
 }
 
+/**
+ * THE OWNER HAS THIS FOLDER NOW (design v13.3 §2.1): `.joe/delivered`, an empty file that is never pruned.
+ *
+ * `history.json` keeps its newest 20 runs and every run rewrites `result.json`, so a folder Joe delivered
+ * could lose both and look like a new build to the next check — whose walk would then write into the owner's
+ * live data as if it were Joe's own. This marker is written only at the OUTERMOST delivery: here, when the
+ * engine's run is delivered, and by the pipeline when its final report says delivered — never by a tool
+ * running as a phase of either (react_project, a repair). Never throws.
+ */
+export function markFolderDelivered(dir: string): boolean {
+    try {
+        const root = String(dir || '').trim();
+        if (!root || !fs.existsSync(root) || !fs.statSync(root).isDirectory()) return false;
+        const joe = path.join(root, '.joe');
+        fs.mkdirSync(joe, { recursive: true });
+        const marker = path.join(joe, 'delivered');
+        if (!fs.existsSync(marker)) fs.writeFileSync(marker, '');
+        return true;
+    } catch { return false; }
+}
+
 /** The engine stops this long before the run's own deadline, so it can end honestly and say why. */
 const DEADLINE_MARGIN_MS = 2 * 60_000;
 
@@ -295,6 +316,8 @@ export const AgentEngineTool: ToolDefinition = {
         //  when the owner presses Stop, not when its own timer runs out.
         const toolContext = {
             ...context, runId, language, projectRoot: folder.dir, projectRootRuntimeBound: true,
+            //  This run owns the delivery: a tool it runs never writes the delivered marker itself (§2.1).
+            joeDeliveryOwner: 'agent_engine',
             isCancelled: () => cancellation.signal.aborted || (typeof context.isCancelled === 'function' && context.isCancelled() === true),
         };
         const { model, ask, look } = brain;
@@ -327,6 +350,8 @@ export const AgentEngineTool: ToolDefinition = {
             const delivery = deliveryOutput({ result, projectRoot: folder.dir, request, language: replyLanguage });
             const delivered = result.status === 'delivered' && delivery.ok;
             recordRunHistory(folder.dir, { request, status: delivered ? 'delivered' : result.status, summary: result.summary });
+            //  The outermost delivery: the owner has this folder from now on, whatever the history keeps (§2.1).
+            if (delivered) markFolderDelivered(folder.dir);
             //  A verified project says, in his language, how it was proven and how to run it.
             if (delivered) {
                 const receipts: Array<{ tool: string; ok: boolean }> = delivery.output?.results?.[0]?.taskReceipts || [];

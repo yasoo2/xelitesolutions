@@ -43,7 +43,9 @@ import { Worker } from 'worker_threads';
 import { BaseTool } from '../base';
 import type { ToolExecutionResult, ToolPermission } from '../types';
 import { workspaceService } from '../../services/WorkspaceService';
-import { resolveInProject, projectRootProblem, isSecretName } from '../../../core/engine/workspace';
+import { resolveInProject as resolveInProjectFolder, projectRootProblem, isSecretName, type PathCheck, type PathMode } from '../../../core/engine/workspace';
+import { QA_RECOVERY, recoveryHome } from '../../../core/quality/qa-leaves-no-trace';
+import { isWithinRoot } from '../path-containment';
 import { prepareArtifactContent, validateArtifactContent } from '../artifact-validation';
 import { broadcast } from '../../../api/ws';
 import { isMachineStateDirectory, installedEnvironmentKind, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
@@ -87,6 +89,31 @@ const HEAD_BYTES = 64 * 1024;
 
 /** Folders a walk never enters (the brief's five; machine state from project-tree is added to them). */
 const ALWAYS_SKIPPED = new Set(['node_modules', '.git', 'dist', 'build', '.joe']);
+
+/*
+ * ⛔ JOE'S RECOVERY COPIES OF THE OWNER'S DATA ARE NEVER THE MODEL'S TO READ (design v13.3 §5b step 2).
+ *
+ * A verification on path 2T keeps every version of the app's data files it saw change in
+ * `<JOE_DATA_DIR>/qa-recovery/<workspaceId>/<projectKey>/…`, beside `projects`, outside every workspace root.
+ * The folder is refused BY NAME as well, so a root moved up, a copied folder or a symlink that leads into it
+ * can never put the owner's records into a prompt: no read, no write, no edit, and no list or search ever
+ * shows it — not even as a skipped folder.
+ */
+const RECOVERY_REFUSED = `Joe's recovery copies of the app's data (${QA_RECOVERY}) are kept for the owner only; the engine never reads, lists or writes them.`;
+
+/** Whether a path names the recovery folder or lies inside it: a segment called `qa-recovery`, or the folder itself. */
+export function isRecoveryPath(abs: string, rel?: string): boolean {
+    const segments = String(rel ?? '').split(/[\\/]+/u);
+    if (segments.some(s => s.toLowerCase() === QA_RECOVERY)) return true;
+    try { return !!abs && isWithinRoot(abs, recoveryHome()); } catch { return false; }
+}
+
+/** `resolveInProject` (core/engine/workspace.ts), and then the recovery folder refused by name and by place. */
+async function resolveInProject(root: string, raw: unknown, mode: PathMode): Promise<PathCheck> {
+    const check = await resolveInProjectFolder(root, raw, mode);
+    if (check.ok && isRecoveryPath(check.abs, check.rel)) return { ok: false, error: RECOVERY_REFUSED };
+    return check;
+}
 
 /* ───────────────────────── small helpers ───────────────────────── */
 
@@ -212,6 +239,7 @@ async function bindProject(context: any): Promise<Bound> {
     if (projectRootProblem(realRoot, realActive)) {
         return { ok: false, error: 'The project folder is not inside this workspace: its path leads through a link to another folder.' };
     }
+    if (isRecoveryPath(realRoot, path.relative(realActive, realRoot))) return { ok: false, error: RECOVERY_REFUSED };
     return { ok: true, root: realRoot };
 }
 
@@ -234,7 +262,7 @@ async function nearestFolderHint(root: string, rel: string): Promise<string> {
             try {
                 const entries = await fsp.readdir(check.abs, { withFileTypes: true });
                 names = entries
-                    .filter(e => !(e.isDirectory() && ALWAYS_SKIPPED.has(e.name.toLowerCase())))
+                    .filter(e => !(e.isDirectory() && ALWAYS_SKIPPED.has(e.name.toLowerCase())) && e.name.toLowerCase() !== QA_RECOVERY)
                     .map(e => (e.isDirectory() ? `${e.name}/` : e.name))
                     .sort(byName);
             } catch { /* an unreadable folder gives no hint */ }
@@ -1344,6 +1372,8 @@ async function walkProject(root: string, startRel: string, options: {
             if (++visited > walked.limit) { walked.stopped = true; return; }
             const childRel = rel ? `${rel}/${d.name}` : d.name;
             const childAbs = path.join(abs, d.name);
+            //  Not listed, not counted, not skipped aloud: Joe's recovery copies are not the project's (isRecoveryPath).
+            if (isRecoveryPath(childAbs, d.name)) continue;
             if (d.isSymbolicLink()) {
                 if (!ignoredBy(local, childRel, false)) walked.entries.push({ rel: childRel, abs: childAbs, kind: 'link' });
                 else walked.ignored++;

@@ -149,9 +149,30 @@ export class ProjectRepairTool extends BaseTool {
             runtimeAuth = await recoverPackagedQaAuth(packagedDir);
             if (runtimeAuth) term('repair: recovered a short-lived local QA token — protected screens will be tested');
         }
-        if (!serveUrl
-            && packagedDir && fs.existsSync(path.join(packagedDir, 'server.js'))
-            && fs.existsSync(path.join(packagedDir, 'node_modules'))) {
+        const reviving = !serveUrl
+            && !!packagedDir && fs.existsSync(path.join(packagedDir, 'server.js'))
+            && fs.existsSync(path.join(packagedDir, 'node_modules'));
+        /**
+         * ONE WAY OF CHECKING FOR THE WHOLE REPAIR (design v13.3 §2.3, §2.5), chosen BEFORE the revival.
+         *
+         * The delivery record is read once, here, so a round's own `.joe/` writes can never move the path
+         * mid-loop; the path is chosen on the folder the walked server RUNS from — the packaged API when it
+         * is revived, the recorded live server's folder, else the project — never the shared artifact root.
+         * Every audit of the loop is handed this pin and runs the stricter of it and its own choice.
+         */
+        const { seedLoopQaPin, anchorPinOnFirstAudit, auditNotComparable } = require('../../../core/quality/improve-loop');
+        //  The pipeline hands its server's folder and project_run's kind (input.serverRoot / startKind);
+        //  a recorded live server names its own folder (live.cwd).
+        const givenServerRoot = serveUrl && serveUrl === String(input?.serveUrl || '').trim() ? String(input?.serverRoot || '').trim() : '';
+        const liveCwd = serveUrl && projectEntry?.live?.url === serveUrl ? String(projectEntry?.live?.cwd || '').trim() : '';
+        const knownServerRoot = [givenServerRoot, liveCwd].find(root => root && fs.existsSync(root)) || '';
+        let qaServerRoot = reviving ? packagedDir : (knownServerRoot || dir);
+        let qaStartKind = reviving ? 'node-entry' : (givenServerRoot && knownServerRoot === givenServerRoot ? String(input?.startKind || '').trim() : '');
+        let qaPin = await seedLoopQaPin({
+            projectRoot: dir, serverRoot: qaServerRoot, hasServeUrl: !!serveUrl || reviving,
+            ...(qaStartKind ? { startKind: qaStartKind } : {}), sessionId,
+        });
+        if (reviving) {
             const port = 4600 + Math.floor(Math.random() * 300);
             try {
                 const { executionEngine } = require('../../../kernel/ExecutionEngine');
@@ -174,7 +195,19 @@ export class ProjectRepairTool extends BaseTool {
             } catch (error: any) {
                 term(`repair: packaged system could not be revived — ${String(error?.message || error).slice(0, 160)}`);
             }
+            if (!serveUrl) {
+                //  Nothing was started: the audits serve the build themselves, so the pin is chosen for that.
+                qaServerRoot = dir;
+                qaStartKind = '';
+                qaPin = await seedLoopQaPin({ projectRoot: dir, hasServeUrl: false, sessionId });
+            }
         }
+        const streamTo = String(context?.browserSessionId || '').trim();
+        const qaOptions = {
+            projectRoot: dir, serverRoot: qaServerRoot, qaPin,
+            ...(qaStartKind ? { startKind: qaStartKind } : {}),
+            ...(streamTo ? { streamTo } : {}),
+        };
 
         // Open the panel and WAIT for it, exactly as the builder does: a repair
         // he was told he could watch must not be over before he can look.
@@ -203,6 +236,7 @@ export class ProjectRepairTool extends BaseTool {
                 ...(serveUrl ? { serveUrl } : {}),
                 ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 artifactRootDir,
+                ...qaOptions,
             onProgress: (where: string) => {
                 if (where.startsWith('private')) {
                     const why = where.slice('private'.length).replace(/^:/, '').trim();
@@ -219,6 +253,8 @@ export class ProjectRepairTool extends BaseTool {
         if (before.skipped) {
             return { ok: false, error: `audit_skipped: ${before.skipped}`, logs } as any;
         }
+        //  The first audit has nothing earlier to keep: if the folder needed a stricter path, the loop takes it.
+        if (anchorPinOnFirstAudit(qaPin, before)) term(`repair: the checks run as ${qaPin.path} for every round`);
         const blockersBefore = (before.findings || []).filter((f: any) => f.severity === 'high');
         term(`repair: before = ${before.score}/100${before.findings.length ? ` — ${before.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);
 
@@ -359,10 +395,15 @@ export class ProjectRepairTool extends BaseTool {
                 ...(serveUrl ? { serveUrl } : {}),
                 ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 artifactRootDir,
+                ...qaOptions,
                 onProgress: (where: string) => {
                     if (where === 'watching') say(isAr ? '👁️ القياس المقيس يجري الآن أمامك في لوحة المتصفّح' : '👁️ The measured round is running in the Browser panel');
                 },
             });
+            //  Checked another way than the loop's pin (§2.3): never compared — rolled back through `skipped`,
+            //  and the loop's earlier measurement stands.
+            const notComparable = auditNotComparable(measured, qaPin);
+            if (notComparable) return { ...reading(measured), skipped: true, notComparable };
             return reading(measured);
         };
         const firstReading = reading(before);
@@ -383,6 +424,7 @@ export class ProjectRepairTool extends BaseTool {
                 rollback,
                 target: Math.max(1, Number(process.env.JOE_IMPROVE_TARGET || 95)),
                 maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
+                language: isAr ? 'ar' : 'en',
             },
         );
         term(improveSummary(loop, isAr));

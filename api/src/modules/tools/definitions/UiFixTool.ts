@@ -69,7 +69,18 @@ export class UiFixTool extends BaseTool {
         try { broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'ui_fix' } } as any); } catch { /* UI optional */ }
         if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🔎 أقيس الواجهة قبل الإصلاح — في المتصفح أمامك…', '🔎 Measuring the interface before the repair — in the browser in front of you…'));
 
-        const before = await auditBuiltApp(distDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
+        /**
+         * WHERE THE CHECK MAY WRITE (design v13.3 §2, §8). The door of the audit reads the folder: one Joe
+         * never delivered runs as today; one the owner already has runs private (no serveUrl here). The
+         * owner's own panel id is the stream target, never the shared constant; with none, nothing is
+         * streamed. One pin for the two measurements, so «before» and «after» are taken the same way.
+         * The panel borrow of a new build stays exactly today's.
+         */
+        const streamTo = String(context?.browserSessionId || '').trim();
+        const { auditNotComparable } = require('../../../core/quality/improve-loop');
+        const qaPin: Record<string, unknown> = {};
+        const qaOptions = { projectRoot: dir, qaPin, ...(streamTo ? { streamTo } : {}) };
+        const before = await auditBuiltApp(distDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID, ...qaOptions });
         if (before.skipped) {
             return { ok: false, error: `cannot_audit: ${before.skipped}`, logs } as any;
         }
@@ -103,7 +114,14 @@ export class UiFixTool extends BaseTool {
 
         // ── 5: measure again. The number is the claim. ──
         if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🔎 أقيس مرة أخرى بعد الإصلاح…', '🔎 Measuring again, after the repair…'));
-        const after = await auditBuiltApp(distDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID });
+        const after = await auditBuiltApp(distDir, { timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID, ...qaOptions })
+            //  Checked another way than «before» (§2.3): the first measurement stands, and he is told why.
+            .then((measured: any) => (auditNotComparable(measured, qaPin) ? { ...before, qaPath: measured.qaPath } : measured));
+        const changedWay = auditNotComparable(after, qaPin);
+        const changedWayLine = changedWay
+            ? require('../../../core/quality/improve-loop').notComparableLine(isAr ? 'ar' : 'en', changedWay.from, changedWay.to)
+            : '';
+        if (changedWayLine) term(`ui_fix: ${changedWayLine}`);
         term(`ui_fix: after → ${after.score}/100 (${after.findings.map((f: any) => f.id).join(', ') || 'clean'})`);
 
         const gone = before.findings
@@ -127,6 +145,7 @@ export class UiFixTool extends BaseTool {
                 ? `\n⚠️ ما زال قائماً (يحتاج قراراً منك):\n${after.findings.map((f: any) => `   • ${f.detail}`).join('\n')}`
                 : '\n✅ لا ملاحظات متبقّية — الواجهة نظيفة.',
             refused.length ? `\n⚠️ رفضتُ ${refused.length} تعديلاً كان سيكسر البناء.` : '',
+            changedWayLine ? `\nℹ️ ${changedWayLine}` : '',
         ].filter(Boolean).join('\n');
 
         return {

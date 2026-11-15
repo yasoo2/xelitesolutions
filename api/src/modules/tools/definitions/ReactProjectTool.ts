@@ -7431,7 +7431,27 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     integrationProfileId: externalIntegration.selection.integrationProfileId,
                 },
             } : {};
+            /**
+             * ONE WAY OF CHECKING FOR THIS BUILD'S AUDITS (design v13.3 §2.3, §2.5), chosen BEFORE the packaged
+             * server boots: the delivery record is read once (a new build has none and runs as today), and
+             * the path is chosen on the folder the walked server RUNS from — the packaged API (`node server.js`
+             * in apiDir) — never on the interface folder it serves. Every audit below shares this pin.
+             */
+            const { seedLoopQaPin, anchorPinOnFirstAudit, auditNotComparable, notComparableLine } = require('../../../core/quality/improve-loop');
+            const bootsPackaged = !!packaged && !!apiDir && fs.existsSync(path.join(apiDir, 'node_modules'));
+            let qaPin = await seedLoopQaPin({
+                projectRoot: proj, serverRoot: bootsPackaged ? apiDir : proj, hasServeUrl: bootsPackaged,
+                ...(bootsPackaged ? { startKind: 'node-entry' } : {}), sessionId,
+            });
             liveServer = await bootPackagedServer();
+            //  Nothing was started: the audits serve dist/ themselves, so the pin is chosen for that.
+            if (bootsPackaged && !liveServer) qaPin = await seedLoopQaPin({ projectRoot: proj, hasServeUrl: false, sessionId });
+            const qaStreamTo = String(context?.browserSessionId || '').trim();
+            const qaOptions = {
+                projectRoot: proj, qaPin,
+                ...(liveServer ? { serverRoot: apiDir, startKind: 'node-entry' } : {}),
+                ...(qaStreamTo ? { streamTo: qaStreamTo } : {}),
+            };
             if (liveServer) {
                 term(`self-QA: measuring the RUNNING system at ${liveServer.url} — its API answers, so the catalogue is real`);
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
@@ -7455,6 +7475,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 ...externalApiAuditContext,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
                 ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
+                ...qaOptions,
                 /**
                  * And the invitation matches reality. When the audit cannot
                  * borrow the panel it runs in a private browser — and telling
@@ -7524,6 +7545,8 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     }
                 },
             });
+            //  The first audit has nothing earlier to keep: if the folder needed a stricter path, the build's audits take it.
+            if (anchorPinOnFirstAudit(qaPin, audit)) term(`self-QA: the checks run as ${qaPin.path} for every audit of this build`);
             /**
              *  BORROWED IS NOT WATCHED.
              *
@@ -7650,7 +7673,12 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         watchSessionId: auditSid,
                         requireVisibleBrowser: true,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
+                        ...qaOptions,
                     });
+                    //  This audit measures the restored tree, the only one left: it is kept, and a change of the
+                    //  way of checking (§2.3) is told rather than hidden.
+                    const changedWay = auditNotComparable(audit, qaPin);
+                    if (changedWay) term(`self-QA after rollback: ${notComparableLine(isAr ? 'ar' : 'en', changedWay.from, changedWay.to)}`);
                     term(`self-QA after rollback: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit.score}/100`}`);
                 }
             }
@@ -7844,8 +7872,13 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         ...externalApiAuditContext,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                         ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
+                        ...qaOptions,
                     });
                     if (a?.skipped) return { score: 0, findingIds: [], skipped: true };
+                    //  Checked another way than the build's pin (§2.3): never compared — the round is rolled
+                    //  back through `skipped`, and the earlier reading stands.
+                    const notComparable = auditNotComparable(a, qaPin);
+                    if (notComparable) return { score: 0, findingIds: [], skipped: true, notComparable };
                     lastAudit = a;
                     const t = await runTerminal().catch(() => null);
                     if (t) terminalAudit = t;
@@ -7883,6 +7916,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         // whole loop a no-op when it was missing, and that no
                         // unit test could catch because each one brings its own.
                         measure: measureNow,
+                        language: isAr ? 'ar' : 'en',
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
                         target: Math.max(1, Number(process.env.JOE_IMPROVE_TARGET || 95)),
                         snapshot: (label: string) => String(snapshotProject(proj, label)?.id || ''),

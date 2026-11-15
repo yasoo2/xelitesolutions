@@ -152,6 +152,13 @@ async function main() {
       })
       .catch(() => { /* best effort: the records stay for the next boot */ });
 
+    // The recovery copies Joe's checks keep of an app's data outside the project (core/quality/qa-leaves-no-trace.ts,
+    // design v13.3 §5b): stale verify locks swept and old copies pruned now, then every hour.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('../core/quality/qa-leaves-no-trace').startRecoveryUpkeep();
+    } catch (e: any) { logger.warn(`[QA recovery] upkeep not started: ${e?.message || e}`); }
+
     // Local Brain: detect installed Ollama models, choose a fast chat model +
     // the strongest coding model, and warm them up so the first request is fast.
     // Best-effort — degrades quietly to the keyless free mesh if Ollama is absent.

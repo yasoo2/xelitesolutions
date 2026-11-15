@@ -17,6 +17,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import type { QaPath } from '../quality/qa-target';
 
 type Words = { short: string; whole: string };
 const INSTRUMENTS: Record<'ar' | 'en', Record<string, Words>> = {
@@ -113,6 +114,67 @@ export interface CertificateInput {
     roles?: Array<{ role: string; screens: string[] }>;
     /** What the browser check tried, counted (qaCoverageOf). */
     qaCoverage?: QaCoverage;
+    /**
+     * How Joe's checks treated the owner's data on a change run (design v13.3 §9, verify.ts DeliveryRecord.qaPath):
+     * the browser line is followed by what that way was, and on the no-write walk what was not tried is listed
+     * under «Not proven yet». None (a new build): as before.
+     */
+    qaPath?: { path: QaPath | string; notTried?: string[] };
+}
+
+/**
+ * The certificate's line after the browser check (design v13.3 §9; six languages in owner-lines13.json, the
+ * certificate itself is written in Arabic or English): a private window that reached only his app (path 1), as
+ * always with his data put back (2T), or his live app with nothing saved in it (path 3).
+ */
+const QA_CERT_LINES: Record<'ar' | 'en' | 'es' | 'fr' | 'de' | 'ru', { certPrivate: string; certAsBefore: string; certNoWrite: string; notTried: string }> = {
+    ar: {
+        certPrivate: 'جُرّب في المتصفح في نافذة خاصة لم تصل إلا إلى عنوان تطبيقك.',
+        certAsBefore: 'جُرّب في المتصفح على تطبيقك كما يجري دائمًا، ثم أُعيدت ملفات بياناته كما من قبل.',
+        certNoWrite: 'جُرّب في المتصفح على تطبيقك الحي دون حفظ شيء فيه؛ لم يُجرَّب {n} مما يحفظ بيانات.',
+        notTried: 'لم يُجرَّب',
+    },
+    en: {
+        certPrivate: 'Tried in the browser, in a private window that reached only your app\'s address.',
+        certAsBefore: 'Tried in the browser on your app as always, then its data files were put back as before.',
+        certNoWrite: 'Tried in the browser on your live app without saving anything in it; {n} things that save data were not tried.',
+        notTried: 'not tried',
+    },
+    es: {
+        certPrivate: 'Probado en el navegador, en una ventana privada que solo llegó a la dirección de tu aplicación.',
+        certAsBefore: 'Probado en el navegador en tu aplicación como siempre; después sus archivos de datos se restauraron como antes.',
+        certNoWrite: 'Probado en el navegador en tu aplicación real sin guardar nada; {n} cosas que guardan datos no se probaron.',
+        notTried: 'sin probar',
+    },
+    fr: {
+        certPrivate: 'Essayé dans le navigateur, dans une fenêtre privée qui n\'a joint que l\'adresse de votre application.',
+        certAsBefore: 'Essayé dans le navigateur sur votre application comme toujours, puis ses fichiers de données ont été remis comme avant.',
+        certNoWrite: 'Essayé dans le navigateur sur votre application réelle sans rien y enregistrer ; {n} éléments qui enregistrent des données n\'ont pas été essayés.',
+        notTried: 'non essayé',
+    },
+    de: {
+        certPrivate: 'Im Browser ausprobiert, in einem privaten Fenster, das nur die Adresse Ihrer App erreichte.',
+        certAsBefore: 'Im Browser wie immer auf Ihrer App ausprobiert, danach wurden ihre Datendateien wie bisher zurückgelegt.',
+        certNoWrite: 'Im Browser auf Ihrer echten App ausprobiert, ohne etwas zu speichern; {n} Dinge, die Daten speichern, wurden nicht ausprobiert.',
+        notTried: 'nicht ausprobiert',
+    },
+    ru: {
+        certPrivate: 'Опробовано в браузере, в приватном окне, обращавшемся только к адресу вашего приложения.',
+        certAsBefore: 'Опробовано в браузере на вашем приложении как обычно, затем файлы данных возвращены, как раньше.',
+        certNoWrite: 'Опробовано в браузере на рабочем приложении без сохранения данных; {n} действий, сохраняющих данные, не опробовано.',
+        notTried: 'не опробовано',
+    },
+};
+
+/** The certificate's line for the way the browser check treated his data, in the given language ('' when none). */
+export function qaCertificateLine(qaPath: CertificateInput['qaPath'], language: string): string {
+    if (!qaPath) return '';
+    const lang = String(language || '').toLowerCase().slice(0, 2) as keyof typeof QA_CERT_LINES;
+    const w = QA_CERT_LINES[lang] || QA_CERT_LINES.en;
+    if (qaPath.path === 'private-live') return w.certPrivate;
+    if (qaPath.path === '2t') return w.certAsBefore;
+    if (qaPath.path === 'no-write') return w.certNoWrite.replace('{n}', String((qaPath.notTried || []).length));
+    return '';
 }
 
 /**
@@ -247,7 +309,12 @@ export function deliveryCertificate(input: CertificateInput): string {
     const summary = String(input.summary || '').trim();
     if (summary) out.push(ar ? '## ما بُني' : '## What was built', '', summary, '');
     out.push(ar ? '## كيف تحقّق جو منه' : '## How Joe proved it', '');
-    for (const id of input.passed) out.push(`- ✅ **${words[id]?.short || id}**: ${words[id]?.whole || id}`);
+    for (const id of input.passed) {
+        out.push(`- ✅ **${words[id]?.short || id}**: ${words[id]?.whole || id}`);
+        //  How the browser check treated his data on a change run (design v13.3 §9), right after its line.
+        const how = id === 'browser' ? qaCertificateLine(input.qaPath, ar ? 'ar' : 'en') : '';
+        if (how) out.push(`- 🔒 ${how}`);
+    }
     const who = String(input.signedInAs || '').trim();
     if (who && input.passed.includes('browser')) {
         out.push(ar
@@ -261,7 +328,9 @@ export function deliveryCertificate(input: CertificateInput): string {
         for (const r of input.roles || []) out.push(`  - **${r.role}**: ${r.screens.join(ar ? '، ' : ', ') || (ar ? 'لا شاشات' : 'no screens')}`);
     }
     out.push('');
-    const unproven = (input.unproven || []).filter(Boolean);
+    //  On the no-write walk, what was not tried because it saves data is not proven either (design v13.3 §9).
+    const notTried = input.qaPath?.path === 'no-write' ? (input.qaPath.notTried || []).filter(Boolean) : [];
+    const unproven = [...(input.unproven || []).filter(Boolean), ...notTried.map(l => `${QA_CERT_LINES[ar ? 'ar' : 'en'].notTried}: ${l}`)];
     if (unproven.length) {
         out.push(ar ? '## ما لم يثبت بعد' : '## Not proven yet', '');
         for (const u of unproven) out.push(`- ⚠️ ${u}`);

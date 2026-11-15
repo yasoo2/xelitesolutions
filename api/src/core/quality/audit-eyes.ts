@@ -309,6 +309,128 @@ export class AuditEyes {
     }
 }
 
+/**
+ * ⛔ HE STILL WATCHES A WALK THAT RUNS IN A PRIVATE BROWSER (design v13.3 §8).
+ *
+ * On a change run the walk never borrows the panel's page — that page holds his own cookies and storage, and a
+ * walk there is a walk on his saved data. It runs in a private browser instead, and this streams that private
+ * page into the panel he already has open: a CDP screencast (`Page.startScreencast`, JPEG 55, at most
+ * 1280×900), each frame acknowledged and sent as the `stream_frame` event the panel already paints
+ * (`wsHub.ts › broadcastBrowserEvent`). A page the walk's page opens (a popup) is followed while it is open.
+ *
+ * One streamer per id: while this streams, the panel session's own capture loop is paused
+ * (`manager.ts › pauseStreaming`), and a second walk that asks for an id already streamed to does not stream.
+ * The panel-wide `panel-browser` id is never a target. Frames are sent only while someone watches the id. Every
+ * step is best-effort: a frame that cannot be sent never fails the walk it shows.
+ */
+export interface PrivateStream {
+    /** Whether this walk holds the id's stream (false: no id, the shared panel id, or another walk holds it). */
+    readonly holding: boolean;
+    /** Frames sent to a watching panel so far. */
+    readonly frames: number;
+    /** Stops the screencast and gives the id back to the panel's own loop. Idempotent. */
+    stop(): Promise<void>;
+}
+
+/** The panel-wide id (`BrowserSmartTools.ts › PANEL_BROWSER_SID`): never a stream target (§8 «Ids»). */
+const SHARED_PANEL_ID = 'panel-browser';
+
+export interface PrivateStreamDeps {
+    pause?: (sid: string) => () => void;
+    isPaused?: (sid: string) => boolean;
+    watchers?: (sid: string) => number;
+    send?: (sid: string, ev: any) => void;
+}
+
+export async function streamPrivateWalk(context: any, page: any, streamTo: string | undefined, deps: PrivateStreamDeps = {}): Promise<PrivateStream> {
+    const sid = String(streamTo || '').trim();
+    const inert: PrivateStream = { holding: false, frames: 0, stop: async () => { /* nothing streamed */ } };
+    if (!sid || sid === SHARED_PANEL_ID || !context || !page) return inert;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const manager = (deps.pause && deps.isPaused) ? null : require('../../modules/browser/manager');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const hub = (deps.watchers && deps.send) ? null : require('../../modules/browser/wsHub');
+    const isPaused = deps.isPaused ?? ((id: string) => !!manager?.isStreamingPaused?.(id));
+    const pause = deps.pause ?? ((id: string) => manager.pauseStreaming(id));
+    const watchers = deps.watchers ?? ((id: string) => Number(hub.panelWatcherCount(id) || 0));
+    const send = deps.send ?? ((id: string, ev: any) => hub.broadcastBrowserEvent(id, ev));
+    //  One streamer per id: another walk is already streaming to this panel.
+    try { if (isPaused(sid)) return inert; } catch { return inert; }
+    let resume: () => void;
+    try { resume = pause(sid); } catch { return inert; }
+
+    const { imageSize } = require('../../shared/image-size') as typeof import('../../shared/image-size');
+    let frames = 0;
+    let stopped = false;
+    const shown: any[] = [page];
+    let current: { page: any; cdp: any } | null = null;
+    let chain: Promise<void> = Promise.resolve();
+    const onFrame = (cdp: any) => async (ev: any) => {
+        try { await cdp.send('Page.screencastFrameAck', { sessionId: ev?.sessionId }); } catch { /* the page went */ }
+        if (stopped || !current || current.cdp !== cdp) return;
+        try {
+            if (watchers(sid) <= 0) return;
+            const data = String(ev?.data || '');
+            if (!data) return;
+            const size = imageSize(Buffer.from(data, 'base64'));
+            const w = size?.width || Math.round(Number(ev?.metadata?.deviceWidth) || 0);
+            const h = size?.height || Math.round(Number(ev?.metadata?.deviceHeight) || 0);
+            if (!(w > 0) || !(h > 0)) return;
+            send(sid, { type: 'stream_frame', ts: Date.now(), jpegBase64: data, w, h });
+            frames++;
+        } catch { /* a frame is a bonus, never a blocker */ }
+    };
+    const stopCurrent = async () => {
+        const was = current;
+        current = null;
+        if (!was) return;
+        try { await was.cdp.send('Page.stopScreencast'); } catch { /* already gone */ }
+        try { await was.cdp.detach(); } catch { /* already gone */ }
+    };
+    const show = (target: any) => {
+        chain = chain.then(async () => {
+            if (stopped) return;
+            if (current?.page === target) return;
+            await stopCurrent();
+            try { if (target.isClosed?.()) return; } catch { return; }
+            try {
+                const cdp = await context.newCDPSession(target);
+                current = { page: target, cdp };
+                cdp.on('Page.screencastFrame', onFrame(cdp));
+                await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 55, maxWidth: 1280, maxHeight: 900 });
+            } catch { current = null; /* this page cannot be filmed; the walk goes on */ }
+        }).catch(() => { /* never thrown to the walk */ });
+        return chain;
+    };
+    //  A popup the walk opens is shown while it is open; when it closes the page before it is shown again.
+    const onPage = (p: any) => {
+        if (stopped) return;
+        shown.push(p);
+        try {
+            p.once?.('close', () => {
+                const i = shown.indexOf(p);
+                if (i >= 0) shown.splice(i, 1);
+                if (!stopped && current?.page === p && shown.length) void show(shown[shown.length - 1]);
+            });
+        } catch { /* a page with no events is shown until the next one */ }
+        void show(p);
+    };
+    try { context.on?.('page', onPage); } catch { /* no popups followed */ }
+    await show(page);
+    return {
+        holding: true,
+        get frames() { return frames; },
+        async stop() {
+            if (stopped) return;
+            stopped = true;
+            try { context.off?.('page', onPage); } catch { /* the context is gone */ }
+            await chain.catch(() => undefined);
+            await stopCurrent();
+            try { resume(); } catch { /* the panel's own loop resumes when it is next asked */ }
+        },
+    };
+}
+
 /** The bounding box of a control, in viewport pixels the panel can draw with. */
 export async function boxOf(page: any, selector: string): Promise<EyeBox | null> {
     try {

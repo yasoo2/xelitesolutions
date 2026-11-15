@@ -25,7 +25,10 @@ import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
 import { HANDOFF_SCHEME, isExpectedRefusal, sameDocumentUrl } from './behaviour-audit';
 import { productProfile, proveJourneys } from './qa-product-profile';
-import { AuditEyes, evalInPage } from './audit-eyes';
+import { AuditEyes, evalInPage, streamPrivateWalk, type PrivateStream } from './audit-eyes';
+import { chooseQaPath, hasDeliveryRecord, pinnedPath, type QaPath, type QaPathChoice, type QaPin, type QaReason } from './qa-target';
+import { startQaFence, type QaFence } from './qa-fence';
+import { createLiveDataGuard, isDeleteControl, LIVE_DATA_NOT_MEASURED, type LiveDataGuard, type SignInAccount } from './live-data-guard';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { markInspection } from '../engine/browser-mend';
 import { isWithinRoot } from '../../modules/tools/path-containment';
@@ -201,6 +204,27 @@ export interface AppAudit {
         renderedResult?: string;
         /** Exact visible failure state produced by the bounded fault injection. */
         errorText?: string;
+    };
+    /**
+     * WHERE THE WALK MAY WRITE (design v13.3 §2, §9): present when the caller passed the door's options.
+     * `path` is what ran (the stricter of the loop's pin and this audit's own choice); `comparable` is false when
+     * it is not the pin's path (the loop keeps its earlier measurement). `windows`: every request the fence
+     * forwarded (§5b step 4). `blocked`/`blockedHosts`: what the app's page tried to reach and the fence refused
+     * (Chromium's own traffic excluded). `notTried`: what the walk did not press because it would write, or could
+     * not try because a request was refused. `streamed`: frames reached a watching panel. `signedIn`: a sign-in
+     * passed (on path 3, the one W7 allows). `fenceDown`: the fence did not start, so the walk ran as path 3.
+     */
+    qaPath?: {
+        path: QaPath;
+        reasons: QaReason[];
+        comparable: boolean;
+        windows?: Array<{ start: number; end: number; long: boolean; what?: string }>;
+        blocked: number;
+        blockedHosts: string[];
+        notTried: string[];
+        streamed: boolean;
+        signedIn: boolean;
+        fenceDown?: boolean;
     };
 }
 
@@ -655,8 +679,262 @@ export async function auditBuiltApp(
             capability: 'weather' | 'currency' | 'ip';
             integrationProfileId: string;
         };
+        /*
+         * ⛔ THE DOOR'S OPTIONS (design v13.3 §2). A caller that passes none of them is walked exactly as today.
+         */
+        /** The owner's project folder (never `artifactRootDir`: in the repair tool that is the shared root). */
+        projectRoot?: string;
+        /** One per verification / repair / pipeline / react loop (§2.3): every audit of the loop runs the stricter of it and its own choice. */
+        qaPin?: QaPin;
+        /** The per-user panel id the private walk is streamed to (§8); never `panel-browser`. Defaults to `watchSessionId`. */
+        streamTo?: string;
+        /** The app's own other live addresses (its API server, §4.2), added to the fence's allow list. */
+        walkedOrigins?: string[];
+        /** `project_run`'s own kind of what it started (`liveRun.output.kind`, §2 step 2). */
+        startKind?: string;
+        /** The folder the walked server runs from (§2 step 1). */
+        serverRoot?: string;
     },
 ): Promise<AppAudit> {
+    /*
+     * ⛔ ONE CHOICE PER AUDIT, AT THE DOOR, BEFORE THE BROWSER IS TAKEN (design v13.3 §2).
+     *
+     * A folder Joe has never delivered is walked as today, byte for byte: the panel borrowed, every form sent.
+     * A folder the owner already has (a change run) is his live app with his data in it, so the walk takes the
+     * path chosen here: a private browser of its own (never the panel's page and its saved cookies), behind the
+     * default-deny fence that lets it reach the walked origin only (§4), and on path 3 under the no-write guard
+     * (§5). The loop's pin keeps every audit of one loop on one path (§2.3).
+     */
+    const door = await openQaDoor(distDir, opts);
+    if (!door) return walkBuiltApp(distDir, opts, null);
+    if (door.path === 'as-today') {
+        const audit = await walkBuiltApp(distDir, opts, null);
+        audit.qaPath = { path: 'as-today', reasons: [], comparable: door.comparable, blocked: 0, blockedHosts: [], notTried: [], streamed: false, signedIn: !!audit.authenticated };
+        return audit;
+    }
+    try {
+        const audit = await walkBuiltApp(distDir, opts, door);
+        audit.qaPath = door.summary(audit);
+        //  He watched it: the private walk's frames reached his panel (§8).
+        if (audit.qaPath.streamed) audit.visible = true;
+        return audit;
+    } finally {
+        await door.close();
+    }
+}
+
+type AuditBuiltAppOptions = NonNullable<Parameters<typeof auditBuiltApp>[1]>;
+
+/** The options that open the door; a caller that passes none of them is walked as today (§2, §10). */
+const DOOR_OPTIONS = ['projectRoot', 'qaPin', 'streamTo', 'walkedOrigins', 'startKind', 'serverRoot'] as const;
+
+/** One audit's path and what guards it (design v13.3 §2, §4, §5, §8). */
+export interface QaDoor {
+    path: QaPath;
+    choice: QaPathChoice;
+    comparable: boolean;
+    fence: QaFence | null;
+    fenceDown: boolean;
+    /** Path 3's guard, installed on the walk's private context once it exists. */
+    guard: LiveDataGuard | null;
+    /** The panel id the walk streams to, and the stream once it runs. */
+    streamId: string;
+    stream: PrivateStream | null;
+    context: any;
+    /** What the walk itself did not try (the guard keeps its own list). */
+    notTried(label: string): void;
+    /** The hosts whose script, module or stylesheet the fence refused to the page (W9c). */
+    refusedAssets: Set<string>;
+    /** Whether a console message, page error or failed request is the fence's or the guard's doing: never charged (§4.3, W9). */
+    dropped(text: string, url?: string): boolean;
+    /** Aborts by the guard plus app refusals by the fence so far (W9b brackets). */
+    blocks(): number;
+    /** The panel watches the stream's id. */
+    watching(): boolean;
+    summary(audit: AppAudit): NonNullable<AppAudit['qaPath']>;
+    close(): Promise<void>;
+}
+
+const originOf = (u: string): string => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.origin : ''; } catch { return ''; } };
+
+/** `'POST 127.0.0.1:5055/api/orders'` → `127.0.0.1:5055`; `'CONNECT api.x.sa:443'` → `api.x.sa`. */
+export function refusedHost(what: string): string {
+    const target = String(what || '').trim().split(/\s+/)[1] || '';
+    const hostPort = target.replace(/^[a-z][\w+.-]*:\/\//i, '').split(/[/?#]/)[0];
+    return hostPort.replace(/:(?:443|80)$/, '');
+}
+
+/**
+ * The door (§2): `root` is the folder the walked server runs from, never `artifactRootDir`; the delivery record
+ * is read once per loop (`qaPin.record`); `kind` is `project_run`'s own when given; an unknown served kind is
+ * no-write. Returns null for a caller that passed none of the door's options (today's walk).
+ */
+export async function openQaDoor(distDir: string, opts: AuditBuiltAppOptions | undefined): Promise<QaDoor | null> {
+    if (!opts || !DOOR_OPTIONS.some(k => opts[k] !== undefined)) return null;
+    if (!fs.existsSync(path.join(distDir, 'index.html'))) return null;
+    const root = path.resolve(String(opts.serverRoot || opts.projectRoot || path.resolve(distDir, '..')));
+    const givenUrl = String(opts.serveUrl || '').trim();
+    const record = opts.qaPin?.record !== undefined ? opts.qaPin.record : hasDeliveryRecord(root);
+    let choice: QaPathChoice;
+    if (!record) {
+        choice = { path: 'as-today', reasons: [], record: '', facts: { files: 0, read: 0, ms: 0 } };
+    } else {
+        let kind = String(opts.startKind || '').trim();
+        if (!kind && givenUrl) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                kind = String((await require('../../modules/tools/definitions/ProjectRunTool').detectStart(root, 0))?.kind || '');
+            } catch { kind = ''; }
+        }
+        try {
+            choice = await chooseQaPath(root, { kind, hasServeUrl: !!givenUrl, record });
+        } catch (e: any) {
+            //  The folder could not be read: nothing is proven, so nothing is written.
+            choice = { path: 'no-write', reasons: [{ key: 'unread', detail: String(e?.message || e).slice(0, 160) }], record, facts: { files: 0, read: 0, ms: 0 } };
+        }
+    }
+    const ran = pinnedPath(opts.qaPin, choice);
+    let ranPath: QaPath = ran.path;
+    const streamId = (() => {
+        const sid = String(opts.streamTo || opts.watchSessionId || '').trim();
+        return sid === 'panel-browser' ? '' : sid;
+    })();
+    const own: string[] = [];
+    const notTried = (label: string) => { const l = String(label || '').trim(); if (l && !own.includes(l)) own.push(l); };
+    const watching = () => {
+        if (!streamId) return false;
+        try { return Number(require('../../modules/browser/wsHub').panelWatcherCount(streamId) || 0) > 0; } catch { return false; }
+    };
+    const base = { choice, streamId, notTried, watching, refusedAssets: new Set<string>() };
+    if (ranPath === 'as-today') {
+        return {
+            ...base, path: 'as-today', comparable: ran.comparable, fence: null, fenceDown: false, guard: null, stream: null, context: null,
+            dropped: () => false, blocks: () => 0,
+            summary: (a: AppAudit) => ({ path: 'as-today', reasons: [], comparable: ran.comparable, blocked: 0, blockedHosts: [], notTried: [], streamed: false, signedIn: !!a.authenticated }),
+            close: async () => { /* nothing opened */ },
+        };
+    }
+    let fence: QaFence | null = null;
+    let fenceDown = false;
+    const allow = [...new Set([givenUrl, ...(opts.walkedOrigins || [])].map(originOf).filter(Boolean))];
+    try {
+        fence = await startQaFence({ allow });
+    } catch {
+        //  §4.5: without the fence every fenced walk runs as path 3, under the in-browser guard, and is told.
+        fenceDown = true;
+        ranPath = 'no-write';
+    }
+    const comparable = ran.comparable && (!opts.qaPin?.path || opts.qaPin.path === ranPath);
+    const door: QaDoor = {
+        ...base,
+        path: ranPath,
+        comparable,
+        fence,
+        fenceDown,
+        guard: null,
+        stream: null,
+        context: null,
+        dropped(text: string, url?: string) {
+            try {
+                if (door.fence && door.fence.drops(text, url)) return true;
+                if (door.guard && door.guard.drops(text, url)) return true;
+            } catch { /* a filter that throws charges as today */ }
+            return false;
+        },
+        blocks() {
+            let n = 0;
+            try { n += door.guard ? door.guard.aborted().length : 0; } catch { /* none */ }
+            try { n += door.fence ? door.fence.appRefusals().length : 0; } catch { /* none */ }
+            return n;
+        },
+        summary(a: AppAudit) {
+            let refused: Array<{ what: string }> = [];
+            let windows: NonNullable<AppAudit['qaPath']>['windows'];
+            try { refused = door.fence ? door.fence.appRefusals() : []; } catch { refused = []; }
+            try { windows = door.fence ? door.fence.windows().map(w => ({ start: w.start, end: w.end, long: w.long, what: w.what })) : undefined; } catch { windows = undefined; }
+            const guardNotTried = door.guard ? [...door.guard.notTriedLabels] : [];
+            return {
+                path: door.path,
+                reasons: [...choice.reasons],
+                comparable: door.comparable,
+                ...(windows ? { windows } : {}),
+                blocked: refused.length,
+                blockedHosts: [...new Set(refused.map(r => refusedHost(r.what)).filter(Boolean))],
+                notTried: [...new Set([...guardNotTried, ...own])],
+                streamed: (door.stream?.frames || 0) > 0,
+                signedIn: door.path === 'no-write' ? !!(door.guard && door.guard.signInUrl()) : !!a.authenticated,
+                ...(door.fenceDown ? { fenceDown: true } : {}),
+            };
+        },
+        async close() {
+            try { await door.fence?.close(); } catch { /* the worker is gone */ }
+        },
+    };
+    return door;
+}
+
+/** What a page needs to run or look as built: a refused one is the fence's doing, not the page's (W9c). */
+const ASSET_TYPES = /^(?:script|stylesheet|font)$/;
+
+/** A 403 the fence answered for a script, module or stylesheet the page asked another host for (W9c). */
+function fenceRefusedAsset(r: any): boolean {
+    try {
+        if (!ASSET_TYPES.test(String(r.request?.()?.resourceType?.() || ''))) return false;
+        return /refused/i.test(String(r.headers?.()?.['x-joe-fence'] || ''));
+    } catch { return false; }
+}
+
+/** Runs `work` with path 3's one sign-in allowance (W7), or as it is on every other path. */
+function signingIn<T>(door: QaDoor | null, account: SignInAccount, work: () => Promise<T>): Promise<T> {
+    return door?.guard ? door.guard.allowing(account, work) : work();
+}
+
+/**
+ * The walk's private page on a change run (§2 step 4, §5 W1–W2): a context of its own (service workers blocked
+ * on path 3, where `context.route` must see every request), the guard installed on it before the first page
+ * opens, and the page streamed to the owner's panel (§8).
+ */
+async function openPrivatePage(browser: any, door: QaDoor, opts: AuditBuiltAppOptions | undefined): Promise<any> {
+    const context = await browser.newContext(door.path === 'no-write' ? { serviceWorkers: 'block' } : {});
+    door.context = context;
+    if (door.path === 'no-write') {
+        const c = opts?.credentials;
+        const signIn: SignInAccount | undefined = c ? { identity: String(c.identity ?? c.email ?? ''), password: String(c.password ?? '') } : undefined;
+        door.guard = await createLiveDataGuard(context, signIn ? { signIn } : {});
+    }
+    const page = await context.newPage();
+    if (door.streamId) {
+        try { door.stream = await streamPrivateWalk(context, page, door.streamId); } catch { door.stream = null; }
+    }
+    return page;
+}
+
+/** W1: every page of the private context is sent to about:blank before it closes; the stream and the guard go first. */
+async function closePrivatePage(door: QaDoor): Promise<void> {
+    try { await door.stream?.stop(); } catch { /* the panel gets its loop back on its next ask */ }
+    try { await door.guard?.remove(); } catch { /* the context is going anyway */ }
+    const context = door.context;
+    if (!context) return;
+    try {
+        for (const p of context.pages?.() || []) {
+            try { await p.goto('about:blank', { timeout: 3_000 }); } catch { /* a page that will not leave is closed anyway */ }
+        }
+    } catch { /* no pages */ }
+    try { await context.close(); } catch { /* already gone */ }
+}
+
+/** Path 3, W5: a link whose text or href deletes is not walked; it is listed «not tried». */
+function linksThatDoNotDelete(links: Array<AppLink & { text?: string }>, door: QaDoor | null): AppLink[] {
+    if (!door?.guard) return links;
+    const kept: AppLink[] = [];
+    for (const l of links) {
+        if (isDeleteControl(String(l.text || ''), String(l.href || ''))) door.guard.notTried(`link: ${String(l.text || l.href || '').trim().slice(0, 60)}`);
+        else kept.push(l);
+    }
+    return kept;
+}
+
+async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefined, door: QaDoor | null): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
     // Navigation is one action within an audit, never permission for a single
     // page load to consume the complete QA window.
@@ -675,6 +953,11 @@ export async function auditBuiltApp(
     const givenUrl = String(opts?.serveUrl || '').trim();
     const artifactRoot = path.resolve(String(opts?.artifactRootDir || process.env.ARTIFACT_DIR || distDir));
     const srv = http.createServer(async (req, res) => {
+        //  §4.2: on a change run the audit's own server forwards nothing that writes to an outside API.
+        if (door && !/^(?:GET|HEAD|OPTIONS)$/i.test(String(req.method || 'GET')) && String(req.url || '').startsWith('/api/joe-external/')) {
+            res.writeHead(403, { 'content-type': 'application/json', 'x-joe-fence': 'refused' });
+            return res.end(JSON.stringify({ error: 'Joe\'s checks send nothing to an outside service on a change run' }));
+        }
         try {
             if (await handleMaintainedPreviewApiRequest(path.resolve(distDir, '..'), req, res)) return;
         } catch {
@@ -699,6 +982,8 @@ export async function auditBuiltApp(
     });
     if (!givenUrl) await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
     const url = givenUrl || `http://127.0.0.1:${(srv.address() as any).port}/`;
+    //  The audit's own server is a walked origin the moment it listens (§4.4).
+    if (door?.fence && !givenUrl) door.fence.allow(url);
 
     let browser: any = null;
     let borrowed = false;
@@ -735,7 +1020,8 @@ export async function auditBuiltApp(
          * falls back to exactly what it did before: a private headless browser.
          */
         let borrowError = '';
-        if (opts?.watchSessionId) {
+        //  A change run never borrows the panel's page (§2.4): it holds his own cookies and storage.
+        if (opts?.watchSessionId && !door) {
             try {
                 if (opts.requireVisibleBrowser) {
                     const { panelWatcherCount } = require('../../modules/browser/wsHub');
@@ -788,6 +1074,33 @@ export async function auditBuiltApp(
                     require('../../modules/browser/manager').noteBrowserFailure(opts.watchSessionId, 'audit-borrow', borrowError);
                 } catch { /* the log is a bonus, never a blocker */ }
             }
+        }
+        //  §8: on 2T, as today, a walk that must be seen is not run when nobody watches (on paths 1 and 3 it writes nothing of his, so it runs).
+        if (door?.path === '2t' && opts?.requireVisibleBrowser && !door.watching()) {
+            opts.onProgress?.('eye_required:no active Browser panel watcher');
+            return { skipped: 'browser eye required (no active Browser panel watcher)', score: 0, findings: [], visible: false };
+        }
+        /*
+         * ⛔ A CHANGE RUN'S WALK HAS A BROWSER OF ITS OWN (§2 step 4, §4.4): launched behind the fence (its whole
+         * network goes through it), a private context, the guard on path 3, the page streamed to his panel (§8).
+         * It never refuses for a panel that is not open on paths 1 and 3 (§2.4).
+         */
+        if (door && !page) {
+            const launchProxy = door.fence ? { proxy: door.fence.proxy } : {};
+            try {
+                browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true, ...launchProxy });
+            } catch (e: any) {
+                const { isMissingBrowser, ensureChromium } = require('./ensure-chromium');
+                if (!isMissingBrowser(e)) throw e;
+                const got = await ensureChromium({
+                    say: (l: string) => opts?.onProgress?.(`term:${l}`),
+                    offline: !!opts?.offline,
+                });
+                if (!got.ok) return { skipped: got.detail, score: 0, findings: [] };
+                browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true, ...launchProxy });
+            }
+            page = await openPrivatePage(browser, door, opts);
+            opts?.onProgress?.('private');
         }
         if (!page) {
             if (opts?.requireVisibleBrowser) {
@@ -938,7 +1251,8 @@ export async function auditBuiltApp(
         const heavyImages: string[] = [];
         /** Set only when the address the audit was given refused its own root. */
         let frontDoor: { url: string; status: number; recovered: boolean } | null = null;
-        const onPageError = (e: any) => pageErrors.push(String(e).slice(0, 120));
+        //  §4.3, W9: an error the fence's refusal or the guard's block caused is told, never charged.
+        const onPageError = (e: any) => (door?.dropped(String(e?.message || e)) ? 0 : pageErrors.push(String(e).slice(0, 120)));
         page.on('pageerror', onPageError);
         /**
          * A console error must name the RESOURCE, not just the complaint.
@@ -997,10 +1311,14 @@ export async function auditBuiltApp(
             if (refusedStatus && isExpectedRefusal(page, refusedStatus, consoleLocationUrl)) return;
             //  A call or a mail handed to the system's own app (behaviour-audit.ts HANDOFF_SCHEME): the browser has none, the page is right.
             if (HANDOFF_SCHEME.test(String(m.text()))) return;
+            //  §4.3, W9: the fence refused it, or the guard blocked it — told («not tried»), never charged.
+            if (door?.dropped(String(m.text()), consoleLocationUrl || undefined)) return;
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
         };
         page.on('console', onConsole);
         const onResponse = (r: any) => {
+            //  W9c: the fence refused a script, module or stylesheet this page needs (an SDK on a CDN, a font host).
+            if (door?.fence && r.status() === 403 && fenceRefusedAsset(r)) door.refusedAssets.add(refusedHost(`GET ${r.url()}`));
             if (r.status() >= 200 && r.status() < 300 && isExpectedExternalRequest(r.url())) {
                 const record: { url: string; status: number; body?: any } = { url: r.url(), status: r.status() };
                 successfulExternalRequests.push(record);
@@ -1012,7 +1330,7 @@ export async function auditBuiltApp(
                 // No live server behind the page → any /api/… it asks for is
                 // its own backend, which is not running. Unverified, not broken.
                 if (!givenUrl && /\/api\//.test(r.url())) unverifiedLiveData.push(r.url().slice(-60));
-                else failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
+                else if (!door?.dropped(`${r.status()} ${r.url()}`, r.url())) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
             }
             try {
                 const len = Number(r.headers()['content-length'] || 0);
@@ -1024,6 +1342,15 @@ export async function auditBuiltApp(
         page.on('response', onResponse);
         //  Beside it, and taken off with it: the PDFs this walk receives (design arabic-pdf v9 §4.2).
         const pdfCapture = opts?.pdfCaptureDir ? attachPdfCapture(page, opts.pdfCaptureDir) : null;
+        //  W9c, the https half: a script, module or stylesheet whose tunnel the fence refused.
+        const onRequestFailed = (req: any) => {
+            try {
+                if (/ERR_TUNNEL_CONNECTION_FAILED/i.test(String(req.failure?.()?.errorText || '')) && ASSET_TYPES.test(String(req.resourceType?.() || ''))) {
+                    door?.refusedAssets.add(refusedHost(`GET ${req.url()}`));
+                }
+            } catch { /* a request that cannot be read is not judged */ }
+        };
+        if (door?.fence) page.on('requestfailed', onRequestFailed);
         // A borrowed panel page is long-lived: its listeners must not pile up
         // one audit at a time.
         // The real unhook is installed below, once every listener exists; this
@@ -1056,6 +1383,7 @@ export async function auditBuiltApp(
             try {
                 page.off('pageerror', onPageError); page.off('console', onConsole);
                 page.off('response', onResponse); page.off('dialog', onDialog);
+                if (door?.fence) page.off('requestfailed', onRequestFailed);
             } catch { /* the page may already be gone */ }
             pdfCapture?.stop();
         };
@@ -1124,6 +1452,8 @@ export async function auditBuiltApp(
         let signInAccount: { identity: string; password: string } | undefined;
         /** Set when a reload of the signed-in page showed the sign-in form: the requests the server refused on the way. */
         let sessionLostOnReload: string[] | undefined;
+        /** W9b: the sign-in failed only because a request it sends was refused or stopped: «not tried», never auth_failed. */
+        let signInBlocked = false;
         if (doorStatus >= 400) {
             frontDoor = { url, status: doorStatus, recovered: false };
             // The running system refused its own root. Measure the interface
@@ -1131,6 +1461,7 @@ export async function auditBuiltApp(
             if (givenUrl) {
                 await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
                 const fallback = `http://127.0.0.1:${(srv.address() as any).port}/`;
+                door?.fence?.allow(fallback);
                 try {
                     const second = await page.goto(fallback, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
                     if (Number(second?.status?.() || 0) < 400) {
@@ -1183,15 +1514,24 @@ export async function auditBuiltApp(
                 if (!c.token && c.identity && c.password) {
                     opts?.onProgress?.('signing in');
                     const account = { identity: c.identity, password: c.password };
-                    const signed = await signInThroughPage(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) });
+                    //  Path 3: the one sign-in request W7 allows, and nothing else (signingIn).
+                    const blockedBefore = door?.blocks() ?? 0;
+                    const signed = await signingIn(door, account, () => signInThroughPage(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) }));
                     if (signed.ok) {
                         authenticated = true;
                         signInAccount = account;
                         //  A reload keeps the user signed in (sign-in.ts reloadKeepsSession).
-                        const reload = await reloadKeepsSession(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) });
-                        if (!reload.kept) sessionLostOnReload = reload.refused;
-                        if (!reload.kept && !reload.signedInAgain) { authenticated = false; authError = 'the session was lost on a reload, and signing in again failed'; }
-                    } else authError = signed.why;
+                        const reloadFrom = door?.blocks() ?? 0;
+                        const reload = await signingIn(door, account, () => reloadKeepsSession(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) }));
+                        //  W9b: a reload whose session upkeep (a refresh POST) was stopped proves nothing about the app.
+                        const reloadBlocked = !!door && door.blocks() > reloadFrom;
+                        if (!reload.kept && reloadBlocked) door?.notTried('journey: the session kept on a reload (a request it sends was stopped by the checks)');
+                        else if (!reload.kept) sessionLostOnReload = reload.refused;
+                        if (!reload.kept && !reload.signedInAgain) { authenticated = false; authError = 'the session was lost on a reload, and signing in again failed'; signInBlocked = reloadBlocked; }
+                    } else {
+                        authError = signed.why;
+                        signInBlocked = !!door && door.blocks() > blockedBefore;
+                    }
                 } else if (c.token) {
                     await page.evaluate(({ token, role, tokenStorageKey }: any) => {
                         localStorage.setItem(tokenStorageKey, token);
@@ -1205,7 +1545,10 @@ export async function auditBuiltApp(
                     authenticated = true;
                 } else {
                     const loginUrl = new URL(c.loginPath || '/api/auth/login', url).toString();
-                    const result = await page.evaluate(async ({ loginUrl, email, password, tokenStorageKey }: any) => {
+                    //  Path 3: this login POST is the one W7 allows (signingIn); every other write stays stopped.
+                    const loginAccount = { identity: String(c.email || ''), password: String(c.password || '') };
+                    const loginBlockedFrom = door?.blocks() ?? 0;
+                    const result: any = await signingIn<any>(door, loginAccount, () => page.evaluate(async ({ loginUrl, email, password, tokenStorageKey }: any) => {
                     try {
                         const response = await fetch(loginUrl, {
                             method: 'POST',
@@ -1234,9 +1577,10 @@ export async function auditBuiltApp(
                     // token independent of pathname lets an authenticated SPA
                     // move from `/` to `/admin` without silently signing out.
                     tokenStorageKey: c.tokenStorageKey || 'joe:auth',
-                    });
+                    }));
                     if (!result?.ok) {
                     authError = `login ${result?.status || 0}: ${String(result?.error || 'rejected').slice(0, 120)}`;
+                    signInBlocked = !!door && door.blocks() > loginBlockedFrom;
                     } else {
                     // A 200 from /auth/login proves the credential, not the
                     // browser state. Reload the product and require a visible
@@ -1264,8 +1608,10 @@ export async function auditBuiltApp(
                             if (await open.isVisible()) await open.click();
                             await page.locator('input[type="email"]').first().fill(c.email);
                             await page.locator('input[type="password"]').first().fill(c.password);
-                            await page.locator('form button[type="submit"]').first().click();
-                            await waitForSignedInSurface();
+                            await signingIn(door, loginAccount, async () => {
+                                await page.locator('form button[type="submit"]').first().click();
+                                await waitForSignedInSurface();
+                            });
                             authenticated = true;
                         } catch {
                             authError = 'login API accepted the account, but the protected browser surface did not appear';
@@ -1410,8 +1756,9 @@ export async function auditBuiltApp(
             Array.from(document.querySelectorAll('a[href]')).map(a => ({
                 href: a.getAttribute('href') || '', abs: (a as HTMLAnchorElement).href || '',
                 download: a.hasAttribute('download'),
+                text: [a.textContent, a.getAttribute('aria-label'), a.getAttribute('title')].filter(Boolean).join(' ').trim().slice(0, 120),
             })),
-        ).then((links: AppLink[]) => inAppRoutes(links, String(page.url() || url))).catch(() => []);
+        ).then((links: AppLink[]) => inAppRoutes(linksThatDoNotDelete(links, door), String(page.url() || url))).catch(() => []);
         /** The addresses the landing page's presses reached (probeControls metrics.landedOn): screens to walk (learnPresses). */
         let homeLandings: string[] = [];
 
@@ -1481,11 +1828,14 @@ export async function auditBuiltApp(
          * events the panel has been able to render since the day it was written,
          * and which no audit had ever sent.
          */
-        const eyes = new AuditEyes({ watchSessionId: borrowed ? opts?.watchSessionId : undefined });
+        //  A private walk his panel is shown (§8) gets the same pointer and outlines, drawn over its frames (§2.4).
+        const eyes = new AuditEyes({ watchSessionId: borrowed ? opts?.watchSessionId : (door?.stream?.holding ? door.streamId : undefined) });
 
         /** A visible QA run must lose no action to a disconnected panel. */
         const eyeIsOpen = () => {
             if (!opts?.requireVisibleBrowser) return true;
+            //  §2.4, §8: paths 1 and 3 write nothing of his, so the walk goes on unwatched; 2T ends with its last watcher, as today.
+            if (door) return door.path !== '2t' || door.watching();
             try {
                 const { panelWatcherCount } = require('../../modules/browser/wsHub');
                 return !!opts.watchSessionId && panelWatcherCount(opts.watchSessionId) > 0;
@@ -1525,6 +1875,8 @@ export async function auditBuiltApp(
         // per-page minimum after the deadline: on a route-heavy app that made
         // the browser appear frozen for minutes after "pressing" had started.
         const remainingWalkMs = () => Math.max(0, walkUntil - Date.now());
+        /** Path 3's guard and every fenced path's fence, handed to each press of the walk (behaviour-audit ProbeOptions.noWrite / fence). */
+        const qaProbe: Record<string, any> = door ? { ...(door.guard ? { noWrite: door.guard } : {}), ...(door.fence ? { fence: door.fence } : {}) } : {};
         const probeOpts = (formScope = 'desktop:/', formContext = '/') => ({
             eyes,
             budgetMs: Math.min(CONTROL_PASS_BUDGET_MS * scale, remainingWalkMs()),
@@ -1541,6 +1893,7 @@ export async function auditBuiltApp(
             onProgress: opts?.onProgress,
             //  A walk thrown back to the sign-in form signs in again (sign-in.ts).
             ...(signInAccount ? { signIn: signInAccount } : {}),
+            ...qaProbe,
         });
         /** The views already walked, and each page that only showed one of them again (viewKey). */
         const seenViews = new Map<string, string>();
@@ -1555,7 +1908,8 @@ export async function auditBuiltApp(
             let where = '';
             try { where = givenUrl ? new URL(givenUrl).pathname : ''; } catch { /* the folder is enough */ }
             const who = opts?.credentials?.identity || opts?.credentials?.email || opts?.credentials?.role || '';
-            return `${path.resolve(distDir)}|${where}|${who}|${code}`;
+            //  A walk on one path never carries the parts of a walk on another (§2.3).
+            return `${path.resolve(distDir)}|${where}|${who}|${code}` + (door ? `|${door.path}` : '');
         })();
         const kept = code ? keptWalks.get(walkKey) : undefined;
         const carried: Map<string, any> = kept && Date.now() - kept.at < KEPT_WALK_FRESH_MS ? kept.parts : new Map();
@@ -1598,7 +1952,8 @@ export async function auditBuiltApp(
         const reenter = async () => {
             if (!signInAccount) return;
             await page.waitForTimeout(300).catch(() => { });
-            if (await showsSignInForm(page)) await signInThroughPage(page, signInAccount, { timeoutMs: 8_000 }).catch(() => undefined);
+            const account = signInAccount;
+            if (await showsSignInForm(page)) await signingIn(door, account, () => signInThroughPage(page, account, { timeoutMs: 8_000 })).catch(() => undefined);
         };
         const budgetFinding = () => ({
             id: 'qa_budget_exhausted', severity: 'medium' as const,
@@ -1623,7 +1978,9 @@ export async function auditBuiltApp(
             }
             mergeProbe(homeProbe, '/');
             homeLandings = Array.isArray(homeProbe?.metrics?.landedOn) ? homeProbe.metrics.landedOn : [];
-            if (opts?.externalApi) {
+            //  §4.2: on a change run its real upstream request would reach the fence and be refused: not tried, told.
+            if (opts?.externalApi && door) door.notTried('scenario: outside service');
+            else if (opts?.externalApi) {
                 opts?.onProgress?.(`external-api:${opts.externalApi.capability}: validating live request, loading, failure, and recovery`);
                 const scenarioStart = successfulExternalRequests.length;
                 let failNextRequest = false;
@@ -1832,9 +2189,10 @@ export async function auditBuiltApp(
             const links: AppLink[] = await page.evaluate(() =>
                 Array.from(document.querySelectorAll('a[href]')).map(a => ({
                     href: a.getAttribute('href') || '', abs: (a as HTMLAnchorElement).href || '', download: a.hasAttribute('download'),
+                    text: [a.textContent, a.getAttribute('aria-label'), a.getAttribute('title')].filter(Boolean).join(' ').trim().slice(0, 120),
                 })),
             ).catch(() => []);
-            for (const found of inAppRoutes(links, String(page.url() || url))) learnRoute(found, from, 'by a link');
+            for (const found of inAppRoutes(linksThatDoNotDelete(links, door), String(page.url() || url))) learnRoute(found, from, 'by a link');
             learnPresses(from, probe?.metrics?.landedOn);
         };
         learnPresses('/', homeLandings);
@@ -1982,6 +2340,7 @@ export async function auditBuiltApp(
                 isolateBaselineControls: true,
                 reachOnly: pressedOnDesktop,
                 baselineViewport: { width: 390, height: 844 },
+                ...qaProbe,
             });
             if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             const cut = (phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) && !remainingWalkMs();
@@ -2065,6 +2424,7 @@ export async function auditBuiltApp(
                         reachOnly: pressedOnDesktop,
                         baselineViewport: { width: size.w, height: size.h },
                         ...(signInAccount ? { signIn: signInAccount } : {}),
+                        ...qaProbe,
                     });
                     if (responsive.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
                     //  Each width of each screen said, with what it checked and how long it took.
@@ -2228,7 +2588,9 @@ export async function auditBuiltApp(
             }
         }
 
-        if (isMediaReviewRequest(weatherRequest)) {
+        //  §5.3: the media review sends and deletes records; on path 3 it is not run, and told.
+        if (isMediaReviewRequest(weatherRequest) && door?.path === 'no-write') door.notTried('scenario: media review');
+        else if (isMediaReviewRequest(weatherRequest)) {
             const mediaQa = await runMediaReviewQa({
                 page,
                 url,
@@ -2329,7 +2691,10 @@ export async function auditBuiltApp(
             formsPersisted: behaviourMetrics.formsPersisted, qaRecordsDeleted: behaviourMetrics.qaRecordsDeleted,
         });
         const unproven = journeys.filter(j => !j.proven);
-        if (unproven.length) behaviour.findings.push({
+        //  §5.3: on path 3 a journey needs a write the walk does not make: not measured on his live data, never «not proven».
+        if (door?.path === 'no-write') {
+            for (const j of unproven) { j.why = LIVE_DATA_NOT_MEASURED; door.notTried(`journey: ${j.en}`); }
+        } else if (unproven.length) behaviour.findings.push({
             code: 'journey_not_proven', severity: 'minor',
             ar: `لم تثبت ${unproven.length} من رحلات ${profile.ar} التي طلبتها: ${unproven.map(j => `${j.ar} (${j.why})`).join('، ')}`,
             en: `${unproven.length} journey(s) of ${profile.en} the request named were not proven: ${unproven.map(j => `${j.en} (${j.why})`).join('; ')}`,
@@ -2438,6 +2803,20 @@ export async function auditBuiltApp(
                         : {}),
             });
         }
+        /*
+         * W9c: a page whose own script, module or stylesheet the fence refused (an SDK on a CDN, a font host) is not
+         * judged on that script: its page errors, «empty page» and dead controls are «not tried: the page needs <host>».
+         */
+        if (door?.refusedAssets.size) {
+            const needs = [...door.refusedAssets].filter(Boolean).slice(0, 4).join(', ');
+            const judgedOnIt = new Set(['page_errors', 'empty_page', 'some_dead_controls', 'dead_controls']);
+            const kept = findings.filter(f => !judgedOnIt.has(f.id));
+            if (kept.length < findings.length) {
+                door.notTried(`page: the page needs ${needs}`);
+                findings.length = 0;
+                findings.push(...kept);
+            }
+        }
 
         /**
          * AND IF THE PRODUCT WAS NEVER REACHED, NOTHING ELSE HERE IS TRUE.
@@ -2461,7 +2840,9 @@ export async function auditBuiltApp(
                 detailEn: `After signing in, a reload of the page showed the sign-in form again: whoever refreshes the page is signed out${said ? `. The server refused these requests, sent before the saved session was put back: ${said}` : ''}. Restore the saved session before the first request a screen sends (set the token when the app starts, not in an effect that runs after its children's), and never sign the user out on a 401 sent without it`,
             });
         }
-        if (opts?.credentials && !frontDoor?.recovered && !authenticated) {
+        //  W9b: a sign-in that failed only because the fence refused or the guard stopped its request is «not tried».
+        if (opts?.credentials && !frontDoor?.recovered && !authenticated && signInBlocked) door?.notTried('journey: sign-in (a request it sends was stopped by the checks)');
+        else if (opts?.credentials && !frontDoor?.recovered && !authenticated) {
             findings.push({
                 id: 'auth_failed', severity: 'high',
                 detail: `تعذّر إثبات الدخول المحمي بالحساب المعطى: ${authError || 'رفض الخادم بيانات الدخول'}`,
@@ -2533,7 +2914,7 @@ export async function auditBuiltApp(
             controlsDiscovered: behaviourMetrics.controlsDiscovered,
             controls: allControls,
             ...(pdfCapture ? { pdfs: await pdfCapture.settle() } : {}),
-            ...(opts?.externalApi ? {
+            ...(opts?.externalApi && !door ? {
                 externalApiRuntime: externalRuntimeEvidence || externalApiRuntimeFromBrowserEvidence(
                     opts.externalApi,
                     successfulExternalRequests,
@@ -2583,6 +2964,8 @@ export async function auditBuiltApp(
         }
         // Only a browser WE launched is ours to close — closing the panel's
         // would take his own browser down with the audit.
+        //  A change run's private context: the stream and the guard first, every page to about:blank (W1).
+        if (door) await closePrivatePage(door);
         if (!borrowed) { try { await browser?.close(); } catch { /* already gone */ } }
         // The callback form is not decoration: closing a server that never
         // listened (the serveUrl path) emits an 'error' with no listener, and
