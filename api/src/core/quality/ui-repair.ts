@@ -97,19 +97,20 @@ export function repairHtmlShell(html: string, opts: { isArabic?: boolean; title?
         const latinLetters = (words.match(/[A-Za-z]/g) || []).length;
         const appShell = rtlLetters + latinLetters === 0;
         /*
-         * Review r40-2 (C6): Vite's shell (and the templates') is <html lang="en"> around an empty
-         * <div id="root">. That lang is the template's default, not the page's decision — the page has
-         * no words of its own — so an Arabic React app lost dir="rtl" after every mend. On an app shell
-         * with no dir of its own, lang="en" follows the reply language like a shell with no lang; any
-         * other lang, or a dir, is a choice somebody made and is kept.
+         * AN EXISTING lang OR dir IS NEVER CHANGED (review 3 of r40, finding 10). Review r40-2
+         * (C6) rewrote a Vite shell's lang="en" around an empty #root into lang="ar" dir="rtl"
+         * whenever the REQUEST was Arabic; but an Arabic speaker asking for an English site
+         * gets that same shell with a deliberate lang="en", and the mend laid the whole app
+         * out right to left. The two cannot be told apart from the shell, so the shell's lang
+         * is the page's: lang is added only to an <html> with none (from the page's words, the
+         * reply language only for an empty shell), dir="rtl" only for a right-to-left page
+         * (its own lang, or the lang just added) that has no dir.
          */
-        const templateLang = appShell && /^en(?:-|$)/i.test(langAttr) && !/\bdir\s*=/i.test(before);
-        const pageRtl = langAttr && !templateLang
+        const pageRtl = langAttr
             ? RTL_LANG.test(langAttr)
             : appShell ? isAr : rtlLetters >= latinLetters;
         if (!langAttr) tag = tag.replace(/<html\b/i, `<html lang="${pageRtl ? (/[֐-׿]/.test(words) && !/[؀-ۿ]/.test(words) ? 'he' : 'ar') : 'en'}"`);
-        else if (templateLang && pageRtl) tag = tag.replace(/(\blang\s*=\s*["']?)[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*/i, '$1ar');
-        if (pageRtl && !/\bdir\s*=/.test(tag)) tag = tag.replace(/<html\b/i, '<html dir="rtl"');
+        if (pageRtl && !/\bdir\s*=/i.test(tag)) tag = tag.replace(/<html\b/i, '<html dir="rtl"');
         if (tag !== before) {
             text = text.replace(before, tag);
             add(repairs, 'html_lang', 'أضفتُ لغة المستند واتجاهه إلى وسم <html>', 1);

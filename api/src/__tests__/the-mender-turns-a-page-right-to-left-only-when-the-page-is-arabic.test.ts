@@ -8,6 +8,14 @@
  * page after any mend (tap targets, field types), and the mend was kept. The page's
  * direction is the page's: its own lang, else its own words; the reply language
  * only for an empty app shell.
+ *
+ * AN EXISTING lang OR dir IS NEVER CHANGED (review 3 of r40, finding 10). Lang is
+ * added only to an <html> with none, and dir="rtl" only to a right-to-left page with
+ * no dir. Review r40-2 (C6) had rewritten a Vite shell's lang="en" to Arabic on an
+ * Arabic request; that shell's lang="en" may be the builder's deliberate choice (an
+ * Arabic speaker asking for an English site), and the mend then laid the whole app
+ * out right to left. The two cases below that asserted the rewrite now assert the
+ * opposite, deliberately: the shell keeps its lang="en".
  */
 import { repairHtmlShell } from '../core/quality/ui-repair';
 
@@ -57,21 +65,30 @@ describe('the page decides its own direction', () => {
         expect(tag).toMatch(/dir="rtl"/);
     });
     /**
-     *  Review r40-2 (C6), 2026-11-15: Vite's shell (SystemTools.ts, TemplateManagerTool) is
-     *  `<html lang="en">` around an empty `<div id="root">`. The lang is the template's default,
-     *  not the page's decision — the page has no words of its own — so an Arabic React app lost
-     *  dir="rtl" after every mend and was laid out left to right.
+     *  Review 3 of r40 (finding 10), 2026-11-15: a Vite shell's `<html lang="en">` around an empty
+     *  `<div id="root">` is indistinguishable from a builder's deliberate lang="en" on an English
+     *  site an Arabic speaker asked for. Review r40-2 (C6) rewrote it to lang="ar" dir="rtl" on an
+     *  Arabic request and turned that English app right to left; the existing lang is now kept.
      */
-    test('a Vite shell carrying the template\'s lang="en" follows the reply language: Arabic', () => {
-        const tag = tagOf(repairHtmlShell(shell('<html lang="en">', '<div id="root"></div><script type="module" src="/src/main.jsx"></script>', 'Vite + React'), { isArabic: true }).text);
-        expect(tag).toMatch(/dir="rtl"/);
-        expect(tag).toMatch(/lang="ar"/);
-        expect(tag).not.toMatch(/lang="en"/);
+    test('a Vite shell with lang="en" keeps it on an Arabic request: an existing lang is never changed', () => {
+        const html = shell('<html lang="en">', '<div id="root"></div><script type="module" src="/src/main.jsx"></script>', 'Vite + React');
+        const out = repairHtmlShell(html, { isArabic: true });
+        expect(tagOf(out.text)).toBe('<html lang="en">');
+        expect(out.repairs.map(r => r.id)).not.toContain('html_lang');
     });
-    test('a template shell whose only words are the template\'s (its <noscript>) follows the reply language too', () => {
-        const tag = tagOf(repairHtmlShell(shell('<html lang="en">', '<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>'), { isArabic: true }).text);
+    test('a template shell with lang="en" whose only words are its <noscript> keeps its lang too', () => {
+        expect(tagOf(repairHtmlShell(shell('<html lang="en">', '<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>'), { isArabic: true }).text)).toBe('<html lang="en">');
+    });
+    test('a template shell with NO lang whose only words are its <noscript> follows the reply language', () => {
+        const tag = tagOf(repairHtmlShell(shell('<html>', '<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>'), { isArabic: true }).text);
         expect(tag).toMatch(/dir="rtl"/);
         expect(tag).toMatch(/lang="ar"/);
+    });
+    test('an existing dir is never changed, even on a page whose words are the other way', () => {
+        const html = shell('<html dir="ltr">', '<h1>قائمة الطعام</h1><p>خبز طازج كل صباح</p>');
+        expect(tagOf(repairHtmlShell(html, { isArabic: true }).text)).toBe('<html lang="ar" dir="ltr">');
+        const rtl = shell('<html lang="en" dir="rtl">', '<h1>Our menu</h1>');
+        expect(repairHtmlShell(rtl, { isArabic: false }).text).toBe(rtl);
     });
     test('the same shell in an English reply is left exactly as it is', () => {
         const html = shell('<html lang="en">', '<div id="root"></div><script type="module" src="/src/main.jsx"></script>');

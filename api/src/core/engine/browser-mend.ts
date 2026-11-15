@@ -90,14 +90,20 @@ export function refusingScore(audit: { score?: number; findings?: MendFinding[] 
  * user's stylesheets. A told line never opens a round, never feeds one, and is
  * never what a round is kept or rolled back for (design v3 §2.3).
  */
-export function refusingMeasurement(audit: { score?: number; findings?: MendFinding[] } | null | undefined): {
-    score: number; findingIds: string[]; findings: Array<{ id: string; evidence?: any }>;
+export function refusingMeasurement(audit: { score?: number; findings?: MendFinding[]; uiInspection?: string } | null | undefined): {
+    score: number; findingIds: string[]; findings: Array<{ id: string; evidence?: any }>; told: string[]; inspection?: string;
 } {
-    const kept = ((audit?.findings || []) as MendFinding[]).filter(refuses);
+    const all = (audit?.findings || []) as MendFinding[];
+    const kept = all.filter(refuses);
+    //  Review 3 of r40 (11): the told ids and the walk's inspection status travel with every reading,
+    //  so the improve loop puts back a round that brought an inspector's told kind (toldKindsBrought).
+    const status = typeof audit?.uiInspection === 'string' ? audit.uiInspection : (all as any)[INSPECTION_STATUS];
     return {
         score: refusingScore(audit),
         findingIds: kept.map(f => String(f.id)),
         findings: kept.map(f => ({ id: String(f.id), evidence: f.evidence })),
+        told: all.filter(f => !refuses(f)).map(f => String(f?.id || '')).filter(Boolean),
+        ...(typeof status === 'string' ? { inspection: status } : {}),
     };
 }
 

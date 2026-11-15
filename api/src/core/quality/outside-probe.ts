@@ -137,20 +137,65 @@ export async function projectPdfTimes(root: string): Promise<Map<string, number>
     return out;
 }
 
-/** Kept at run start (loop.ts): rel → mtimeMs of the project's .pdf files. */
-export async function rememberPdfsAtRunStart(runId: string, root: string): Promise<void> {
-    if (!runId) return;
-    RUN_START_PDFS.set(runId, await projectPdfTimes(root));
-    while (RUN_START_PDFS.size > RUNS_KEPT) RUN_START_PDFS.delete(RUN_START_PDFS.keys().next().value as string);
-}
-export function pdfsAtRunStart(runId: string): Map<string, number> | undefined { return RUN_START_PDFS.get(runId); }
+/**
+ * The run starts' PDF times, kept with the run in the project's state folder too
+ * (.joe/pdfs-at-run-start.json), so a look after a Joe restart, a resume, or more
+ * than RUNS_KEPT runs in one process still knows which PDFs were already his
+ * (review 3 of r40, finding 9). The last RUNS_ON_DISK runs of the project are kept.
+ */
+export const RUN_START_FILE = 'pdfs-at-run-start.json';
+const RUNS_ON_DISK = 20;
+type RunStartRecord = { runId: string; at: number; pdfs: Record<string, number> };
 
-/** The .pdf files new or changed since the run began, outside the kit, ≤ 50 MB, newest first, at most 4. */
+async function readRunStarts(stateDir: string): Promise<RunStartRecord[]> {
+    try {
+        const o = JSON.parse(await fs.promises.readFile(path.join(stateDir, RUN_START_FILE), 'utf8'));
+        return Array.isArray(o?.runs) ? o.runs.filter((r: any) => r && typeof r.runId === 'string' && r.pdfs && typeof r.pdfs === 'object') : [];
+    } catch { return []; }
+}
+
+/** Kept at run start (loop.ts): rel → mtimeMs of the project's .pdf files, in memory and, given stateDir, on disk. */
+export async function rememberPdfsAtRunStart(runId: string, root: string, stateDir?: string): Promise<void> {
+    if (!runId) return;
+    const times = await projectPdfTimes(root);
+    RUN_START_PDFS.set(runId, times);
+    while (RUN_START_PDFS.size > RUNS_KEPT) RUN_START_PDFS.delete(RUN_START_PDFS.keys().next().value as string);
+    if (!stateDir) return;
+    try {
+        const runs = (await readRunStarts(stateDir)).filter(r => r.runId !== runId);
+        runs.push({ runId, at: Date.now(), pdfs: Object.fromEntries(times) });
+        await fs.promises.mkdir(stateDir, { recursive: true });
+        const file = path.join(stateDir, RUN_START_FILE);
+        await fs.promises.writeFile(`${file}.tmp`, JSON.stringify({ runs: runs.slice(-RUNS_ON_DISK) }));
+        await fs.promises.rename(`${file}.tmp`, file);
+    } catch { /* the memory copy still answers in this process */ }
+}
+
+/** The PDFs the project had when this run began: from memory, else from the run's record in stateDir; undefined when neither knows. */
+export async function pdfsAtRunStart(runId: string, stateDir?: string): Promise<Map<string, number> | undefined> {
+    const kept = RUN_START_PDFS.get(runId);
+    if (kept || !runId || !stateDir) return kept;
+    const rec = (await readRunStarts(stateDir)).find(r => r.runId === runId);
+    if (!rec) return undefined;
+    return new Map(Object.entries(rec.pdfs).filter(([, at]) => typeof at === 'number') as Array<[string, number]>);
+}
+
+/** Tests: forget the in-memory copy (as a restarted Joe would). */
+export function forgetRunStartsInMemoryForTests(): void { RUN_START_PDFS.clear(); }
+
+/**
+ * The .pdf files new or changed since the run began, outside the kit, ≤ 50 MB, newest
+ * first, at most 4. When the run's start is not known (`before` undefined) NO project
+ * PDF counts as written by the delivery — an owner's contract in docs/ or his sample
+ * invoices are never read, named or sent to the builder as the delivery's; only the
+ * PDFs the Browser QA walk captured are then looked at (review 3 of r40, finding 9).
+ */
 export async function writtenPdfs(root: string, before: Map<string, number> | undefined): Promise<Array<{ rel: string; abs: string }>> {
+    if (!before) return [];
     const now = await projectPdfTimes(root);
     const fresh: Array<{ rel: string; abs: string; at: number }> = [];
     for (const [rel, at] of now) {
-        if (before && before.get(rel) === at) continue;
+        if (before.get(rel) === at) continue;
         const abs = path.join(root, rel);
         try { const st = await fs.promises.stat(abs); if (!st.isFile() || !st.size || st.size > MAX_ONE) continue; } catch { continue; }
         fresh.push({ rel, abs, at });
@@ -200,7 +245,7 @@ const routeDetail = (rel: string, m: Mechanism) => `${rel}:${m.line} makes the P
  * (not right-to-left, no PDF mechanism and no PDF) — then the delivery is as it was.
  */
 export async function lookAtPdfs(input: PdfLookInput): Promise<PdfLook | null> {
-    const written = await writtenPdfs(input.root, pdfsAtRunStart(input.runId));
+    const written = await writtenPdfs(input.root, await pdfsAtRunStart(input.runId, input.stateDir));
     const captured = (input.captured || []).filter(c => c && c.path && fs.existsSync(c.path)).slice(0, 12);
     const hinted = await filesWithHints(input.root);
     if (!written.length && !captured.length && !hinted.length) return null;
@@ -209,8 +254,10 @@ export async function lookAtPdfs(input: PdfLookInput): Promise<PdfLook | null> {
     const slot = input.slot || withLookSlot;
     const r = await slot({ budgetMs, waitMs: Math.min(20_000, budgetMs - 30_000), signal: input.signal }, async (look, leftMs) => {
         const lookEnds = Date.now() + leftMs;
-        const stopped = new Promise<void>(resolve => { if (look.aborted) resolve(); else look.addEventListener('abort', () => resolve(), { once: true }); });
-        const cancelled = input.cancelled ? Promise.race([stopped, input.cancelled]) : stopped;
+        //  The look's own signal stops its children (it is aborted by the run's signal, its
+        //  budget or its slot); the run's long-lived `cancelled` promise is read only by a
+        //  caller with no signal (review 3 of r40, 11: one cancel handler per call, removed).
+        const cancelled = !input.signal && input.cancelled ? input.cancelled : undefined;
         const items: ScanItem[] = [
             { kind: 'pages', paths: input.servedIndex ? [input.servedIndex] : [], request: input.request, language: input.language },
             ...hinted.map(h => ({ kind: 'file' as const, path: h.abs, rel: h.rel })),

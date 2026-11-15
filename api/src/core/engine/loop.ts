@@ -20,7 +20,7 @@ import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
 import { firstMessage, languageReminder, languageSection, noteInWrongScript, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
-import { pdfBriefAfterWrite, pdfBriefAtStart, type PdfBriefState } from './pdf-brief';
+import { pdfBriefAfterWrite, pdfRunStart, pdfStartScan, type PdfBriefState } from './pdf-brief';
 import { operatorFirstMessage, operatorSystemPrompt } from './operate';
 import type { FinishArgs } from './finish';
 import type {
@@ -296,6 +296,27 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         ...(req.change ? { change: req.change } : {}),
     };
 
+    //  The Arabic-PDF brief and kit, once per run (pdf-brief.ts): '' for every other request.
+    //  The project's PDFs are remembered first (fs only, no child), before anything of this
+    //  run can write one. The request's scan child is NEVER awaited before the first model
+    //  call (review 3 of r40, finding 8): it starts here, runs beside the work before the
+    //  model and the first model call, and its brief joins the first message only when it
+    //  has already answered — else the result of the first step after it answers.
+    const pdfBrief: PdfBriefState = { given: false };
+    //  Its children stop when the run is cancelled AND when the run ends: a start scan still
+    //  running at the end never places the kit after the delivery. One listener per run.
+    const pdfStop = new AbortController();
+    const stopPdf = () => pdfStop.abort();
+    if (req.signal.aborted) stopPdf(); else req.signal.addEventListener('abort', stopPdf, { once: true });
+    const pdfFacts = { runId: req.runId, request: req.request, language: req.language, projectDir: req.projectDir, stateDir, change: req.change, signal: pdfStop.signal };
+    let pdfStart: { done: boolean; brief: string; given: boolean; wait: Promise<string> } | null = null;
+    if (!req.operate) {
+        await pdfRunStart(pdfFacts).catch(() => { /* a later look then reads no project PDF as new */ });
+        const start = { done: false, brief: '', given: false, wait: Promise.resolve('') };
+        start.wait = pdfStartScan(pdfBrief, pdfFacts).catch(() => '').then(b => { start.done = true; start.brief = b; return b; });
+        pdfStart = start;
+    }
+
     const tools = new Map(deps.tools.map(t => [t.name, t] as const));
     const schemas: ToolSchema[] = deps.tools.map(t => ({
         type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters },
@@ -331,10 +352,9 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
 
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
-    //  The Arabic-PDF brief and kit, once per run (pdf-brief.ts): '' for every other request.
-    const pdfBrief: PdfBriefState = { given: false };
-    const pdfFacts = { runId: req.runId, request: req.request, language: req.language, projectDir: req.projectDir, change: req.change, signal: req.signal, cancelled };
-    const pdfOpening = req.operate ? '' : await pdfBriefAtStart(pdfBrief, pdfFacts).catch(() => '');
+    //  The run-start brief, when its scan answered during the work before the model (above).
+    const pdfOpening = pdfStart?.done ? pdfStart.brief : '';
+    if (pdfStart?.done) pdfStart.given = true;
     const opening = req.operate
         ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
         : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change, pdfOpening || undefined);
@@ -565,11 +585,19 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 const last = results[results.length - 1];
                 last.content = `${last.content}\n\n${languageReminder(req.replyLanguage || req.language)}`;
             }
-            //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
-            if (!ending && !req.operate && results.length && wroteFiles.length && !pdfBrief.given) {
-                const brief = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
-                if (brief) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${brief}`; }
+            //  The run-start scan has answered (or this step wrote a file, and its answer is
+            //  needed first — by now the model has been asked at least once): its brief
+            //  joins this step's last result, once.
+            let pdfLate = '';
+            if (!ending && results.length && pdfStart && !pdfStart.given && (pdfStart.done || (wroteFiles.length && !pdfBrief.given))) {
+                pdfLate = await pdfStart.wait;
+                pdfStart.given = true;
             }
+            //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
+            if (!ending && !req.operate && !pdfLate && results.length && wroteFiles.length && !pdfBrief.given) {
+                pdfLate = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
+            }
+            if (pdfLate) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${pdfLate}`; }
             for (const r of results) conv.push(r);
             if (!ending && images.length && deps.model.vision) {
                 //  Images reach a model only inside a user message. Only the
@@ -595,6 +623,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             }
         }
     } finally {
+        req.signal.removeEventListener('abort', stopPdf);
+        pdfStop.abort();
         served = deps.processes.list();
         try { await deps.processes.stopAll(); } catch { /* reported by the registry */ }
         if (browser) { try { await (browser as BrowserSession).close(); } catch { /* already closed */ } }
