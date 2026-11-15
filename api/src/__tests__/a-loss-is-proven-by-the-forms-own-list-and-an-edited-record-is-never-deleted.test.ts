@@ -288,11 +288,13 @@ test('a review kept as pending, on a site that lists only approved reviews, is n
     expect(codes).toContain('form_persistence_unmeasured');
 });
 
-test('…and a server that lists every review and kept none of the QA\'s is still refused', async () => {
+test('…and a server that lists every review and kept none of the QA\'s: a review\'s by-id 404 proves nothing (the fifth review, S5) — not measured, told', async () => {
     const all = [{ id: 1, name: 'Sara', text: 'Lovely stay', status: 'approved' }, { id: 2, name: 'Omar', text: 'Quiet room', status: 'pending' }];
     const { codes } = await walk(reviews(true), reviewsApi(all, false, true));
     expect(all.length).toBe(2);
-    expect(codes).toContain('form_persistence_unproven');
+    //  A moderated site answers its held reviews' by-id 404 while the approved ones answer 200: the same proof proves no loss.
+    expect(codes).not.toContain('form_persistence_unproven');
+    expect(codes).toContain('form_persistence_unmeasured');
 });
 
 test('a 404 the QA\'s own question got (the record a POST named, asked by its id) is never the product\'s failed request (the replay of P189)', () => {

@@ -47,7 +47,8 @@ export function appKitTarget(root: string): string {
  * A run that ends while the kit is copied gets nothing written after it ends (review 4
  * of r40, S5): every source is read and every target resolved first, the abort is
  * checked before each folder made and each file written, and an abort part way takes
- * back what this call wrote (its own files and the folders it made, nothing else).
+ * back what this call wrote (its own files and the folders it made, nothing else) — as does
+ * a write that fails part way, whose error is then thrown (review 5, M5).
  */
 export async function placeAppKit(root: string, signal?: AbortSignal): Promise<{ dir: string; written: string[]; kept: string[] }> {
     const none = { dir: '', written: [] as string[], kept: [] as string[] };
@@ -80,16 +81,30 @@ export async function placeAppKit(root: string, signal?: AbortSignal): Promise<{
         for (const d of [...new Set(madeDirs)].sort((a, b) => b.length - a.length)) await fs.promises.rmdir(d).catch(() => { /* not empty, or gone */ });
         return none;
     };
-    for (const w of writes) {
-        if (signal?.aborted) return takeBack();
-        const parent = path.dirname(w.abs);
-        //  The folders this write makes (mkdir's own answer may carry a long-path prefix on Windows).
-        for (let d = parent; d !== path.dirname(d) && !(await fs.promises.stat(d).then(() => true, () => false)); d = path.dirname(d)) madeDirs.push(d);
-        await fs.promises.mkdir(parent, { recursive: true });
-        if (signal?.aborted) return takeBack();
-        await fs.promises.writeFile(w.abs, w.bytes);
-        wroteAbs.push(w.abs);
-        written.push(w.rel);
+    /*
+     * …and a write that fails part way (EACCES, ENOSPC) takes back what this call wrote too (the fifth review
+     * of 2026-11-15, M5): a half kit with no brief was left in the app, and the error then said nothing.
+     */
+    let writing = '';
+    try {
+        for (const w of writes) {
+            if (signal?.aborted) return takeBack();
+            const parent = path.dirname(w.abs);
+            //  The folders this write makes (mkdir's own answer may carry a long-path prefix on Windows).
+            for (let d = parent; d !== path.dirname(d) && !(await fs.promises.stat(d).then(() => true, () => false)); d = path.dirname(d)) madeDirs.push(d);
+            await fs.promises.mkdir(parent, { recursive: true });
+            if (signal?.aborted) return takeBack();
+            writing = w.abs;
+            await fs.promises.writeFile(w.abs, w.bytes);
+            writing = '';
+            wroteAbs.push(w.abs);
+            written.push(w.rel);
+        }
+    } catch (error) {
+        //  The file cut part way was not there before (planned only then): it goes too.
+        if (writing) wroteAbs.push(writing);
+        await takeBack();
+        throw error;
     }
     if (signal?.aborted) return takeBack();
     return { dir, written, kept };

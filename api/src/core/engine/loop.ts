@@ -608,14 +608,21 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             //  needed first — by now the model has been asked at least once): its brief
             //  joins this step's last result, once, and the kit is placed now, with it —
             //  between steps, never for a step that ended the run (review 4 of r40, S5).
+            /*
+             * …and never at the end of a step after which the loop stops (review 5 of r40, M6): the stall's last
+             * warning, the deadline, a cancel — the brief would join a conversation no model call reads, and the
+             * kit would ship without it.
+             */
+            const stopsAfterThisStep = !!ending || req.signal.aborted || now() >= req.deadlineAt
+                || (!progressed && quietSteps + 1 >= STALL_STEPS && warnings >= 2);
             let pdfLate = '';
-            if (!ending && results.length && pdfStart && !pdfStart.used && (pdfStart.done || (wroteFiles.length && !pdfBrief.given))) {
+            if (!stopsAfterThisStep && results.length && pdfStart && !pdfStart.used && (pdfStart.done || (wroteFiles.length && !pdfBrief.given))) {
                 const give = await pdfStart.wait;
                 pdfStart.used = true;
                 if (give && !req.signal.aborted) pdfLate = await pdfGiveBrief(pdfBrief, pdfFacts).catch(() => '');
             }
             //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
-            if (!ending && !req.operate && !pdfLate && results.length && wroteFiles.length && !pdfBrief.given) {
+            if (!stopsAfterThisStep && !req.operate && !pdfLate && results.length && wroteFiles.length && !pdfBrief.given) {
                 pdfLate = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
             }
             if (pdfLate) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${pdfLate}`; }

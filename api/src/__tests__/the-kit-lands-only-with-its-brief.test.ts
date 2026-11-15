@@ -25,7 +25,7 @@ import { getEventListeners } from 'events';
 import { findJoeAsset } from '../core/quality/outside-scan';
 import { placeAppKit, KIT_FILES, KIT_FONTS } from '../core/engine/app-kit';
 import { rememberPdfsAtRunStart, RUN_START_FILE } from '../core/quality/outside-probe';
-import { runEngine, type EngineDeps } from '../core/engine/loop';
+import { runEngine, STALL_STEPS, type EngineDeps } from '../core/engine/loop';
 import { finishTool, type Verifier } from '../core/engine/finish';
 import { planUpdateTool } from '../core/engine/plan';
 import type { BrowserSession, ChatMessage, EngineEvent, EngineModel, ModelStep, ProcessRegistry, ToolSchema, VerificationReport } from '../core/engine/types';
@@ -192,6 +192,61 @@ describe('S5 — the kit lands only when the brief is given, between steps', () 
         //  Without an abort the kit is whole.
         const whole = await placeAppKit(dir, new AbortController().signal);
         expect(whole.written.length).toBe(KIT_FILES.length + Object.keys(KIT_FONTS).length);
+    });
+});
+
+describe('review 5 of r40 — M5: a failed copy is taken back; M6: no kit at the end of a step after which the loop stops', () => {
+    it('a write that fails part way (EACCES): what this call wrote is taken back, and the error is thrown', async () => {
+        if (!hasKit()) return;
+        const dir = project();
+        const original = fs.promises.writeFile;
+        let n = 0;
+        const spy = jest.spyOn(fs.promises, 'writeFile').mockImplementation((async (file: any, ...rest: any[]) => {
+            if (String(file).startsWith(dir) && ++n === 3) throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+            return (original as any).call(fs.promises, file, ...rest);
+        }) as any);
+        try {
+            await expect(placeAppKit(dir, new AbortController().signal)).rejects.toThrow(/EACCES/);
+            expect(n).toBe(3);
+            expect(fs.existsSync(path.join(dir, 'vendor'))).toBe(false);
+        } finally { spy.mockRestore(); }
+    });
+
+    it('the scan answers during a step that runs past the deadline: the loop stops, and no kit is placed', async () => {
+        if (!hasKit()) return;
+        const dir = project();
+        const scan = holdScan();
+        try {
+            const result = await runEngine({
+                runId: `run-${path.basename(dir)}`, request: 'اعمل تطبيق فواتير مع زر طباعة', language: 'ar', projectDir: dir,
+                deadlineAt: Date.now() + 1500, signal: new AbortController().signal, emit: (_e: EngineEvent) => { /* unused */ }, joe: {},
+            } as any, deps(model(async k => {
+                scan.answer();
+                await sleep(2000);                         // the deadline passes during this step
+                return { text: '', toolCalls: [{ id: `c${k}`, name: 'nothing_here', arguments: '{}' }], durationMs: 1 };
+            })));
+            expect(result.status).toBe('failed');
+            await sleep(300);
+            expect(fs.existsSync(path.join(dir, 'vendor', 'joe-kit'))).toBe(false);
+        } finally { scan.restore(); }
+    });
+
+    it('the scan answers during the step on which the stall ends the run: no kit is placed', async () => {
+        if (!hasKit()) return;
+        const dir = project();
+        const scan = holdScan();
+        const last = 3 * STALL_STEPS - 1;               // the 24th step: its stall is the third, and the run ends after it
+        try {
+            const result = await run(dir, deps(model(async k => {
+                if (k === last) { scan.answer(); await sleep(400); }
+                //  A different call each step (never «the same failing call»), none of which changes anything.
+                return { text: '', toolCalls: [{ id: `c${k}`, name: 'nothing_here', arguments: JSON.stringify({ step: k }) }], durationMs: 1 };
+            })));
+            expect(result.status).toBe('failed');
+            expect(String(result.reason || '')).toMatch(/nothing changed/);
+            await sleep(300);
+            expect(fs.existsSync(path.join(dir, 'vendor', 'joe-kit'))).toBe(false);
+        } finally { scan.restore(); }
     });
 });
 

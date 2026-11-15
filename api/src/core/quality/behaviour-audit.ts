@@ -1267,6 +1267,11 @@ export function shownRecordIds(): string[] {
         const tail = v.match(/^[A-Za-z][\w]*?[-_:#](\d{1,19})$/);
         if (tail) out.add(tail[1]);
     };
+    //  …and the page's own address (the fifth review of 2026-11-15, B1): /bookings/1 is booking 1's page, whatever its card shows.
+    try {
+        for (const part of location.pathname.split('/').filter(Boolean)) { let p = part; try { p = decodeURIComponent(part); } catch { /* kept */ } if (idLike(p)) add(p); }
+        new URLSearchParams(location.search).forEach(v => { if (idLike(v.trim())) add(v.trim()); });
+    } catch { /* no address */ }
     const nodes = Array.from(document.querySelectorAll('*')).slice(0, 20_000);
     for (const n of nodes) {
         for (const a of Array.from(n.attributes)) {
@@ -1413,7 +1418,8 @@ export function idsInJson(body: string, max = 2000): string[] {
     const out = new Set<string>();
     const walk = (v: unknown, depth: number) => {
         if (out.size >= max || depth > 6 || !v || typeof v !== 'object') return;
-        if (Array.isArray(v)) { for (const x of v.slice(0, 1000)) walk(x, depth + 1); return; }
+        //  …every row of a long list, up to `max` ids (the fifth review, S6: a list of 4 500 lost its last 3 500).
+        if (Array.isArray(v)) { for (const x of v.slice(0, Math.max(1000, max))) walk(x, depth + 1); return; }
         for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
             if (/^(?:id|_id|uuid)$/i.test(k) && (typeof x === 'string' || typeof x === 'number') && String(x) !== '' && String(x).length <= 80) out.add(String(x));
             else if (x && typeof x === 'object') walk(x, depth + 1);
@@ -1474,9 +1480,8 @@ export function idForms(id: string): string[] {
  * The fourth review of 2026-11-15 (B1, guard 3): an owner's edited booking gained «Note:», a label
  * drawn only when a note exists, and «a word the QA did not type» made it «a new row» — deleted. What
  * the row says is now only a veto: the delete itself is let through only for a record whose id the
- * server answered to the QA's own create (guardDeletes). And (S3b) a row a paginated or «latest N»
- * list pushed off the page never makes the QA's create «an edit» when the ids the server named for
- * the QA's record are all new: the text is not read then at all.
+ * server answered to the QA's own create (guardDeletes). The text is not read only for a row whose
+ * own ids hold the id the server gave the QA's create (the fifth review of 2026-11-15 took back S3b).
  */
 /**
  * In Node: whether the QA may delete the one row that carries its form's mark (ok) — a veto only, the
@@ -1489,6 +1494,8 @@ export function idForms(id: string): string[] {
 export function ownRowVerdict(arg: {
     mark: string; rowText: string; rowIds: string[]; markedIds?: string[]; typed: string[];
     beforeIds: Set<string> | string[]; beforeRows: string[]; nowRows: string[];
+    /** The ids the server gave the QA's own creates (guardDeletes' pairs): a row carrying one is the QA's own. */
+    allowedIds?: string[];
 }): { ok: boolean; edited: boolean; why: string; id?: string } {
     const mark = String(arg.mark || '').toLowerCase();
     const text = String(arg.rowText || '').toLowerCase();
@@ -1497,8 +1504,14 @@ export function ownRowVerdict(arg: {
     for (const id of arg.beforeIds instanceof Set ? [...arg.beforeIds] : (arg.beforeIds || [])) for (const f of idForms(String(id))) before.add(f);
     const old = [...(arg.rowIds || []), ...(arg.markedIds || [])].map(String).find(id => idForms(id).some(f => before.has(f)));
     if (old) return { ok: false, edited: true, why: `its record (id ${old}) was on the page before the QA started`, id: old };
-    //  The server named the QA's record, every id it named is new, and the page had shown ids to compare with: no row's text says otherwise (S3b).
-    if ((arg.markedIds || []).filter(Boolean).length && [...before].some(looksLikeRecordId)) return { ok: true, edited: false, why: '' };
+    /*
+     * The row itself carries the id the server gave the QA's own create: no row's text says otherwise. The
+     * fifth review of 2026-11-15 (B1): «the server named an id, and the page showed any id-like value» (a
+     * customer link's 12, a pager's 2) turned the text off for an owner's booking card — the text always
+     * runs now, unless the row's own ids hold the allowed one, exactly.
+     */
+    const allowedIds = new Set((arg.allowedIds || []).map(String).filter(Boolean));
+    if (allowedIds.size && (arg.rowIds || []).some(id => allowedIds.has(String(id)))) return { ok: true, edited: false, why: '' };
     //  The row's own words, without what the QA typed: are they a row that was there and is gone (edited)?
     const typed = new Set((arg.typed || []).flatMap(rowWords));
     const left = rowWords(text).filter(w => !w.includes(mark) && !typed.has(w));
@@ -2061,6 +2074,13 @@ export function saysSuccess(text: string): boolean {
         if (before.some(w => DENIAL_BEFORE.test(w))) continue;
         if (after.some(w => DENIAL_AFTER.test(w))) continue;
         if (/^\s*[?؟]\s*(?:not\s+yet|no\b|nope\b|ليس\s+بعد|لا\s|لم\s)/iu.test(tail)) continue;
+        /*
+         * …and «but not» after it, in its sentence, takes it back (the fifth review of 2026-11-15, M4): «Saved,
+         * but not to the server», «تم الحفظ، لكن لم يُرسل البريد» — a clause cut at «,» dropped the «but».
+         */
+        const sentence = tail.split(/[.!?؟\n]/u)[0] || '';
+        if (/(?:^|[\s,،;؛—–-])(?:but|however)\s+(?:not|never|\w+n't|\w+n’t)(?=\s|$|[,.;:!?])/iu.test(sentence)) continue;
+        if (/(?:^|[\s,،;؛—–-])و?لكن(?:ه|ها|هم)?\s+(?:لم|لا|لن)(?=\s|$)/u.test(sentence)) continue;
         if (m[1] && /^(?:ال)?(?:رفض|إلغاء|الغاء|ألغاء)/u.test(after[0] || '')) continue;
         return true;
     }
@@ -2294,7 +2314,10 @@ export function watchWrites(page: any): {
             if (status >= 200 && status < 300) {
                 if (method !== 'DELETE') {
                     saved++; written.push(at);
-                    const entry = { at, body: bodyOf(response), method, status, answer: '', location: '' };
+                    //  …and where a 201 says the record is (Location: /items/7): its id, when the answer names none (ownCreated).
+                    let location = '';
+                    try { const l = String(response.headers()?.location || ''); location = l ? new URL(l, at).href : ''; } catch { location = ''; }
+                    const entry = { at, body: bodyOf(response), method, status, answer: '', location };
                     posts.push(entry);
                     //  What it answered (an id, a state such as «pending»): read as it arrives.
                     try { Promise.resolve(response.text()).then((t: any) => { entry.answer = String(t || '').slice(0, 20_000); }).catch(() => { }); } catch { /* no body */ }
@@ -2377,10 +2400,15 @@ export function watchReads(page: any): { list: () => Array<{ at: string; body: s
  *
  * The fourth review of 2026-11-15 (B1): the reads were watched only once probeForms started, so the
  * page's own load-time «GET /api/bookings» was never seen, and a page that polls evicted what it had
- * read (60 bodies). One watch per page, started by the first probe of a walk: every JSON answer to a GET
- * (and to a POST that only asks, a GraphQL query) adds its ids, with the moment each was first seen;
- * and what the document had read before the watch began is asked again beside the page (page.request,
- * nothing in its console), as the page asked it. This only ever VETOES a delete (guardDeletes).
+ * read (60 bodies). One watch per page, started with the walk before its first load (startWalkWatch):
+ * every JSON answer to a GET (and to a POST that only asks, a GraphQL query) adds its ids, with the
+ * moment each was first seen. This only ever VETOES a delete (guardDeletes).
+ *
+ * The fifth review of 2026-11-15 (S6): what the document had read before the watch was asked again
+ * beside the page, as GET — a POST's address too, and «/api/track?event=view», «/notifications/mark-read»
+ * repeated on the owner's live app. Nothing is asked again now. A body was cut at 400 KB before it was
+ * parsed, so the busiest lists gave no id at all: parsed up to 5 MB. And a GraphQL query whose «query»
+ * came after large «variables» was missed: read anywhere in the body.
  */
 type ReadIdsStore = { seq: () => number; before: (upTo: number) => Set<string>; ready: Promise<void> };
 export function readIdsStore(page: any): ReadIdsStore {
@@ -2390,8 +2418,6 @@ export function readIdsStore(page: any): ReadIdsStore {
     const take = (body: string, n: number) => {
         for (const id of idsInJson(body, 5000)) for (const f of idForms(id)) if (!ids.has(f) && ids.size < 50_000) ids.set(f, n);
     };
-    let host = '';
-    try { host = new URL(String(page.url())).hostname; } catch { host = ''; }
     const on = (response: any) => {
         try {
             const request = response?.request?.();
@@ -2400,32 +2426,17 @@ export function readIdsStore(page: any): ReadIdsStore {
             if (status < 200 || status >= 300 || !/json/i.test(String(response.headers()?.['content-type'] || ''))) return;
             if (method !== 'GET') {
                 const sent = String(request?.postData?.() || '');
-                if (method !== 'POST' || !/^\s*\{[\s\S]{0,200}"query"\s*:\s*"\s*(?:query\b|\{)/.test(sent)) return;
+                if (method !== 'POST' || !/"query"\s*:\s*"\s*(?:query\b|\{)/.test(sent.slice(0, 1_000_000))) return;
             }
             const n = ++seq;
-            Promise.resolve(response.text()).then((t: any) => take(String(t || '').slice(0, 400_000), n)).catch(() => { });
+            Promise.resolve(response.text()).then((t: any) => { const text = String(t || ''); if (text.length <= 5_000_000) take(text, n); }).catch(() => { });
         } catch { /* an answer that cannot be read tells nothing */ }
     };
     try { page.on('response', on); } catch { /* a page without events */ }
-    const ready = (async () => {
-        if (typeof page?.request?.get !== 'function' || typeof page?.evaluate !== 'function') return;
-        const urls: string[] = await page.evaluate(() => Array.from(new Set((performance.getEntriesByType('resource') as any[])
-            .filter(e => /^(?:fetch|xmlhttprequest)$/.test(String(e.initiatorType || ''))).map(e => String(e.name || ''))))).catch(() => [] as string[]);
-        const asked = (urls || []).filter(u => {
-            try { const x = new URL(u); return /^https?:$/.test(x.protocol) && (!host || x.hostname === host); } catch { return false; }
-        }).filter(u => !/log-?out|sign-?out|delete|remove|destroy|reset|clear|purge/i.test(u)).slice(-12);
-        const one = async (u: string) => {
-            try {
-                const r = await page.request.get(u, { headers: { accept: 'application/json' }, timeout: 3000, failOnStatusCode: false });
-                if (r.status() >= 200 && r.status() < 300 && /json/i.test(String(r.headers()?.['content-type'] || ''))) take(String(await r.text()).slice(0, 400_000), 0);
-            } catch { /* not asked again */ }
-        };
-        await Promise.race([Promise.all(asked.map(one)), new Promise(resolve => setTimeout(resolve, 5000))]);
-    })().catch(() => { });
     const store: ReadIdsStore = {
         seq: () => seq,
         before: (upTo: number) => { const out = new Set<string>(); for (const [id, n] of ids) if (n <= upTo) out.add(id); return out; },
-        ready,
+        ready: Promise.resolve(),
     };
     try { page.__joeQaReadIds = store; } catch { /* a frozen page object */ }
     return store;
@@ -2447,89 +2458,346 @@ export function readIdsStore(page: any): ReadIdsStore {
  */
 /** Keys a write names a record under: id, _id, uuid, ids, booking_id, bookingId, itemIds. */
 const RECORD_KEY = /^(?:id|_id|uuid|ids|ID|Id|[A-Za-z0-9]*(?:_id|-id|_ids|-ids|_uuid)|[a-z][A-Za-z0-9]*(?:Id|ID|Ids|IDs|Uuid))$/;
+/** A record's own key, which names no collection: the collection is the address's, or that of the object holding it. */
+const PLAIN_ID_KEY = /^(?:id|_id|uuid|ids|_ids|ID|Id|IDs|Ids|pk)$/;
+/** Keys whose id-like values name no record: a pager, a version, a cache-buster, a token, a flag. */
+const NOT_A_RECORD_KEY = /^(?:_|_t|t|ts|v|ver|version|rev|revision|time|timestamp|cb|nocache|cache|page|per_?page|perPage|pageSize|page_size|limit|offset|size|skip|take|first|last|after|before|sort|order|position|index|count|qty|quantity|lang|locale|confirm|force|cascade|hard|soft|permanent|token|_token|csrf\w*|_csrf\w*|xsrf\w*|authenticity_token|sig|signature|key|apikey|api_key|access_token|nonce|_method|method|action|op)$/i;
+/** Objects whose keys belong to the record the address names: where: {id}, data: {id}, input: {id}. */
+const GENERIC_HOLDER = /^(?:data|input|where|filter|filters|params|body|payload|variables|record|item|object|attributes|attrs|fields|values|args|criteria|selector|match|condition|conditions|options|meta)$/i;
+/** A part of an address that says what a write does, never what it writes to: …/notes/create, …/notes/42/delete. */
+const ACTION_SEGMENT = /^(?:(?:bulk|batch|soft|hard)[-_]?)?(?:create|add|new|save|insert|store|submit|delete|remove|destroy|trash|erase|purge|cancel|archive|void|deactivate|update|edit|patch|modify|upsert|bulk|batch)(?:[-_](?:one|many|all|bulk|batch|by[-_]?id))?$/i;
 /** An address that deletes, even by GET: …/delete, /remove/5, ?action=delete. */
 const DELETE_ADDRESS = /(?:^|\/)(?:delete|remove|destroy|trash|erase|purge)(?:[-_.][\w.-]*)?(?:\/|$)|[?&](?:action|op|do|cmd|method|_method)=(?:delete|remove|destroy)\b/i;
-/** Whether one request names only records the QA made (allow) — the ids its own creates were answered — or anything else (block). */
-export function deleteRequestVerdict(req: { method: string; url: string; body?: string }, allowed: string[]): 'allow' | 'block' {
-    const own = new Set<string>();
-    for (const id of allowed || []) for (const f of idForms(String(id))) own.add(f);
-    if (!own.size) return 'block';
-    const isOwn = (v: string) => !!v && idForms(v).some(f => own.has(f));
+/** …and a write to an address that deletes, cancels or archives (the fifth review of 2026-11-15, S7): …/bookings/1/cancel, /archive, /soft-delete, ?_method=DELETE. */
+const WRITE_DELETE_ADDRESS = /(?:^|\/)(?:(?:soft|hard)[-_]?)?(?:delete|remove|destroy|trash|erase|purge|cancel|archive|void|deactivate)(?:[-_.][\w.-]*)?(?:\/|$)|[?&](?:action|op|do|cmd|method|_method)=(?:delete|remove|destroy|trash|purge|cancel|archive)\b/i;
+/** A word that asks for a delete, as an action or a mutation's name: delete, remove, cancel, archive, soft-delete… */
+const DELETE_ACTION = /^(?:(?:soft|hard)[-_]?)?(?:delete|remove|destroy|trash|erase|purge|cancel|archive|void|deactivate)\w*$/i;
+
+/** One record the QA made on a server: the collection its create went to, and the id the server gave it there (guardDeletes). */
+export type OwnRecord = { collection: string; id: string };
+
+/** Whether two names are one collection: case, «-», «_» and a plural ending aside (note/notes, category/categories, status/statuses). */
+export function sameCollection(a: string, b: string): boolean {
+    const norm = (s: string) => String(s || '').toLowerCase().replace(/\.json$/, '').replace(/[^a-z0-9؀-ۿ]/g, '');
+    const x = norm(a), y = norm(b);
+    if (!x || !y) return false;
+    if (x === y) return true;
+    const plural = (s: string, p: string) => p === `${s}s` || p === `${s}es` || (s.endsWith('y') && p === `${s.slice(0, -1)}ies`);
+    return plural(x, y) || plural(y, x);
+}
+/** The parts of an address's path, decoded. */
+function addressParts(at: string): string[] {
+    let path = '';
+    try { path = new URL(String(at)).pathname; } catch { path = String(at || '').split(/[?#]/)[0]; }
+    return path.split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return p; } });
+}
+/** The collection an address writes to or names: its last part that is neither an id nor an action (/api/projects/3/tasks → tasks, /api/notes/42/delete → notes). */
+export function collectionOfAddress(at: string): string {
+    const parts = addressParts(at).map(p => p.replace(/\.json$/i, ''));
+    for (let i = parts.length - 1; i >= 0; i--) {
+        if (looksLikeRecordId(parts[i]) || ACTION_SEGMENT.test(parts[i])) continue;
+        return parts[i];
+    }
+    return '';
+}
+/** The key's own collection: booking_id, bookingId, itemIds → booking, item. */
+function keyCollection(key: string): string {
+    return String(key || '').replace(/(?:_ids?|-ids?|_uuid|Ids|IDs|Id|ID|Uuid)$/, '');
+}
+/** A GraphQL field's collection: createNote, deleteNote → note; insert_notes_one, delete_notes_by_pk → notes. */
+function graphqlCollection(field: string): string {
+    return String(field || '')
+        .replace(/^(?:create|add|insert|new|save|upsert|update|delete|remove|destroy|trash|purge|cancel|archive)(?:_|(?=[A-Z]))/i, '')
+        .replace(/(?:_one|_by_pk|_many|One|ByPk|ById|Many|Mutation)$/, '')
+        .toLowerCase();
+}
+/** The GraphQL document a body sends, or null when it sends none. */
+function graphqlQueryOf(body: string): string | null {
+    try {
+        const v = JSON.parse(String(body || ''));
+        const one = Array.isArray(v) ? v[0] : v;
+        return one && typeof one === 'object' && typeof one.query === 'string' ? String(one.query) : null;
+    } catch { return null; }
+}
+/** Whether a body is a GraphQL read: a query, no mutation. */
+function graphqlReads(body: string): boolean {
+    const q = graphqlQueryOf(body);
+    return q !== null && !/\bmutation\b/.test(q);
+}
+/** The fields a GraphQL mutation calls, each with its arguments as written: `deleteNote(id: 5)`. */
+function graphqlCalls(query: string): Array<{ field: string; args: string }> {
+    const q = String(query || '').replace(/#[^\n]*/g, '');
+    if (!/\bmutation\b/.test(q)) return [];
+    const out: Array<{ field: string; args: string }> = [];
+    for (const m of q.matchAll(/(@?)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+        const at = m.index || 0;
+        if (m[1] || /^(?:mutation|query|subscription|fragment)$/.test(m[2]) || /\b(?:mutation|query|subscription|fragment)\s*$/.test(q.slice(0, at))) continue;
+        let depth = 0, end = -1;
+        for (let i = at + m[0].length - 1; i < q.length && i < at + 4000; i++) {
+            if (q[i] === '(') depth++;
+            else if (q[i] === ')' && --depth === 0) { end = i; break; }
+        }
+        out.push({ field: m[2], args: end > 0 ? q.slice(at + m[0].length, end) : '' });
+        if (out.length >= 20) break;
+    }
+    return out;
+}
+/** The collection a create wrote to: its address's (POST /api/bookings/1/notes → notes), or its GraphQL mutation's (createNote → note); '' when neither can be read. */
+export function collectionOfCreate(at: string, body: string): string {
+    const q = graphqlQueryOf(body);
+    if (q !== null) { const calls = graphqlCalls(q); return calls.length ? graphqlCollection(calls[0].field) : ''; }
+    if (addressParts(at).some(p => /^(?:graphql|gql)$/i.test(p))) return '';
+    return collectionOfAddress(at);
+}
+/** Every id-like value of an address: its path's ids and its query's (a create's parents, the page's own record). */
+export function idsOfAddress(at: string): string[] {
+    const out = new Set<string>();
+    for (const p of addressParts(at)) { const bare = p.replace(/\.json$/i, ''); if (looksLikeRecordId(bare)) out.add(bare); }
+    try { new URL(String(at)).searchParams.forEach(v => { const s = v.trim(); if (looksLikeRecordId(s)) out.add(s); }); } catch { /* no query */ }
+    return [...out];
+}
+/** Every value a write's body sends that could name a record: an id-like value under any key, and any value under a record's key. */
+export function idsOfBody(body: string, typedKeys?: Set<string>): string[] {
+    const out = new Set<string>();
+    const take = (k: string, v: unknown) => {
+        if (typeof v !== 'string' && typeof v !== 'number') return;
+        //  What the QA itself typed into a field (a quantity «1», a price «12») names no record: only what the page sent does.
+        if (typedKeys && typedKeys.has(k)) return;
+        const s = String(v).trim();
+        if (s && s.length <= 80 && (looksLikeRecordId(s) || RECORD_KEY.test(k))) out.add(s);
+    };
+    const walk = (v: unknown, key: string, depth: number) => {
+        if (depth > 8 || out.size > 500) return;
+        if (Array.isArray(v)) { for (const x of v.slice(0, 500)) walk(x, key, depth + 1); return; }
+        if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, k, depth + 1); return; }
+        take(key, v);
+    };
+    let parsed: unknown;
+    try { parsed = JSON.parse(String(body || '')); walk(parsed, '', 0); } catch {
+        for (const [k, v] of formBodyPairs(String(body || ''))) take(k.replace(/^.*\[([^\]]*)\]$/, '$1') || k, v);
+        //  …and a body kept with its decoded copy beside it (another origin's write, watchWrites): its "key": value pairs.
+        for (const m of String(body || '').slice(0, 200_000).matchAll(/"([\w-]{1,80})"\s*:\s*(?:"([^"\\]{1,80})"|(\d{1,19})\b)/g)) take(m[1], m[2] ?? m[3]);
+    }
+    const q = graphqlQueryOf(String(body || ''));
+    if (q !== null) for (const m of q.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*\[?\s*(?:"([\w-]{1,80})"|(\d{1,19})\b)/g)) { const s = m[1] || m[2]; if (looksLikeRecordId(s)) out.add(s); }
+    return [...out];
+}
+/** The id an address names right after that collection (/items/7, /api/projects/3/tasks/41 for tasks), or ''. */
+export function idAfterCollection(at: string, collection: string): string {
+    const parts = addressParts(at).map(p => p.replace(/\.json$/i, ''));
+    for (let i = parts.length - 1; i > 0; i--) if (looksLikeRecordId(parts[i]) && sameCollection(parts[i - 1], collection)) return parts[i];
+    return '';
+}
+
+/*
+ * ⛔ AN ALLOWED ID IS A PAIR: THE COLLECTION THE QA'S CREATE WENT TO, AND THE ID ITS SERVER GAVE IT THERE.
+ *
+ * The fifth review of 2026-11-15 (B1, S1, S2): «Add note» POSTed /api/bookings/1/notes and its server
+ * answered the booking ({id: 1, notes: […]}) — or the new note, numbered 1 too in an empty table — and
+ * «Delete booking», DELETE /api/bookings/1, was let through: note 1 was booking 1, and the owner's booking
+ * was deleted end to end. And a sound app's DELETE /api/projects/3/tasks/41 was stopped, its project 3
+ * read as «another record». Now a delete is let through only when it names that very pair — the id right
+ * after a part naming that collection (note/notes), or under a key naming it (noteId, {"note": {"id"}}), or
+ * under a plain id where the address names it — compared exactly («007» is not «7», «note-1» is not 1). A
+ * value of the create's own context (an id in its address or body: a parent; the page's own address) is
+ * neutral where it stands for another collection, and another record where it stands for this one.
+ */
+/** Whether one request names only records the QA made (allow) — the pairs its own creates were answered — and no other record (block). */
+export function deleteRequestVerdict(req: { method: string; url: string; body?: string }, allowed: OwnRecord[], neutral: string[] = []): 'allow' | 'block' {
+    const own = (allowed || []).filter(r => !!r && typeof r === 'object' && !!String(r.id ?? '') && !!String(r.collection ?? ''))
+        .map(r => ({ id: String(r.id), collection: String(r.collection) }));
+    if (!own.length) return 'block';
+    const context = new Set((neutral || []).map(String).filter(Boolean));
     let named = false;
     const foreign: string[] = [];
-    /** A value sent under a record's key: one of the QA's, or another record (PostgREST's «eq.5», «in.(5,6)» read as 5 and 6). */
-    const judge = (raw: unknown) => {
+    const ofOwnCollection = (c: string) => own.some(r => sameCollection(r.collection, c));
+    /** One value where `c` names its collection ('' when nothing does): the QA's own pair, another record of that collection, the create's context (neutral), or another record. */
+    const judge = (c: string, raw: unknown, underKey: boolean) => {
         if (typeof raw !== 'string' && typeof raw !== 'number') return;
         const s = String(raw).trim();
         if (!s) return;
+        //  PostgREST's «eq.5» and «in.(5,6)» are 5, and 5 and 6.
         const values = /^(?:eq|in)\./.test(s) ? s.replace(/^(?:eq|in)\.\(?/, '').replace(/\)$/, '').split(',') : [s];
-        for (const v of values.map(x => x.trim().replace(/^"|"$/g, ''))) {
-            if (isOwn(v)) named = true;
-            else if (v) foreign.push(v);
+        for (const v of values.map(x => x.trim().replace(/^"|"$/g, '')).filter(Boolean)) {
+            if (own.some(r => r.id === v && sameCollection(r.collection, c))) { named = true; continue; }
+            if (c && ofOwnCollection(c)) { foreign.push(v); continue; }
+            if (context.has(v)) continue;
+            if (underKey || looksLikeRecordId(v)) foreign.push(v);
         }
+    };
+    /** A value under a key, in an object that names `holder`. */
+    const judgeKey = (key: string, v: unknown, holder: string) => {
+        if (typeof v !== 'string' && typeof v !== 'number') return;
+        if (PLAIN_ID_KEY.test(key)) judge(holder, v, true);
+        else if (RECORD_KEY.test(key)) judge(keyCollection(key), v, true);
+        else if (!NOT_A_RECORD_KEY.test(key) && looksLikeRecordId(String(v).trim())) judge(key, v, false);
     };
     let url: URL | null = null;
     try { url = new URL(String(req.url || '')); } catch { url = null; }
+    const resource = url ? collectionOfAddress(url.href) : '';
     if (url) {
-        for (const part of url.pathname.split('/').filter(Boolean)) {
-            let p = part;
-            try { p = decodeURIComponent(part); } catch { /* kept as written */ }
-            if (isOwn(p)) named = true;
-            else if (looksLikeRecordId(p)) foreign.push(p);
-        }
-        url.searchParams.forEach((v, k) => { if (RECORD_KEY.test(k)) judge(v); });
+        const parts = addressParts(url.href).map(p => p.replace(/\.json$/i, ''));
+        parts.forEach((p, i) => {
+            if (!looksLikeRecordId(p) && !own.some(r => r.id === p)) return;
+            judge(i > 0 && !looksLikeRecordId(parts[i - 1]) ? parts[i - 1] : '', p, true);
+        });
+        url.searchParams.forEach((v, k) => judgeKey(k, v, resource));
     }
     const body = String(req.body || '');
     if (body.trim()) {
         let parsed: unknown;
         let isJson = true;
         try { parsed = JSON.parse(body); } catch { isJson = false; }
-        const walk = (v: unknown, key: string, depth: number) => {
+        const q = isJson ? graphqlQueryOf(body) : null;
+        const calls = q !== null ? graphqlCalls(q) : [];
+        //  A mutation that deletes many by one id (deleteAllBookings(userId: 1), delete_many) names more than the QA's record (M1).
+        if (calls.some(c => /(?:All|Many|Bulk|Batch)(?:[A-Z_]|$)|^(?:bulk|batch)|_(?:all|many|bulk|batch)(?:_|$)/.test(c.field))) return 'block';
+        const base = q !== null ? (calls.length ? graphqlCollection(calls[0].field) : '') : resource;
+        const variables = isJson && parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>).variables : undefined;
+        //  A GraphQL document names its records inline: deleteItem(id: 5), removeBooking(bookingId: "5"), deleteNote(id: $noteId).
+        for (const call of calls) {
+            const holder = graphqlCollection(call.field);
+            for (const m of call.args.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\[?\s*(?:"([^"]{1,80})"|(\d{1,19})\b|\$([A-Za-z_][A-Za-z0-9_]*))/g)) {
+                const value = m[4] !== undefined ? (variables && typeof variables === 'object' ? (variables as Record<string, unknown>)[m[4]] : undefined) : (m[2] ?? m[3]);
+                for (const v of Array.isArray(value) ? value.slice(0, 200) : [value]) judgeKey(m[1], v, holder);
+            }
+        }
+        const walk = (v: unknown, key: string, holder: string, depth: number) => {
             if (depth > 6) return;
-            if (Array.isArray(v)) { for (const x of v.slice(0, 200)) walk(x, key, depth + 1); return; }
-            if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, k, depth + 1); return; }
-            if (RECORD_KEY.test(key)) judge(v);
-            //  A GraphQL document names its records inline: deleteItem(id: 5), removeBooking(bookingId: "5").
-            else if (key === 'query' && typeof v === 'string') for (const m of v.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\[?\s*(?:"([\w-]{1,80})"|(\d{1,19})\b)/g)) if (RECORD_KEY.test(m[1])) judge(m[2] || m[3]);
+            if (Array.isArray(v)) { for (const x of v.slice(0, 200)) walk(x, key, holder, depth + 1); return; }
+            if (v && typeof v === 'object') {
+                const here = key && !GENERIC_HOLDER.test(key) && !RECORD_KEY.test(key) && !NOT_A_RECORD_KEY.test(key) ? key : holder;
+                for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+                    if (depth === 0 && q !== null && /^(?:query|operationName|extensions)$/.test(k)) continue;
+                    walk(x, k, here, depth + 1);
+                }
+                return;
+            }
+            judgeKey(key, v, holder);
         };
         if (isJson) {
-            if (typeof parsed === 'string' || typeof parsed === 'number') judge(parsed);
-            else walk(parsed, '', 0);
+            if (typeof parsed === 'string' || typeof parsed === 'number') judge(base, parsed, true);
+            else if (Array.isArray(parsed) && parsed.every(x => typeof x === 'string' || typeof x === 'number')) for (const x of parsed.slice(0, 200)) judge(base, x, true);
+            else walk(parsed, '', base, 0);
         } else {
-            for (const [k, v] of formBodyPairs(body)) if (RECORD_KEY.test(k)) judge(v);
+            for (const [k, v] of formBodyPairs(body)) {
+                const m = k.match(/^([A-Za-z_][\w-]*)\[([\w-]*)\]$/);
+                if (m && m[2]) judgeKey(m[2], v, GENERIC_HOLDER.test(m[1]) ? base : m[1]);
+                else judgeKey(m ? m[1] : k, v, base);
+            }
         }
     }
     return named && !foreign.length ? 'allow' : 'block';
 }
 
+/** Whether a write's body asks for a delete: an action word under an action key, a deleted or archived flag set, a state set to deleted or cancelled, a GraphQL delete — or, in any other text, a delete word. */
+export function bodyAsksDelete(body: string): boolean {
+    const text = String(body || '');
+    if (!text.trim()) return false;
+    const q = graphqlQueryOf(text);
+    if (q !== null) return graphqlCalls(q).some(c => DELETE_ACTION.test(c.field));
+    const flag = (k: string, v: unknown): boolean => {
+        const s = typeof v === 'string' ? v.trim() : '';
+        if (/^(?:action|op|operation|type|cmd|command|method|_method|verb|intent|do)$/i.test(k) && DELETE_ACTION.test(s)) return true;
+        if (/^(?:is_?)?(?:deleted|archived|cancell?ed|removed|trashed|voided|deactivated)(?:_?at|_?on)?$/i.test(k)
+            && (v === true || v === 1 || s === 'true' || s === '1' || (/(?:_?at|_?on)$/i.test(k) && !!s && s !== 'null'))) return true;
+        if (/^(?:status|state|stage)$/i.test(k) && /^(?:deleted|archived|cancell?ed|removed|trashed|void(?:ed)?|deactivated)$/i.test(s)) return true;
+        return false;
+    };
+    let parsed: unknown;
+    let json = true;
+    try { parsed = JSON.parse(text); } catch { json = false; }
+    if (json) {
+        let found = false;
+        const walk = (v: unknown, key: string, depth: number) => {
+            if (found || depth > 6) return;
+            if (Array.isArray(v)) { for (const x of v.slice(0, 200)) walk(x, key, depth + 1); return; }
+            if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, k, depth + 1); return; }
+            if (flag(key, v)) found = true;
+        };
+        walk(parsed, '', 0);
+        return found;
+    }
+    const pairs = formBodyPairs(text);
+    if (pairs.length) return pairs.some(([k, v]) => flag(k.replace(/^.*\[([^\]]*)\]$/, '$1') || k, v));
+    return /\b(?:delete|remove|destroy|trash|purge)\w*/i.test(text.slice(0, 4000));
+}
+
+/** Why a record of the QA's own is left on a page that works over a socket (S3, the fifth review of 2026-11-15). */
+const SOCKET_LEFT = 'the page talks over a live socket the QA cannot hold';
 export type DeleteGuard = {
-    /** Hold every request but a read to the QA's own ids while a delete is pressed. */
-    press: (allowed: string[]) => Promise<void>;
-    /** The press is over: what was let through, what was stopped, how many writes were tried. */
-    release: () => Promise<{ passed: number; attempted: number; blocked: Array<{ method: string; at: string }> }>;
+    /** Hold every request but a read to the QA's own records while a delete is pressed: `allowed` its pairs, `neutral` its creates' context. */
+    press: (allowed: OwnRecord[], neutral?: string[]) => Promise<void>;
+    /** The press is over: what was let through, what was stopped, how many writes were judged, how many socket frames the page sent meanwhile. */
+    release: () => Promise<{ passed: number; attempted: number; blocked: Array<{ method: string; at: string }>; socketFrames: number }>;
     /** Deletes stopped after a press (a delayed delete) — read once. */
     late: () => Array<{ method: string; at: string }>;
-    stop: () => Promise<void>;
+    /** Whether the page holds a live socket of its own (Phoenix LiveView, Blazor, socket.io…): a delete sent over it cannot be held. */
+    liveSocket: () => Promise<boolean>;
+    /** How many requests the guard stopped, when it stopped the last one, and where they went (their paths). */
+    stops: () => { count: number; lastAt: number; at: string[] };
+    /** A form's own mark: a later write carrying it is that form's own submit (a «Cancelled» status the QA chose), never a delayed delete. */
+    noteMark: (mark: string) => void;
+    /** The walk is over: the guard is taken down, and the delayed deletes it stopped and nobody read are returned. */
+    stop: () => Promise<Array<{ method: string; at: string }>>;
 };
+/** A development server's own socket (hot reload), never the app's: Vite, webpack, Next, live-reload. */
+const DEV_SOCKET = /\/_next\/webpack-hmr|__webpack_hmr|\/sockjs-node|livereload|browser-sync|\/@vite|vite-hmr|turbopack|[?&]token=[\w-]{6,}$/i;
 /**
  * The network side of every delete the QA presses (see above). One per page, shared by every probeForms
  * of the walk: the replay of P179 (2026-11-15) — each route's forms had a guard of its own, and the last
  * one's «after a press» watch stopped the next route's own, allowed delete of its showtime.
+ *
+ * The fifth review of 2026-11-15: (S3) a page that works over a WebSocket (Phoenix LiveView, Blazor,
+ * Firebase, socket.io) sends its delete as a frame no route sees — its sockets are watched from the walk's
+ * start (startWalkWatch), and no delete is pressed while one is open; (S4) an analytics beacon or a token
+ * refresh sent during a press was stopped and counted — only writes to the page's own origin and to the
+ * origins it had written to are judged, and deletes anywhere; (S7) a delete sent 12 s after a press, or a
+ * POST …/cancel, passed — the guard stays until the walk ends (endWalkWatch), and cancel, archive, a
+ * deleted flag and a method override are deletes too.
  */
 export function guardDeletes(page: any): DeleteGuard {
     if (page && page.__joeQaDeleteGuard) return page.__joeQaDeleteGuard as DeleteGuard;
-    let allowed: string[] = [];
-    const allowedEver = new Set<string>();
+    let allowed: OwnRecord[] = [];
+    let neutral: string[] = [];
+    const allowedEver = new Map<string, OwnRecord>();
+    const neutralEver = new Set<string>();
     let pressing = false;
-    let tailUntil = 0;
+    let tail = false;
     let installed = false;
-    let passed = 0, attempted = 0;
+    let passed = 0, attempted = 0, frames = 0;
     let blocked: Array<{ method: string; at: string }> = [];
     let lateBlocked: Array<{ method: string; at: string }> = [];
+    let stopCount = 0, lastStopAt = 0;
+    const stoppedAt: string[] = [];
+    const marks: string[] = [];
     const judged = new WeakSet<object>();
     let context: any = null;
     try { context = typeof page?.context === 'function' ? page.context() : null; } catch { context = null; }
-    const pathOf = (u: string) => { try { const x = new URL(u); return `${x.pathname}${x.search}`; } catch { return String(u || ''); } };
+    //  Evidence carries the path alone: a token in a query never reaches the report (M3).
+    const pathOf = (u: string) => { try { return new URL(u).pathname; } catch { return String(u || '').split(/[?#]/)[0]; } };
+    const pageOrigin = () => { try { return new URL(String(page.url())).origin; } catch { return ''; } };
+    const originOf = (u: string) => { try { return new URL(u).origin; } catch { return ''; } };
+    /** The origins the page wrote to before any press (its API, its hosted database): judged during a press, with its own. */
+    const wroteTo = new Set<string>();
+    const onRequest = (request: any) => {
+        try {
+            if (pressing || /^(?:GET|HEAD|OPTIONS)$/i.test(String(request.method?.() || 'GET'))) return;
+            const o = originOf(String(request.url?.() || ''));
+            if (o && wroteTo.size < 50) wroteTo.add(o);
+        } catch { /* a request that cannot be read */ }
+    };
+    try { page.on('request', onRequest); } catch { /* a page without events */ }
+    /** The page's own sockets (a dev server's hot reload aside), open or closed, and the frames sent while a delete is pressed. */
+    const sockets = new Set<any>();
+    const onSocket = (ws: any) => {
+        let u = '';
+        try { u = String(ws.url()); } catch { u = ''; }
+        if (DEV_SOCKET.test(u)) return;
+        sockets.add(ws);
+        try { ws.on('close', () => sockets.delete(ws)); ws.on('framesent', () => { if (pressing) frames++; }); } catch { /* a socket without events */ }
+    };
+    try { page.on('websocket', onSocket); } catch { /* a page without events */ }
     const handler = async (route: any) => {
         let request: any = null;
         try { request = route.request(); } catch { request = null; }
@@ -2537,21 +2805,36 @@ export function guardDeletes(page: any): DeleteGuard {
         if (!request || (judged.has(request))) return pass();
         //  This page's own requests, and a service worker's (it has no frame); never another tab's.
         try { const frame = request.frame?.(); if (frame && frame.page?.() !== page) return pass(); } catch { /* a service worker's request */ }
-        const watching = pressing || Date.now() < tailUntil;
-        if (!watching) return pass();
+        if (!pressing && !tail) return pass();
         const method = String(request.method?.() || 'GET').toUpperCase();
         const url = String(request.url?.() || '');
         let body = '';
         try { body = String(request.postData?.() || ''); } catch { body = ''; }
-        const reading = /^(?:GET|HEAD|OPTIONS)$/.test(method);
-        const deletes = method === 'DELETE' || DELETE_ADDRESS.test(pathOf(url)) || (!reading && /\b(?:delete|remove|destroy|trash|purge)\w*/i.test(body.slice(0, 4000)));
-        //  While pressing, every write; after, only what deletes.
-        if (pressing ? (reading && !deletes) : !deletes) return pass();
+        let headers: Record<string, string> = {};
+        try { headers = request.headers?.() || {}; } catch { headers = {}; }
+        const override = String(headers['x-http-method-override'] || headers['x-http-method'] || headers['x-method-override'] || '').toUpperCase();
+        const reading = (/^(?:GET|HEAD|OPTIONS)$/.test(method) || (method === 'POST' && graphqlReads(body))) && override !== 'DELETE';
+        let where = url, named = false;
+        try { const u = new URL(url); where = `${u.pathname}${u.search}`; named = addressParts(url).some(looksLikeRecordId) || [...u.searchParams.keys()].some(k => RECORD_KEY.test(k)); } catch { named = false; }
+        //  A read deletes only when its address says so and names a record (GET /items/5/delete); a «Trash» or «Archive» page is a page.
+        const deletes = method === 'DELETE' || override === 'DELETE'
+            || (reading ? DELETE_ADDRESS.test(where) && named : (WRITE_DELETE_ADDRESS.test(where) || bodyAsksDelete(body.slice(0, 200_000))));
+        //  While pressing, every write to the page's own origins and every delete; after, only what deletes.
+        if (pressing) {
+            if (reading && !deletes) return pass();
+            const o = originOf(url);
+            if (!deletes && o && o !== pageOrigin() && !wroteTo.has(o)) return pass();
+        } else if (!deletes) return pass();
+        //  After a press, a form's own submit (it carries the QA's mark) is no delayed delete: only a DELETE or a delete address is.
+        else if (method !== 'DELETE' && override !== 'DELETE' && !WRITE_DELETE_ADDRESS.test(where) && marks.some(m => body.includes(m))) return pass();
         judged.add(request);
         if (pressing) attempted++;
-        const ids = pressing ? allowed : [...allowedEver];
-        if (deleteRequestVerdict({ method, url, body }, ids) === 'allow') { if (pressing) passed++; return pass(); }
-        const entry = { method, at: pathOf(url).slice(0, 160) };
+        const verdict = pressing ? deleteRequestVerdict({ method, url, body }, allowed, neutral) : deleteRequestVerdict({ method, url, body }, [...allowedEver.values()], [...neutralEver]);
+        if (verdict === 'allow') { if (pressing) passed++; return pass(); }
+        const entry = { method: override === 'DELETE' ? `${method} (DELETE)` : method, at: pathOf(url).slice(0, 160) };
+        stopCount++;
+        lastStopAt = Date.now();
+        if (stoppedAt.length < 40 && entry.at.length > 3) stoppedAt.push(entry.at);
         if (pressing) blocked.push(entry); else if (lateBlocked.length < 20) lateBlocked.push(entry);
         return route.abort('aborted').catch(() => { });
     };
@@ -2569,7 +2852,8 @@ export function guardDeletes(page: any): DeleteGuard {
     };
     /*
      * A stopped fetch rejects, and a page that never catches it would throw «Failed to fetch» into its own
-     * errors — a fault the QA made, not the product's: held unseen while the QA's delete is stopped.
+     * errors — a fault the QA made, not the product's: held unseen while the QA's delete is stopped. Only the
+     * failure a stopped request throws (M2): a product's own «Request failed with status code 500» is its own.
      * (`route.abort('aborted')`, not 'blockedbyclient': the latter writes «net::ERR_BLOCKED_BY_CLIENT»
      * into the page's console, where the walk counts it as the product's console error.)
      */
@@ -2579,37 +2863,92 @@ export function guardDeletes(page: any): DeleteGuard {
             w.__joeQaHoldsRejections = true;
             window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
                 const reason = String((e.reason && (e.reason.message || e.reason)) || '');
-                if (Date.now() < Number(w.__joeQaHoldUntil || 0) && /fetch|network|abort|load failed|xhr|request/i.test(reason)) e.preventDefault();
+                const name = String((e.reason && e.reason.name) || '');
+                if (Date.now() < Number(w.__joeQaHoldUntil || 0) && (/^AbortError$/.test(name) || /Failed to fetch|NetworkError|Network Error|network error|\baborted\b|Load failed|ERR_ABORTED|ERR_FAILED/i.test(reason))) e.preventDefault();
             });
         }
         w.__joeQaHoldUntil = Math.max(Number(w.__joeQaHoldUntil || 0), until);
     }, Date.now() + ms).catch(() => { });
-    let timer: any = null;
     const guard: DeleteGuard = {
-        press: async (ids: string[]) => {
-            allowed = [...new Set((ids || []).map(String).filter(Boolean))];
-            for (const id of allowed) allowedEver.add(id);
-            passed = 0; attempted = 0; blocked = [];
-            if (timer) { clearTimeout(timer); timer = null; }
+        press: async (records: OwnRecord[], around: string[] = []) => {
+            allowed = (records || []).filter(r => !!r && !!String(r.id ?? '') && !!String(r.collection ?? '')).map(r => ({ collection: String(r.collection), id: String(r.id) }));
+            neutral = [...new Set((around || []).map(String).filter(Boolean))];
+            for (const r of allowed) allowedEver.set(`${r.collection}\u0000${r.id}`, r);
+            for (const n of neutral) neutralEver.add(n);
+            passed = 0; attempted = 0; frames = 0; blocked = [];
             await install();
             pressing = true;
             await holdRejections(20_000);
         },
         release: async () => {
             pressing = false;
-            tailUntil = Date.now() + 10_000;
+            //  Held to the same rule until the walk ends (endWalkWatch): an «undo» toast's delete, a sync queue's.
+            tail = true;
             await holdRejections(12_000);
-            const out = { passed, attempted, blocked: blocked.slice() };
-            if (timer) clearTimeout(timer);
-            timer = setTimeout(() => { if (!pressing && Date.now() >= tailUntil) uninstall().catch(() => { }); }, 10_500);
-            try { timer.unref?.(); } catch { /* a timer without unref */ }
-            return out;
+            return { passed, attempted, blocked: blocked.slice(), socketFrames: frames };
         },
         late: () => { const out = lateBlocked.slice(); lateBlocked = []; return out; },
-        stop: async () => { pressing = false; tailUntil = 0; if (timer) { clearTimeout(timer); timer = null; } await uninstall(); },
+        liveSocket: async () => {
+            let open = [...sockets].filter(ws => { try { return !ws.isClosed(); } catch { return false; } });
+            if (open.length) {
+                //  Vite's own client talks over a socket at the page's root.
+                const vite = await page.evaluate(() => !!document.querySelector('script[src*="/@vite/client"]')).catch(() => false);
+                if (vite) open = open.filter(ws => { try { return new URL(String(ws.url())).pathname !== '/'; } catch { return true; } });
+            }
+            if (open.length) return true;
+            //  A socket opened before the watch began: the frameworks that work over one say so in the page.
+            return page.evaluate(() => {
+                const w = window as any;
+                try { return !!((w.liveSocket && typeof w.liveSocket.isConnected === 'function' && w.liveSocket.isConnected()) || w.Blazor || (w.Meteor && typeof w.Meteor.status === 'function' && w.Meteor.status().connected)); } catch { return false; }
+            }).catch(() => false);
+        },
+        stops: () => ({ count: stopCount, lastAt: lastStopAt, at: stoppedAt.slice() }),
+        noteMark: (mark: string) => { if (mark && mark.length >= 5 && !marks.includes(mark) && marks.length < 200) marks.push(mark); },
+        stop: async () => {
+            pressing = false;
+            tail = false;
+            await uninstall();
+            return guard.late();
+        },
     };
     try { page.__joeQaDeleteGuard = guard; } catch { /* a frozen page object */ }
     return guard;
+}
+
+/*
+ * ⛔ A REQUEST THE GUARD STOPPED IS NEVER A FAULT OF THE PRODUCT.
+ *
+ * The fifth review of 2026-11-15 (S2): a sound app's row delete, stopped, ended in its own
+ * `.catch(e => console.error('Could not delete task', e))` — and «console_errors», severity high, failed
+ * the phase. Within 15 s of a stop, an error that names the stopped address, or that is what a stopped
+ * request throws («Failed to fetch», «NetworkError», «aborted», axios's «Network Error», «Could not
+ * delete»), was caused by the QA: excused, counted and told (app-audit), never a finding.
+ */
+/** Whether an error the page wrote was caused by a request the delete guard stopped. */
+export function causedByStoppedDelete(page: any, text: string): boolean {
+    const g = page && (page.__joeQaDeleteGuard as DeleteGuard | undefined);
+    if (!g || typeof g.stops !== 'function') return false;
+    const s = g.stops();
+    if (!s.count || Date.now() - s.lastAt > 15_000) return false;
+    const t = String(text || '');
+    if (s.at.some((a: string) => !!a && t.includes(a))) return true;
+    return /Failed to fetch|NetworkError|Network Error|network error|ERR_ABORTED|ERR_FAILED|\baborted\b|AbortError|Load failed|could(?:n't| not) (?:delete|remove|cancel|archive)|unable to (?:delete|remove)|failed to (?:delete|remove)|delete failed|تعذّ?ر\s*(?:ال)?حذف|فشل\s*(?:ال)?حذف/i.test(t);
+}
+/** How many requests the delete guard has stopped on this page so far (probeControls: a press it held is not a dead control). */
+export function deleteGuardStops(page: any): number {
+    const g = page && (page.__joeQaDeleteGuard as DeleteGuard | undefined);
+    try { return g && typeof g.stops === 'function' ? g.stops().count : 0; } catch { return 0; }
+}
+/** The walk begins, before its first load: what the page reads, the origins it writes to and the sockets it opens are watched from here (readIdsStore, guardDeletes). */
+export function startWalkWatch(page: any): void {
+    readIdsStore(page);
+    guardDeletes(page);
+}
+/** The walk is over: the delete guard is taken down; the delayed deletes it stopped since the last form read them are returned. */
+export async function endWalkWatch(page: any): Promise<Array<{ method: string; at: string }>> {
+    const g = page && (page.__joeQaDeleteGuard as DeleteGuard | undefined);
+    if (!g || typeof g.stop !== 'function') return [];
+    return g.stop().catch(() => []);
 }
 
 /*
@@ -2647,6 +2986,8 @@ export function answerHoldsRecord(answer: string): boolean {
     }
     return false;
 }
+/** Words of a form whose records a site may hold back for moderation: review, rating, comment, feedback, testimonial — تقييم، مراجعة، تعليق، رأي. */
+export const MODERATED_WORDS = /review|rating|comment|feedback|testimonial|تقييم|مراجعة|تعليق|رأي|آراء/i;
 export function listProvesLoss(
     verdict: '' | 'empty' | 'others',
     facts: {
@@ -2655,11 +2996,18 @@ export function listProvesLoss(
         listsNow?: Array<{ at: string; body: string }>; rowsBefore?: string[];
         /** Whether each by-id answer (in byIdStatuses' order) was JSON; the by-id route's status for an id the list holds; the write's own answer. */
         byIdJson?: boolean[]; controlStatus?: number; answer?: string;
+        /** The form and its collection read as a review, a rating, a comment or feedback (moderated by nature). */
+        moderated?: boolean;
     },
 ): '' | 'empty' | 'others' {
     if (!verdict) return '';
     if (facts.answer && answerHoldsRecord(facts.answer)) return '';
     if ((facts.answeredIds || []).length) {
+        /*
+         * A review, a rating, a comment, feedback: what a moderated site holds back answers its own by-id 404
+         * while the approved ones answer 200 (the fifth review of 2026-11-15, S5) — that proves nothing.
+         */
+        if (facts.moderated) return '';
         const s = facts.byIdStatuses || [];
         if (s.some(x => x >= 200 && x < 300)) return '';
         const json = facts.byIdJson || [];
@@ -2753,7 +3101,12 @@ async function refillValid(page: any, values: Map<string, { kind: 'fill' | 'sele
 export async function deleteOwnRecords(
     page: any, needle: string, max = 4, mayDelete?: (sel: string) => Promise<boolean>,
     /** The network side (guardDeletes): each press held to the QA's own ids; a stopped write is never a deletion. */
-    net?: { press: () => Promise<void>; release: () => Promise<{ passed: number; attempted: number; blocked: Array<{ method: string; at: string }> }>; stopped: (blocked: Array<{ method: string; at: string }>) => Promise<void> },
+    net?: {
+        press: () => Promise<void>; release: () => Promise<{ passed: number; attempted: number; blocked: Array<{ method: string; at: string }>; socketFrames?: number }>;
+        stopped: (blocked: Array<{ method: string; at: string }>) => Promise<void>;
+        /** The page talked over a socket during the press: the delete was not held (left and told). */
+        socket?: () => Promise<void>;
+    },
 ): Promise<number> {
     if (!needle || needle.length < 5) return 0;
     let removed = 0;
@@ -2780,6 +3133,7 @@ export async function deleteOwnRecords(
                 await page.waitForTimeout(500).catch(() => { });
                 const result = await net.release();
                 if (result.blocked.length && !result.passed) { await net.stopped(result.blocked); break; }
+                if (Number(result.socketFrames || 0) > 0) { await net.socket?.(); break; }
                 if (after < before && result.attempted > 0 && !result.passed) break;
             }
             if (after >= before) break;
@@ -2858,7 +3212,9 @@ export async function auditBehaviour(fileUrl: string, opts?: {
             try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { /* viewport sync is best effort */ }
         }
         await page.addInitScript('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
-        const onPageError = (e: any) => { if (jsErrors.length < 6) jsErrors.push(String(e?.message || e).slice(0, 140)); };
+        //  What the page reads, writes and opens, from its first load (startWalkWatch); a request the QA's guard stopped is never the page's error.
+        startWalkWatch(page);
+        const onPageError = (e: any) => { if (jsErrors.length < 6 && !causedByStoppedDelete(page, String(e?.message || e))) jsErrors.push(String(e?.message || e).slice(0, 140)); };
         const onConsole = (m: any) => {
             if (m.type() !== 'error' || jsErrors.length >= 6) return;
             const t = String(m.text());
@@ -2867,6 +3223,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
             // not identify it — and it was costing every page a critical finding.
             const where = (() => { try { return String(m.location()?.url || ''); } catch { return ''; } })();
             if (/favicon\.ico/i.test(t) || /favicon\.ico/i.test(where)) return;
+            if (causedByStoppedDelete(page, `${t} ${where}`)) return;
             jsErrors.push(t.slice(0, 140));
         };
         const onDialog = (d: any) => {
@@ -2898,6 +3255,9 @@ export async function auditBehaviour(fileUrl: string, opts?: {
         await page.waitForTimeout(500);
 
         const probe = await probeControls(page);
+        //  The walk is over: the delete guard comes down (its delayed stops counted with the rest).
+        const lateStops = await endWalkWatch(page);
+        if (lateStops.length) probe.metrics.qaDeletesBlocked = Number(probe.metrics.qaDeletesBlocked || 0) + lateStops.length;
         controls.push(...probe.controls);
         Object.assign(metrics, probe.metrics);
         formEvidence = probe.forms || [];
@@ -3717,6 +4077,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 //  A save the server took, or a refusal it gave, is the control working even when the page shows nothing new.
                 const savedBeforePress = probeWrites.saved();
                 const refusedBeforePress = probeWrites.refused();
+                //  …and a delete the guard stopped (guardDeletes, held for the whole walk): the control was held, never dead.
+                const stopsBeforePress = deleteGuardStops(page);
                 try {
                     if (!eyeIsOpen()) break;
                     el = await stableHandle(c, el).catch(() => null);
@@ -3748,6 +4110,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 }
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
+                else if (!effect && deleteGuardStops(page) > stopsBeforePress) effect = 'held';
                 if (effect) await noteTakenAway(countsBefore);
                 await judgeJob(c.label, current.sel, effect, job, factsBefore, stateBefore);
                 // A submit that reloads the page proves the form is NOT handled —
@@ -3965,6 +4328,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 await handoff.arm();
                 const savedBeforePress = probeWrites.saved();
                 const refusedBeforePress = probeWrites.refused();
+                //  …and a delete the guard stopped (guardDeletes, held for the whole walk): the control was held, never dead.
+                const stopsBeforePress = deleteGuardStops(page);
                 try {
                     if (candidate.kind === 'submit') expectRefusal(page, 3000);
                     await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
@@ -3985,6 +4350,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 }
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
+                else if (!effect && deleteGuardStops(page) > stopsBeforePress) effect = 'held';
                 if (effect) await noteTakenAway(countsBefore);
                 await judgeJob(candidate.label, candidate.sel, effect, job, factsBefore, stateBefore);
                 if (effect === 'navigation') noteLanding(candidate);
@@ -4761,6 +5127,7 @@ export async function probeForms(
         const formMark = formIndex <= 26
             ? `${runNonce}${String.fromCharCode(96 + formIndex)}`
             : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        guard.noteMark(formMark);
         // A nonce is deliberately placed only in QA-created values. It lets us
         // find and remove our own record without ever touching visitor data.
         const persistenceAnchors: string[] = [];
@@ -4790,6 +5157,8 @@ export async function probeForms(
         const formAwayFrom = writes.away().length;
         /** The record ids the page showed before this form was sent: a POST that answers one changed it (formEditedRecord). */
         const idsShownBefore = new Set<string>(await page.evaluate(shownRecordIds).catch(() => [] as string[]));
+        /** Where the page was before this form was sent: its ids are the form's context (/bookings/1), never the QA's record (ownCreated). */
+        const locationAtFormStart = String(page.url() || '');
         //  Every record that was there before this form: shown when the forms started or now, or read from the server so far.
         for (const id of idsAtStart) idsShownBefore.add(id);
         for (const r of reads.list()) for (const id of idsInJson(r.body)) idsShownBefore.add(id);
@@ -5466,21 +5835,62 @@ export async function probeForms(
          * Never one the write itself named or went to (an edit), and never one the page showed or read
          * before this form — that set vetoes, it never permits.
          */
-        const ownCreatedIds = (): string[] => {
+        /*
+         * The fifth review of 2026-11-15 (B1, S1, S2): each is a pair — the collection the create went to
+         * (POST /api/bookings/1/notes → notes; a GraphQL mutation's own field) and the id given there — and
+         * every id-like value of the create's own address (a parent: booking 1), of its body, and of the
+         * page's address is no id of the QA's: it is the create's context, neutral in a delete that names it
+         * for another collection (DELETE /api/projects/3/tasks/41). The id is read from the answer, from a
+         * 201's or a redirect's Location (/items/7), or — when the answer named none ({ok: true}, insertId)
+         * — from the one new record holding the mark in what the page read again of that collection.
+         */
+        const ownCreated = (): { records: OwnRecord[]; neutral: string[] } => {
             const veto = new Set<string>();
             for (const id of idsShownBefore) for (const f of idForms(id)) veto.add(f);
             for (const id of readStore.before(readsAtFormStart)) veto.add(id);
-            const out = new Set<string>();
-            for (const w of [...writes.posted().slice(formWritesFrom), ...writes.away().slice(formAwayFrom)]) {
-                if (String(w.method || '').toUpperCase() !== 'POST' || !(w.status >= 200 && w.status < 300)) continue;
-                if (!String(w.body || '').includes(formMark)) continue;
-                const id = answeredRecordId(String(w.answer || ''));
-                if (!id || recordIdOfUrl(w.at) === id || writeNamesId(String(w.body || ''), id)) continue;
-                if (idForms(id).some(f => veto.has(f))) continue;
-                out.add(id);
+            const marked = [...writes.posted().slice(formWritesFrom), ...writes.away().slice(formAwayFrom)]
+                .filter(w => String(w.method || '').toUpperCase() === 'POST' && w.status >= 200 && w.status < 400 && String(w.body || '').includes(formMark));
+            //  The page's address before the form was sent: after it, a redirect may show the QA's own record (/items/7).
+            const neutral = new Set<string>(idsOfAddress(locationAtFormStart));
+            /*
+             * …and what the body sent that the QA did not type: a select's or a hidden field's value names a record (a
+             * parent), a quantity «1» the QA typed does not — the careless shop's own row 1 (answered «{}») was its own.
+             */
+            const typedKeys = new Set<string>((f.fields || []).filter((x: any) => /^textarea$/i.test(String(x.tag || ''))
+                || (/^input$/i.test(String(x.tag || '')) && !/^(?:hidden|checkbox|radio)$/i.test(String(x.type || '')))).map((x: any) => String(x.name || '').split(/\s+/)[0]).filter(Boolean));
+            //  (a field's `name` is its name attribute first, then its id and its label: the key a body sends is the first word.)
+            for (const w of marked) { for (const id of idsOfAddress(w.at)) neutral.add(id); for (const id of idsOfBody(String(w.body || ''), typedKeys)) neutral.add(id); }
+            const out = new Map<string, OwnRecord>();
+            /** How many of the marked creates went to each collection with no id in their answer: as many new marked rows of its list may be the QA's. */
+            const unnamed = new Map<string, number>();
+            for (const w of marked) {
+                const collection = collectionOfCreate(w.at, String(w.body || ''));
+                if (!collection) continue;
+                const candidates: string[] = [];
+                const answered = w.status < 300 ? answeredRecordId(String(w.answer || '')) : '';
+                if (answered) candidates.push(answered);
+                if (w.location) { const at = idAfterCollection(w.location, collection); if (at) candidates.push(at); }
+                if (!answered && w.status < 300) unnamed.set(collection, (unnamed.get(collection) || 0) + 1);
+                for (const id of candidates) {
+                    if (!id || neutral.has(id) || recordIdOfUrl(w.at) === id || writeNamesId(String(w.body || ''), id)) continue;
+                    if (idForms(id).some(f => veto.has(f))) continue;
+                    out.set(`${collection}\u0000${id}`, { collection, id });
+                }
             }
-            return [...out];
+            /*
+             * The creates whose answer named no id ({ok: true}, «{}», insertId): the records of that collection's list, read
+             * again, that hold this form's mark (a nonce only the QA types) and were never seen before — as many as those
+             * creates at most (each wrong value the product kept, and the valid one), never more.
+             */
+            for (const [collection, count] of unnamed) {
+                const held = new Set<string>();
+                for (const r of reads.list()) if (sameCollection(collectionOfAddress(r.at), collection)) for (const id of idsOfRecordsHolding(r.body, formMark)) held.add(id);
+                const fresh = [...held].filter(id => !neutral.has(id) && !idForms(id).some(f => veto.has(f)));
+                if (fresh.length && fresh.length <= count) for (const id of fresh) out.set(`${collection}\u0000${id}`, { collection, id });
+            }
+            return { records: [...out.values()], neutral: [...neutral] };
         };
+        const ownCreatedIds = (): string[] => ownCreated().records.map(r => r.id);
         /** A delete the network stopped: the row is left, counted and told (S4: merged into the report). */
         const deleteStopped = async (mark: string, stopped: Array<{ method: string; at: string }>) => {
             metrics.qaDeletesBlocked = Number(metrics.qaDeletesBlocked || 0) + stopped.length;
@@ -5502,7 +5912,7 @@ export async function probeForms(
             }), [...validValues.entries()].filter(([, v]) => v.kind === 'select').map(([s, v]) => [s, v.value])).catch(() => [] as string[]);
             const typed = [...persistenceAnchors, ...[...validValues.values()].filter(v => v.kind === 'fill' || v.kind === 'select').map(v => v.value), ...chosen, MARKUP_PROBE].filter(Boolean);
             const verdict = row
-                ? ownRowVerdict({ mark, rowText: row.text, rowIds: row.ids, markedIds, typed, beforeIds: idsShownBefore, beforeRows: rowsShownBefore, nowRows: row.rows })
+                ? ownRowVerdict({ mark, rowText: row.text, rowIds: row.ids, markedIds, typed, beforeIds: idsShownBefore, beforeRows: rowsShownBefore, nowRows: row.rows, allowedIds: ownCreatedIds() })
                 : { ok: false, edited: false, why: 'its row could not be read' };
             if (verdict.ok) return true;
             /*
@@ -5909,6 +6319,7 @@ export async function probeForms(
                             }
                             lostAtServer = listProvesLoss(lacks, {
                                 answeredIds: answeredId ? [answeredId] : [], byIdStatuses, byIdJson, controlStatus, answer: String(ownWrite?.answer || ''),
+                                moderated: MODERATED_WORDS.test([f.label, ...f.fields.map((x: any) => `${x.name || ''} ${x.label || ''} ${x.placeholder || ''}`), ownWrite ? collectionOfAddress(ownWrite.at) : ''].join(' ')),
                                 listsBefore: reads.list().filter(r => r.seq <= readsBeforeSubmit), at: ownWrite ? [bare(ownWrite.at)] : [],
                                 listsNow: asked.bodies, rowsBefore: rowsShownBefore,
                             });
@@ -5967,10 +6378,14 @@ export async function probeForms(
                     const deleteSelector = await page.evaluate(stampOwnDelete, { needle: ownMark, stamp: 'data-joe-qa-delete-own-record', onlyOne: true }).catch(() => '');
                     if (!deleteSelector) await leaveOwn(ownMark, 'no one row with its own delete holds the mark');
                     //  …and that row is a record that was not there before (ownRowVerdict): otherwise left and told.
-                    if (deleteSelector && await mayDeleteOwnRow(deleteSelector, ownMark)) {
+                    //  …and no socket of the page's is open: a delete sent over it no route can hold (S3, the fifth review).
+                    const overSocket = !!deleteSelector && await guard.liveSocket().catch(() => false);
+                    if (overSocket) await leaveOwn(ownMark, SOCKET_LEFT);
+                    if (deleteSelector && !overSocket && await mayDeleteOwnRow(deleteSelector, ownMark)) {
                         await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
-                        //  Pressed with the network held to the ids the server answered to this form's own creates (guardDeletes).
-                        await guard.press(ownCreatedIds());
+                        //  Pressed with the network held to the pairs the server answered to this form's own creates (guardDeletes).
+                        const own = ownCreated();
+                        await guard.press(own.records, own.neutral);
                         await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
                         /*
                          * 1.8 s after its DELETE is answered (6 s at most): the replay of the exam's P179
@@ -6005,6 +6420,8 @@ export async function probeForms(
                         const net = await guard.release();
                         //  A press whose write was stopped deleted nothing on the server: never counted as deleted, left and told.
                         if (net.blocked.length && !net.passed) await deleteStopped(ownMark, net.blocked);
+                        //  …and a press during which the page talked over a socket was never held: not counted, left and told.
+                        else if (net.socketFrames > 0) await leaveOwn(ownMark, SOCKET_LEFT);
                         else if (removed && (net.passed > 0 || net.attempted === 0)) metrics.qaRecordsDeleted++;
                         else metrics.qaRecordsNotDeleted++;
                         if (net.blocked.length && net.passed) metrics.qaDeletesBlocked = Number(metrics.qaDeletesBlocked || 0) + net.blocked.length;
@@ -6018,10 +6435,13 @@ export async function probeForms(
         }
         //  What a wrong value the product kept left behind is the QA's own: removed, never a visitor's — nor one it edited.
         if (savedInvalid && editedRecord()) await tellEdit(formMark);
+        else if (savedInvalid && eyeIsOpen() && await guard.liveSocket().catch(() => false)) await leaveOwn(formMark, SOCKET_LEFT);
         else if (savedInvalid && eyeIsOpen()) {
             //  …one row at a time, each only when it is a record that was not there before (its own id, its own text).
             const removed = await deleteOwnRecords(page, formMark, 4, sel => mayDeleteOwnRow(sel, formMark), {
-                press: () => guard.press(ownCreatedIds()), release: () => guard.release(), stopped: stopped => deleteStopped(formMark, stopped),
+                press: () => { const own = ownCreated(); return guard.press(own.records, own.neutral); },
+                release: () => guard.release(), stopped: stopped => deleteStopped(formMark, stopped),
+                socket: () => leaveOwn(formMark, SOCKET_LEFT),
             });
             metrics.qaRecordsDeleted += removed;
         }
@@ -6046,7 +6466,8 @@ export async function probeForms(
 /* ---- judgement, on what actually happened ------------------------------ */
 
 /** Controls that were never pressed: unreachable, declined by the product, consumed by the walk. */
-const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current', 'idle']);
+//  'held': its press sent a delete the QA's guard stopped (guardDeletes) — what it would have done is not known, never «dead».
+const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current', 'idle', 'held']);
 
 /** The verdict, kept separate so both audits reach it by the same road. */
 export function judgeBehaviour(
