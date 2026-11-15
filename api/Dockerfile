@@ -8,6 +8,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY node_modules ./node_modules
 COPY dist ./dist
+# Joe's own assets: the PDF proof child and scan rules, the app kit's print sheet and fonts, the template fallbacks.
+COPY assets ./assets
 
 # CRITICAL: Rebuild native modules for Docker's glibc (2.36)
 # Host is Ubuntu (glibc 2.39) — native binaries compiled there crash with SIGBUS in Debian containers

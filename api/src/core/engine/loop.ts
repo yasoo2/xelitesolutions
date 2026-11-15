@@ -20,6 +20,7 @@ import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
 import { firstMessage, languageReminder, languageSection, noteInWrongScript, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
+import { pdfBriefAfterWrite, pdfBriefAtStart, type PdfBriefState } from './pdf-brief';
 import { operatorFirstMessage, operatorSystemPrompt } from './operate';
 import type { FinishArgs } from './finish';
 import type {
@@ -330,9 +331,13 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
 
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
+    //  The Arabic-PDF brief and kit, once per run (pdf-brief.ts): '' for every other request.
+    const pdfBrief: PdfBriefState = { given: false };
+    const pdfFacts = { runId: req.runId, request: req.request, language: req.language, projectDir: req.projectDir, change: req.change, signal: req.signal, cancelled };
+    const pdfOpening = req.operate ? '' : await pdfBriefAtStart(pdfBrief, pdfFacts).catch(() => '');
     const opening = req.operate
         ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
-        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change);
+        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change, pdfOpening || undefined);
     conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
     req.emit({ type: 'plan', plan: state.plan });
 
@@ -460,6 +465,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             idle = 0;
 
             let progressed = false;
+            /** Files this step's file_write / file_edit wrote: the Arabic-PDF brief's hook reads them as they now are. */
+            const wroteFiles: string[] = [];
             const results: { role: 'tool'; tool_call_id: string; content: string }[] = [];
             const images: { path: string; mime: string; from: string }[] = [];
             for (const call of turn.toolCalls) {
@@ -494,6 +501,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 }
                 const durationMs = now() - started;
                 state.toolMs += durationMs;
+                if (outcome.ok && (call.name === 'file_write' || call.name === 'file_edit') && typeof (args as any)?.path === 'string') wroteFiles.push((args as any).path);
                 absorbFacts(state, outcome.facts);
                 if (madeProgress(outcome)) progressed = true;
 
@@ -556,6 +564,11 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             if (!ending && results.length && turn.text && noteInWrongScript(turn.text, req.replyLanguage || req.language)) {
                 const last = results[results.length - 1];
                 last.content = `${last.content}\n\n${languageReminder(req.replyLanguage || req.language)}`;
+            }
+            //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
+            if (!ending && !req.operate && results.length && wroteFiles.length && !pdfBrief.given) {
+                const brief = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
+                if (brief) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${brief}`; }
             }
             for (const r of results) conv.push(r);
             if (!ending && images.length && deps.model.vision) {

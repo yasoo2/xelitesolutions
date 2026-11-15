@@ -164,7 +164,7 @@ function repositoryBrief(change: ChangeContext): string[] {
     ];
 }
 
-export function firstMessage(request: string, language: string, plan: PlanState, projectDir: string, replyLanguage?: string, change?: ChangeContext): string {
+export function firstMessage(request: string, language: string, plan: PlanState, projectDir: string, replyLanguage?: string, change?: ChangeContext, pdfBrief?: string): string {
     const lines = [
         'Request (verbatim):',
         '"""',
@@ -181,6 +181,8 @@ export function firstMessage(request: string, language: string, plan: PlanState,
         lines.push('', 'These requirements were read from the request. Each one must be implemented and proven. You may add requirements with plan_update; you cannot remove these.');
     }
     if (asksPerUserIsolation(request)) lines.push('', isolationBrief(request));
+    //  A right-to-left app that prints or makes a PDF (pdf-brief.ts, design arabic-pdf v9 §3.1); nothing otherwise.
+    if (pdfBrief) lines.push('', pdfBrief);
     lines.push('', 'Start by calling plan_update with your steps.');
     return lines.join('\n');
 }
