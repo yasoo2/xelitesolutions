@@ -755,33 +755,58 @@ const AR_NAME_ENDS = /^(?:و|ف|مع|في|فيه|فيها|على|من|عن|إل�
  * «e-commerce», «إلكتروني») restate the venue and ask nothing: «a landing page
  * for an online store» asks no catalogue. A service or a provider is a
  * business («an HR app for a shipping service»), never a platform.
+ *
+ * …but a store's or a shop's kind is its trade, and the trade is the business. The
+ * second review of 2026-11-15: «a landing page for a discount store», «لمتجر خصومات»,
+ * «a subscription box shop», «a mobile app store», «a website for a ticket marketplace»
+ * and «a search platform startup» asked coupons, subscriptions, a mobile app, support
+ * and search. The kind is kept only before a platform or a marketplace that the request
+ * builds — never one a landing page or a website is only for, and never one that is the
+ * name of a startup or a company («a search platform startup»). What says how the site
+ * itself is built (multi-vendor, multilingual, «متعدد البائعين») is kept on any head.
  */
-const PLATFORM_EN = /^(?:platforms?|marketplaces?|markets?|stores?|shops?|boutiques?)$/iu;
+const PLATFORM_EN = /^(?:platforms?|marketplaces?)$/iu;
+const STORE_EN = /^(?:markets?|stores?|shops?|boutiques?)$/iu;
 const CHANNEL_EN = /^(?:online|e-?commerce|digital|web|internet|virtual|new|own|small|local|little|big|large)$/iu;
-const BUSINESS_EN_PARTS = new RegExp(String.raw`\b(for\s+(?:(?:a|an|the|my|our|his|her|their|your)\s+)?)((?:[\p{L}'’-]+\s+){0,3}?)(${ORG_EN})\b`, 'giu');
-const PLATFORM_AR = /^(?:منص(?:ة|ه|ات)|سوق|أسواق|اسواق|متجر|متاجر)$/u;
+/** The words that say how the site itself is built, kept before any store or platform head. */
+const STRUCTURE_EN = /^(?:multi-?vendors?|multi-?sellers?|multi-?merchants?|multi-?lingual|bilingual|trilingual|multi-?language|multi-?currency|multi-?tenant)$/iu;
+const BUSINESS_EN_PARTS = new RegExp(String.raw`\b(for\s+(?:(?:a|an|the|my|our|his|her|their|your)\s+)?)((?:[\p{L}'’-]+\s+){0,3}?)(${ORG_EN})((?:\s+${ORG_EN})*)\b`, 'giu');
+/** What only presents a business (a landing page, a website for it); a request that builds a system names it. */
+const PRESENTS_EN = /\b(?:landing\s+page|web\s*site|site|home\s*page|web\s*page|page|brochure|portfolio)\s*$/iu;
+const BUILDS_EN = /\b(?:full[- ]?stack|e-?commerce|system|apps?|application|back-?end|api|rest|portal|dashboard|crm|erp|saas|platform|marketplace|server|database)\b/iu;
+const PLATFORM_AR = /^(?:منص(?:ة|ه|ات)|سوق|أسواق|اسواق)$/u;
+const STORE_AR = /^(?:متجر|متاجر)$/u;
 const CHANNEL_AR = /^(?:ال)?(?:إلكتروني|الكتروني|إلكترونية|الكترونية|أونلاين|اونلاين|رقمي|رقمية|جديد|جديدة|صغير|صغيرة)$/u;
+const STRUCTURE_AR = /^(?:ال)?(?:متعدد|متعددة|ثنائي|ثنائية)$/u;
 
-/** A business name blanked; on a platform head, only the head and the words that say it is online. */
-function blankBusinessEn(match: string, lead: string, mods: string, head: string): string {
-    if (!PLATFORM_EN.test(head)) return ' '.repeat(match.length);
-    const kept = mods.replace(/[\p{L}'’-]+/gu, w => CHANNEL_EN.test(w) ? ' '.repeat(w.length) : w);
-    return ' '.repeat(lead.length) + kept + ' '.repeat(head.length);
+/** A business name blanked; on a platform the request builds, only the head and the words that say it is online. */
+function blankBusinessEn(match: string, lead: string, mods: string, head: string, more: string, before: string): string {
+    //  «a search platform startup»: the head is the last organisation word, and a startup is a business.
+    const last = more ? more.trim().split(/\s+/).pop() || head : head;
+    const clause = before.split(/[.!?؟\n;]/).pop() || '';
+    const builds = PLATFORM_EN.test(last) && !more && !(PRESENTS_EN.test(clause) && !BUILDS_EN.test(clause));
+    if (!builds && !STORE_EN.test(last) && !PLATFORM_EN.test(last)) return ' '.repeat(match.length);
+    const kept = mods.replace(/[\p{L}'’-]+/gu, w => (builds ? !CHANNEL_EN.test(w) : STRUCTURE_EN.test(w)) ? w : ' '.repeat(w.length));
+    return ' '.repeat(lead.length) + kept + ' '.repeat(head.length + more.length);
 }
 
 /** The request with the business it is for blanked out: what is left asks for things to build. */
 function withoutBusinessNames(raw: string): string {
-    const text = String(raw || '').replace(BUSINESS_EN_PARTS, (m, lead, mods, head) => blankBusinessEn(m, lead, mods, head));
+    const source = String(raw || '');
+    const text = source.replace(BUSINESS_EN_PARTS, (m, lead, mods, head, more, at) => blankBusinessEn(m, lead, mods, head, more || '', source.slice(Math.max(0, Number(at) - 200), Number(at))));
     const cuts: Array<[number, number]> = [];
     for (const m of text.matchAll(BUSINESS_AR)) {
         const lead = m[1];
         const definite = lead === 'لل' || /ال$/u.test(lead);
         const platform = PLATFORM_AR.test(m[0].slice(lead.length));
+        //  A store's kind is its trade («لمتجر خصومات»), blanked as its name; how the site is built («متعدد البائعين») is kept.
+        const store = STORE_AR.test(m[0].slice(lead.length));
         let end = m.index! + m[0].length;
         //  The word that completes the name: «لـشركة شحن», «للشركة الناشئة»; of a platform, only «إلكتروني».
         for (let k = 0; k < (definite ? 2 : 1); k++) {
             const next = /^(\s+)([\p{L}\p{M}ـ]+)/u.exec(text.slice(end));
             if (!next || (definite ? !/^ال/u.test(next[2]) : AR_NAME_ENDS.test(next[2]))) break;
+            if ((platform || store) && STRUCTURE_AR.test(next[2])) break;
             if (platform && !CHANNEL_AR.test(next[2])) break;
             end += next[0].length;
         }

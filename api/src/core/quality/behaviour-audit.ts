@@ -750,10 +750,30 @@ export function currentLinkFacts(sel: string): { names: string; toggle: boolean;
      * checkout» disabled on an empty cart) or a view it keeps hidden.
      */
     const landing = /^(?:home|shop|store|products|catalog(?:ue)?|browse|all products|الرئيسية|الصفحة الرئيسية|المتجر|المنتجات|تسوق|التسوق|تسوّق|الكتالوج)$/iu.test(own);
+    /*
+     * …and only a way that really leads to another view. The second review of 2026-11-15: a pager's
+     * disabled «السابق», or a closed edit panel (`<section hidden><h2>تعديل المنتج</h2>`), made a
+     * lone dead «السلة» «the first item» on a page with one view. A waiting way names a view it
+     * leads to (a checkout, a cart, a payment); a hidden view stands beside the open one and is
+     * named by a control the page shows.
+     */
+    const flat = (s: string) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
     const waitingWay = () => Array.from(document.querySelectorAll('button:disabled, [aria-disabled="true"]'))
-        .some(b => b !== el && !b.closest('form') && String((b as HTMLButtonElement).type || '').toLowerCase() !== 'submit' && shown(b));
-    const hiddenView = () => Array.from(document.querySelectorAll('section, main, [role="tabpanel"], [data-view], [data-page], [data-screen], .view, .page, .screen, .tab-pane'))
-        .some(v => !v.closest('[role="dialog"], dialog') && !shown(v) && !!v.querySelector('h1, h2, h3, button, a[href], form'));
+        .some(b => b !== el && !b.closest('form') && !b.closest('.pager, .pagination, [class*="pagination"], [aria-label*="pag" i]') && !(b as HTMLButtonElement).form && shown(b)
+            && /check\s*-?out|\bcart\b|basket|payment|\bpay\b|place (?:the |your )?order|proceed|إتمام|اتمام|الدفع|ادفع|السلة|سلة|الطلب|اطلب|الحجز/iu.test(String((b as HTMLElement).innerText || b.getAttribute('aria-label') || '')));
+    const VIEW = 'section, main, [role="tabpanel"], [data-view], [data-page], [data-screen], .view, .page, .screen, .tab-pane';
+    const named = Array.from(document.querySelectorAll('a[href], button, [role="button"], [role="tab"], [role="link"], [role="menuitem"]'))
+        .filter(c => c !== el && !c.closest('form') && shown(c))
+        .map(c => flat((c as HTMLElement).innerText || c.getAttribute('aria-label') || c.getAttribute('title') || ''))
+        .filter(t => t.length >= 2 && t.length <= 60);
+    const hiddenView = () => Array.from(document.querySelectorAll(VIEW))
+        .some(v => {
+            if (v.closest('[role="dialog"], dialog') || shown(v)) return false;
+            const beside = Array.from(v.parentElement?.children || []).some(s => s !== v && s.matches(VIEW) && shown(s));
+            if (!beside) return false;
+            const heads = Array.from(v.querySelectorAll('h1, h2, h3, [role="heading"]')).map(h => flat(h.textContent || '')).filter(h => h.length >= 2);
+            return heads.some(h => named.some(t => t === h || t.includes(h) || (t.length >= 4 && h.includes(t))));
+        });
     const first = items.length > 0 && items[0] === el && (items.length > 1 || landing || waitingWay() || hiddenView());
     const brand = !!el.closest('header, [role="banner"]') && !group && own.length >= 2 && String(document.title || '').toLowerCase().includes(own);
     return { names, toggle, marked, first, brand };
@@ -849,8 +869,46 @@ export function serverListsWithout(
 
 /** A key by which a list may show only some of its records: a state, an approval, a publication. */
 const LIST_STATE_KEY = /^(?:status|state|stage|approved|is_?approved|published|is_?published|visible|is_?visible|hidden|is_?hidden|moderat\w*|review_?status|pending|is_?pending|active|is_?active|archived|is_?archived|deleted|is_?deleted|draft|is_?draft)$/i;
-/** Words that say a record is kept and waits before it is listed: a review held for approval. */
-export const HELD_FOR_REVIEW = /\b(?:pending|moderat\w*|awaiting|under review|in review|for (?:approval|review|moderation)|needs? approval|(?:once|after|until|when) (?:it is |it's |it has been )?(?:approved|reviewed|moderated|confirmed)|will (?:appear|show|be (?:shown|published|visible|listed|reviewed|approved)))\b|بانتظار|قيد\s+المراجع|بعد\s+(?:المراجع|الموافق|الاعتماد|مراجعت|اعتماد|موافق)|موافقة\s+(?:الإدارة|الادارة|المشرف|المسؤول)|سيظهر|ستظهر|سيتم\s+نشر|ستُنشر|سيُنشر|ستنشر|سينشر/iu;
+/*
+ * Words that say a record is kept and waits before it is listed: a review held for approval — said in
+ * a sentence about review or approval, never a status badge. The second review of 2026-11-15: a booking
+ * drawn with its «Pending» badge, or «Booking #9 … Pending», switched the empty-list proof off for a 201
+ * that kept nothing; «pending» counts only beside a review, an approval, a moderation or a confirmation.
+ */
+export const HELD_FOR_REVIEW = /\b(?:moderat\w*|awaiting (?:review|approval|moderation|confirmation)|under review|in review|for (?:approval|review|moderation)|needs? approval|pending (?:review|approval|moderation|confirmation|verification)|(?:review|approval|moderation)s? (?:is |are )?pending|(?:once|after|until|when) (?:it is |it's |it has been |they are |they have been )?(?:approved|reviewed|moderated|confirmed)|will (?:appear|show) (?:after|once|when|soon|shortly)|will be (?:shown|published|visible|listed|reviewed|approved))\b|بانتظار\s+(?:ال)?(?:مراجع|موافق|اعتماد|تأكيد|تاكيد|نشر)|قيد\s+المراجع|بعد\s+(?:المراجع|الموافق|الاعتماد|مراجعت|اعتماد|موافق)|موافقة\s+(?:الإدارة|الادارة|المشرف|المسؤول)|سيظهر|ستظهر|سيتم\s+نشر|ستُنشر|سيُنشر|ستنشر|سينشر/iu;
+/**
+ * A state that says the record is kept and not shown: approved, published or visible false; hidden,
+ * pending (as a flag), a draft, archived, deleted; a status of review or moderation. A bare
+ * «"status": "pending"» or «"new"» is what most orders and bookings answer, listed or not: no hold.
+ */
+function heldState(o: Record<string, unknown> | null): boolean {
+    if (!o) return false;
+    for (const [k, v] of Object.entries(o)) {
+        if (!LIST_STATE_KEY.test(k)) continue;
+        const s = String(v ?? '').trim().toLowerCase();
+        if (/^(?:is_?)?(?:approved|published|visible|active)$/i.test(k) && (v === false || v === 0 || s === 'false' || s === '0')) return true;
+        if (/^(?:is_?)?(?:hidden|pending|draft|archived|deleted)$/i.test(k) && (v === true || v === 1 || s === 'true' || s === '1')) return true;
+        if (/^(?:status|state|stage|moderat\w*|review_?status)$/i.test(k) && /^(?:pending[_ -]?(?:review|approval|moderation|verification)|awaiting[_ -]?\w+|in[_ -]?review|under[_ -]?review|unapproved|not[_ -]?approved|moderation|moderating|in[_ -]?moderation|hidden|draft|archived|deleted|rejected|spam|unpublished|private)$/.test(s)) return true;
+    }
+    return false;
+}
+/** A list asked with a filter in its address («?status=approved»): an empty answer says nothing of the rest. */
+function filteredList(at: string): boolean {
+    try { return new URL(String(at)).search.length > 1; } catch { return /\?./.test(String(at || '')); }
+}
+/** The values a write carried, as text, for a form's own values to be found in (serverListVerdict). */
+function sentValues(body: string): string[] {
+    const out: string[] = [];
+    const walk = (v: unknown, depth: number) => {
+        if (out.length > 400) return;
+        if (typeof v === 'string' || typeof v === 'number') { out.push(String(v).trim().toLowerCase()); return; }
+        if (depth < 4 && v && typeof v === 'object') for (const x of Object.values(v as Record<string, unknown>)) walk(x, depth + 1);
+    };
+    try { walk(JSON.parse(String(body)), 0); } catch {
+        try { for (const [, v] of new URLSearchParams(String(body))) out.push(String(v).trim().toLowerCase()); } catch { /* not a form body */ }
+    }
+    return out;
+}
 /** The length of a page a list is cut to: a list this long may hold the record on its next page. */
 const PAGE_SIZES: ReadonlySet<number> = new Set([10, 12, 15, 20, 24, 25, 30, 40]);
 
@@ -867,14 +925,32 @@ const PAGE_SIZES: ReadonlySet<number> = new Set([10, 12, 15, 20, 24, 25, 30, 40]
  * page (a total beyond it, a next page, a length a page is cut to, fifty or more), one whose every
  * record shares one state (approved, published) or that hides the state this record was given
  * (pending), one the server's answer or the page's own words say is held for review.
+ *
+ * Judged on the form's own write only — the first POST of the submit that carried the form's mark or
+ * one of the values it was sent with (`values`). The second review of 2026-11-15: a barber's booking was
+ * kept, the page then POSTed /api/notifications, whose list is empty for a visitor, and that empty list
+ * «proved» the booking lost. With `values` not given, the first POST that carries the mark, or else the
+ * submit's first POST.
  */
 export function serverListVerdict(
     posts: Array<{ at: string; body: string; method?: string; answer?: string }>,
     answers: Array<string | { at: string; body: string }>,
     mark: string,
     said = '',
+    values?: string[],
 ): '' | 'empty' | 'others' {
     if (HELD_FOR_REVIEW.test(String(said || ''))) return '';
+    const made = (posts || []).filter(p => !p?.method || String(p.method).toUpperCase() === 'POST');
+    const own = (values || []).map(v => String(v ?? '').trim().toLowerCase()).filter(v => v.length >= 2);
+    const carries = (p: { body: string }) => {
+        const body = String(p?.body || '');
+        if (mark && body.includes(mark)) return true;
+        if (!own.length) return false;
+        const sent = sentValues(body);
+        return own.some(v => sent.includes(v));
+    };
+    const first = made.find(carries) || (values === undefined ? made[0] : undefined);
+    const judged = first ? [first] : [];
     const norm = (u: string) => {
         try { const x = new URL(String(u)); return (x.origin + x.pathname).replace(/\/+$/, ''); } catch { return String(u || '').split(/[?#]/)[0].replace(/\/+$/, ''); }
     };
@@ -902,8 +978,7 @@ export function serverListVerdict(
     };
     const statesOf = (o: Record<string, unknown> | null) => (o ? Object.keys(o).filter(k => LIST_STATE_KEY.test(k)) : []);
     let verdict: '' | 'empty' | 'others' = '';
-    for (const p of posts || []) {
-        if (p?.method && String(p.method).toUpperCase() !== 'POST') continue;
+    for (const p of judged) {
         const body = String(p?.body || '');
         //  What its answer says in words («Your review is awaiting moderation»); a state it gives («pending») is judged against the list below.
         if (p?.answer) {
@@ -942,7 +1017,10 @@ export function serverListVerdict(
         }
         /** The states this record was given, by its own answer or by what was sent. */
         const ours = new Map<string, string>();
-        for (const o of [recordOf(sent), recordOf(parse(String(p?.answer || '')))]) for (const k of statesOf(o)) ours.set(k, JSON.stringify(o![k]));
+        const given = [recordOf(sent), recordOf(parse(String(p?.answer || '')))];
+        for (const o of given) for (const k of statesOf(o)) ours.set(k, JSON.stringify(o![k]));
+        /** The server says it keeps the record unseen (approved false, a status of review): no list proves it gone. */
+        const held = given.some(heldState);
         const at = norm(p?.at);
         for (const a of answers || []) {
             if (typeof a !== 'string' && norm(a?.at) !== at) continue;
@@ -957,9 +1035,17 @@ export function serverListVerdict(
                 if (statesOf(first).some(k => records.every(r => JSON.stringify(r[k]) === JSON.stringify(first[k])))) continue;
                 //  …or it shows records without the state this one was given.
                 if ([...ours.keys()].some(k => !records.every(r => k in r))) continue;
+                //  …or none in the state this one was given (a review kept «pending», a list of «approved» and «featured»).
+                if ([...ours].some(([k, v]) => !records.some(r => JSON.stringify(r[k]) === v))) continue;
+                if (held) continue;
             } else {
-                //  Empty, and this record was given a state: an empty list of the approved proves nothing.
-                if (ours.size) continue;
+                /*
+                 * Empty: lost, unless the list was asked with a filter or the server says it keeps the record
+                 * unseen. The second review of 2026-11-15: any state in the answer («"status": "pending"», what
+                 * most orders and bookings answer) switched this proof off; an unfiltered empty list after a
+                 * 201 has room for every state, and it holds none.
+                 */
+                if (held || (typeof a !== 'string' && filteredList(a?.at))) continue;
                 verdict = verdict || 'empty';
                 continue;
             }
@@ -981,6 +1067,117 @@ export function serverListVerdict(
         }
     }
     return verdict;
+}
+
+/*
+ * ⛔ A FORM THAT SAVES A RECORD WITH POST EDITS IT — THE QA NEVER DELETES IT AS ITS OWN.
+ *
+ * The second review of 2026-11-15: a prefilled «Edit movie» form that POSTs /api/items/1 (HTML forms,
+ * Express `app.post('/items/:id')`, GraphQL) was read as a create, and the QA deleted movie 1 as its own.
+ * A POST made a record only when it went to a collection and the rows grew, or when its answer named a
+ * new id — one the page did not show, the address does not hold and the write itself did not send. A
+ * POST to a record's own address (/items/1, /items/1/update) is an edit unless it answered a new id.
+ * A form that opened empty and POSTed to a collection made a record, as before. And another origin's
+ * write (Supabase, Firebase) that carried the form's mark is judged the same way: a hosted database's
+ * create is the QA's own to delete, its update never.
+ */
+/** The id a write's address ends on (/items/1, /items/1/update, a uuid, a database's own key), or ''. */
+export function recordIdOfUrl(at: string): string {
+    let path = '';
+    try { path = new URL(String(at)).pathname; } catch { path = String(at || '').split(/[?#]/)[0]; }
+    const parts = path.split('/').filter(Boolean);
+    while (parts.length > 1 && /^(?:update|edit|save|patch|modify|replace|change|upsert)$/i.test(parts[parts.length - 1])) parts.pop();
+    let last = parts[parts.length - 1] || '';
+    try { last = decodeURIComponent(last); } catch { /* kept as written */ }
+    if (parts.length < 2) return '';
+    if (/^\d+$/.test(last) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(last) || /^[0-9a-f]{24}$/i.test(last)) return last;
+    return /^[A-Za-z0-9_-]{6,40}$/.test(last) && /\d/.test(last) && /[A-Za-z]/.test(last) && !/^v\d+$/i.test(last) ? last : '';
+}
+/** The id a write's answer names: the record it returns, or the one record it wraps (`data`, a list of one, a GraphQL field). */
+export function answeredRecordId(answer: string): string {
+    let value: unknown;
+    try { value = JSON.parse(String(answer || '')); } catch { return ''; }
+    const queue: Array<{ v: unknown; depth: number }> = [{ v: value, depth: 0 }];
+    while (queue.length) {
+        const { v, depth } = queue.shift()!;
+        if (Array.isArray(v)) { if (v.length === 1 && depth < 4) queue.push({ v: v[0], depth: depth + 1 }); continue; }
+        if (!v || typeof v !== 'object') continue;
+        const o = v as Record<string, unknown>;
+        for (const k of ['id', '_id', 'uuid', 'ID', 'Id']) {
+            const id = o[k];
+            if ((typeof id === 'string' || typeof id === 'number') && String(id).length <= 80 && String(id) !== '') return String(id);
+        }
+        if (depth < 4) for (const x of Object.values(o)) if (x && typeof x === 'object') queue.push({ v: x, depth: depth + 1 });
+    }
+    return '';
+}
+/** Whether a write sent this id itself (`{"id": 1, …}`, GraphQL variables, `id=1`): it named a record that was there. */
+function writeNamesId(body: string, id: string): boolean {
+    if (!id) return false;
+    const idKey = /^(?:id|_id|uuid|\w*[_-]?id)$/i;
+    let found = false;
+    const walk = (v: unknown, key: string, depth: number) => {
+        if (found || depth > 5) return;
+        if ((typeof v === 'string' || typeof v === 'number') && idKey.test(key) && String(v) === id) { found = true; return; }
+        if (v && typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, Array.isArray(v) ? key : k, depth + 1);
+    };
+    try { walk(JSON.parse(String(body)), '', 0); } catch {
+        try { for (const [k, v] of new URLSearchParams(String(body))) if (idKey.test(k) && v === id) found = true; } catch { /* not a form body */ }
+    }
+    return found;
+}
+/** Whether one write made a new record (true) or changed one that was there (false). */
+export function writeMadeRecord(
+    w: { at: string; body: string; method: string; answer?: string },
+    facts: { openedFilled: boolean; rowsGrew: boolean; seenIds: Set<string> | string[] },
+): boolean {
+    if (String(w?.method || '').toUpperCase() !== 'POST') return false;
+    const seen = facts.seenIds instanceof Set ? facts.seenIds : new Set((facts.seenIds || []).map(String));
+    const urlId = recordIdOfUrl(w.at);
+    const id = answeredRecordId(String(w.answer || ''));
+    const newId = !!id && id !== urlId && !seen.has(id) && !writeNamesId(String(w.body || ''), id);
+    if (urlId) return newId;
+    if (!facts.openedFilled) return true;
+    return facts.rowsGrew || newId;
+}
+/** Whether a form's writes edited a record that was there (never deleted) — and why, as told. */
+export function formEditedRecord(
+    list: Array<{ at: string; body: string; method: string; answer?: string }>,
+    mark: string,
+    facts: { openedFilled: boolean; rowsGrew: boolean; seenIds: Set<string> | string[] },
+): { edited: boolean; why: string } {
+    const changed = (w: { method: string }) => /^(?:PUT|PATCH)$/i.test(String(w.method || ''));
+    if (list.some(w => changed(w) && !!mark && String(w.body || '').includes(mark))) return { edited: true, why: 'its writes changed a record with the values the QA typed (PUT/PATCH)' };
+    const posts = list.filter(w => String(w.method || '').toUpperCase() === 'POST');
+    if (posts.some(w => writeMadeRecord(w, facts))) return { edited: false, why: '' };
+    if (posts.length) return { edited: true, why: facts.openedFilled ? 'the form opened holding a record, and its POST made none' : 'its POST went to a record that was there' };
+    if (facts.openedFilled) return { edited: true, why: 'the form opened holding a record' };
+    return list.some(changed) ? { edited: true, why: 'its writes only changed a record (PUT/PATCH)' } : { edited: false, why: '' };
+}
+
+/** Runs in the page: the ids the page shows of its records before a form is sent — a POST that answers one of them changed it (writeMadeRecord). Self-contained. */
+export function shownRecordIds(): string[] {
+    const out = new Set<string>();
+    const nodes = Array.from(document.querySelectorAll('*')).slice(0, 20_000);
+    for (const n of nodes) {
+        for (const a of Array.from(n.attributes)) {
+            if (/^data-(?:[\w-]*-)?(?:id|key|uuid)$/i.test(a.name) && a.value && a.value.length <= 80) out.add(a.value.trim());
+        }
+        if (n.tagName === 'A') {
+            try {
+                const u = new URL(String((n as HTMLAnchorElement).href || ''));
+                const last = u.pathname.split('/').filter(Boolean).pop() || '';
+                if (last && last.length <= 80) out.add(decodeURIComponent(last));
+                u.searchParams.forEach(v => { if (v && v.length <= 80) out.add(v); });
+            } catch { /* not an address */ }
+        }
+        if (n.tagName === 'INPUT' && String((n as HTMLInputElement).type).toLowerCase() === 'hidden') {
+            const v = String((n as HTMLInputElement).value || '').trim();
+            if (v && v.length <= 80) out.add(v);
+        }
+        if (out.size > 5000) break;
+    }
+    return Array.from(out);
 }
 
 /** Runs in the page: whether the page keeps any IndexedDB database. Self-contained. */
@@ -1492,7 +1689,17 @@ export function isVisibleFormRefusal(text: string): boolean {
      * «Create booking» answered «Car is required» (no car could be chosen yet), the QA read it as
      * «submitted», looked for the booking, and refused the delivery for one never made.
      */
-    if (/\b(?:is|are) required\b|\brequired field|\bmust (?:be|contain|have|include|match|look|start|end|use)\b|\bplease (?:enter|select|choose|fill|provide|correct|add|pick)\b|\binvalid\b|\bnot (?:a )?valid\b|\b(?:cannot|can't|can not) be (?:empty|blank|in the past|before|after)\b|\btoo (?:short|long|many|few)\b|\b(?:select|choose|pick) an? \w+ first\b|مطلوب|إلزامي|الزامي|يجب أن|يجب ان|يرجى|الرجاء|من فضلك|غير صالح|غير صحيح|لا يمكن أن يكون|قصير جد|طويل جد|اختر .{0,20}أولاً/iu.test(said)) return true;
+    /*
+     * …but a success that asks him to keep something is no refusal. The second review of 2026-11-15
+     * (the older rule of finding 5): «تم استلام طلبك بنجاح، يرجى الاحتفاظ برقم الطلب» — «please keep your
+     * order number» — was read as the form saying no, and the order was never looked for. A polite word
+     * («يرجى», «الرجاء», «من فضلك»), «must», «مطلوب» or «يجب أن» in a message that says it succeeded refuses
+     * only when it asks him to enter, choose, fill or correct something; a field's own error words
+     * («is required», «invalid», «غير صالح») always do.
+     */
+    const succeeded = /(?:^|[\s.،!؛:])تمّ?ت?(?=\s)|بنجاح|شكر[اًا]|شكرًا|\bthanks?\b|\bthank you\b|\bsuccess(?:ful(?:ly)?)?\b|\bsaved\b|\bdone\b|\bconfirmed\b|\bbooked\b|\bplaced\b/iu.test(said);
+    if (/\b(?:is|are) required\b|\brequired field|\bplease (?:enter|select|choose|fill|provide|correct|add|pick)\b|\binvalid\b|\bnot (?:a )?valid\b|\b(?:cannot|can't|can not) be (?:empty|blank|in the past|before|after)\b|\btoo (?:short|long|many|few)\b|\b(?:select|choose|pick) an? \w+ first\b|إلزامي|الزامي|غير صالح|غير صحيح|لا يمكن أن يكون|قصير جد|طويل جد|اختر .{0,20}أولاً|(?:يرجى|الرجاء|من فضلك)\s+(?:إدخال|ادخال|أدخل|ادخل|اختيار|اختر|كتابة|اكتب|ملء|املأ|تعبئة|عبّ?ئ|تحديد|حدد|حدّد|تصحيح|صحح|صحّح|التحقق|تحقق|إكمال|اكمال|أكمل|اكمل|إعادة|اعادة)|(?:حقل|الحقل)\s+\S+\s+مطلوب/iu.test(said)) return true;
+    if (!succeeded && /\bmust (?:be|contain|have|include|match|look|start|end|use)\b|مطلوب|يجب أن|يجب ان|يرجى|الرجاء|من فضلك/iu.test(said)) return true;
     /*
      * …and a line that tells him to choose: «اختر موعدًا من القائمة». The exam, 2026-11-13 (P290): the
      * booking's slots sit outside its form, none was chosen, the page said so, and the QA read it as
@@ -1505,7 +1712,6 @@ export function isVisibleFormRefusal(text: string): boolean {
      * «شكراً لك\nاختر خدمة أخرى إن أردت» were read as refusals, and an order the store then lost was
      * never looked for.
      */
-    const succeeded = /(?:^|[\s.،!؛:])تمّ?ت?(?=\s)|بنجاح|شكر[اًا]|شكرًا|\bthanks?\b|\bthank you\b|\bsuccess(?:ful(?:ly)?)?\b|\bsaved\b|\bdone\b|\bconfirmed\b|\bbooked\b|\bplaced\b/iu.test(said);
     if (!succeeded && /(?:^|\n)\s*(?:(?:يرجى|الرجاء|من فضلك)\s+)?(?:اختر|اختاري|اختيار|حدد|حدّد)\s.{0,30}(?:أولاً|أولًا|أولا|اولاً|اولًا|اولا|من القائمة|من الجدول|من المواعيد|من الأوقات)/u.test(said)) return true;
     if (!succeeded && /(?:^|\n)\s*(?:(?:يرجى|الرجاء|من فضلك)\s+)?(?:اختر|اختاري|حدد|حدّد)\s|(?:^|\n)\s*(?:please\s+)?(?:select|choose|pick)\s+(?:a|an|the|your|one)\b/iu.test(said)) return true;
     return /\b(?:unauthori[sz]ed|forbidden|access denied|permission denied|invalid (?:email|password|credentials)|please sign[ -]?in|sign[ -]?in (?:to continue|required)|could not save|unable to save)\b|لم\s+يُ?حفظ|سج[ّ]?ل\s+الدخول|غير\s+صحيح(?:ة)?|لا\s+تملك\s+صلاحية|تعذ[ّ]?ر|مرفوض|خطأ/i.test(String(text || ''));
@@ -1561,6 +1767,11 @@ async function formFeedback(page: any, selector: string): Promise<string> {
  * page; judged in Node (isVisibleFormRefusal).
  */
 export async function refusalOnScreen(page: any, selector: string): Promise<{ invalid: string[]; said: string[]; tied: string[] }> {
+    //  Never thrown: a page that navigates or closes while it is read says no refusal, and the walk's forms are kept (C7, the second review).
+    try { return await refusalRead(page, selector); } catch { return { invalid: [], said: [], tied: [] }; }
+}
+
+function refusalRead(page: any, selector: string): Promise<{ invalid: string[]; said: string[]; tied: string[] }> {
     return page.evaluate((sel: string) => {
         const form = document.querySelector(sel) as HTMLElement | null;
         //  The form gone (a thank-you view in its place) says no refusal.
@@ -1602,6 +1813,19 @@ export function expectRefusal(page: any, ms: number): void {
     try { page.__joeQaRefusalUntil = Math.max(Number(page.__joeQaRefusalUntil || 0), Date.now() + ms); } catch { /* a frozen page object */ }
 }
 
+/**
+ * Whether the QA itself asked this address, and lately: a Map of address → until when (probeForms asks
+ * from inside the page only when it cannot ask beside it), or a set of addresses with no time.
+ */
+function askedByQa(page: any, url: string): boolean {
+    try {
+        const asked = page?.__joeQaAskedUrls;
+        const key = String(url).replace(/\/+$/, '');
+        if (asked instanceof Map) return Number(asked.get(key) || 0) >= Date.now();
+        return !!asked?.has?.(key);
+    } catch { return false; }
+}
+
 /** A refusal inside a window the QA opened: 400, 409 or 422, while the QA was sending what should be refused. */
 export function isExpectedRefusal(page: any, status: number, url = '', method = ''): boolean {
     /*
@@ -1609,7 +1833,7 @@ export function isExpectedRefusal(page: any, status: number, url = '', method = 
      * named, a parent, a redirect's target) is the QA's question, never the product's broken request:
      * the replay of P189 (2026-11-15) — GET /api/users/<id> answered 404, a route the app never calls.
      */
-    if ((status === 404 || status === 405) && url && /^(?:|GET)$/i.test(method) && page?.__joeQaAskedUrls?.has?.(String(url).replace(/\/+$/, ''))) return true;
+    if ((status === 404 || status === 405) && url && /^(?:|GET)$/i.test(method) && askedByQa(page, url)) return true;
     if (Date.now() > Number(page?.__joeQaRefusalUntil || 0)) return false;
     if (status === 400 || status === 409 || status === 422) return true;
     if (status === 404 && /^(?:POST|PUT|PATCH|DELETE)$/i.test(method)) return true;
@@ -1638,12 +1862,14 @@ export function watchWrites(page: any): {
      * change), and where a redirect sent the page (keptAtServer).
      */
     posted: () => Array<{ at: string; body: string; method: string; status: number; answer: string; location: string }>;
+    /** Each write another origin took (a hosted database: Supabase, Firebase), with how and what it answered (editedRecord). */
+    away: () => Array<{ at: string; body: string; method: string; status: number; answer: string; location: string }>;
 } {
     let saved = 0;
     let refused = 0;
     let redirected = 0;
     /** Another origin's writes it took, with what they carried: kept only when they carried the QA's values. */
-    const elsewhere: string[] = [];
+    const elsewhere: Array<{ at: string; body: string; method: string; status: number; answer: string; location: string }> = [];
     const posts: Array<{ at: string; body: string; method: string; status: number; answer: string; location: string }> = [];
     const bodyOf = (response: any): string => { try { return String(response.request().postData() || '').slice(0, 20_000); } catch { return ''; } };
     let auth: Record<string, string> = {};
@@ -1664,7 +1890,9 @@ export function watchWrites(page: any): {
                     const body = bodyOf(response);
                     let decoded = body;
                     try { decoded = decodeURIComponent(body.replace(/\+/g, ' ')); } catch { /* kept as sent */ }
-                    elsewhere.push(`${body}\n${decoded}`.slice(0, 40_000));
+                    const entry = { at, body: `${body}\n${decoded}`.slice(0, 40_000), method, status, answer: '', location: '' };
+                    elsewhere.push(entry);
+                    try { Promise.resolve(response.text()).then((t: any) => { entry.answer = String(t || '').slice(0, 20_000); }).catch(() => { }); } catch { /* no body */ }
                 }
                 return;
             }
@@ -1719,9 +1947,9 @@ export function watchWrites(page: any): {
         saved: () => saved, refused: () => refused, written: () => written.slice(), pending: () => pending,
         kept: (marks: string[] = []) => {
             const own = (marks || []).filter(m => String(m || '').length >= 4);
-            return saved + redirected + elsewhere.filter(body => own.some(m => body.includes(m))).length;
+            return saved + redirected + elsewhere.filter(w => own.some(m => w.body.includes(m))).length;
         },
-        auth: () => ({ ...auth }), posted: () => posts.slice(),
+        auth: () => ({ ...auth }), posted: () => posts.slice(), away: () => elsewhere.slice(),
         stop: () => { try { page.off('request', sent); page.off('response', answered); page.off('requestfailed', lost); } catch { /* gone */ } },
     };
 }
@@ -3794,8 +4022,14 @@ export async function probeForms(
                 return r.width > 0 && r.height > 0 && !x.disabled && !x.readOnly && String(x.value || '').trim() !== '';
             });
         }, f.sel).catch(() => false);
+        /** What another origin had taken before this form (watchWrites away): the ones after are its own. */
+        const formAwayFrom = writes.away().length;
+        /** The record ids the page showed before this form was sent: a POST that answers one changed it (formEditedRecord). */
+        const idsShownBefore = new Set<string>(await page.evaluate(shownRecordIds).catch(() => [] as string[]));
+        /** The rows grew once the form was sent (recordRowCount): a POST to a collection made a record. */
+        let rowsGrewOnSubmit = false;
         //  What the form said no with before the QA touched it (a hint drawn from the start): no answer of its submit (refusalOnScreen).
-        const screenAtStart = await refusalOnScreen(page, f.sel);
+        const screenAtStart = await refusalOnScreen(page, f.sel).catch(() => ({ invalid: [] as string[], said: [] as string[], tied: [] as string[] }));
         /** The valid value each field was given, to put back after a case was sent (refillValid). */
         const validValues = new Map<string, { kind: 'fill' | 'select' | 'check'; value: string }>();
         /** Major cases the field took at input: sent with the form, the product's own answer decides. */
@@ -4176,7 +4410,7 @@ export async function probeForms(
             await page.waitForTimeout(400).catch(() => { });
             await page.evaluate(markAnswerAmbient).catch(() => 0);
             //  What the form says no with as it is pressed: a page that changes answers only with what it draws after (refusalOnScreen).
-            const screenAtPress = await refusalOnScreen(page, f.sel);
+            const screenAtPress = await refusalOnScreen(page, f.sel).catch(() => ({ invalid: [] as string[], said: [] as string[], tied: [] as string[] }));
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
             if (f.submitSel) {
@@ -4273,7 +4507,7 @@ export async function probeForms(
                      * left from before it (the review of 2026-11-15: a client-only app that drew the record
                      * beside a static hint was «refused», and its lost record was never looked for).
                      */
-                    const onScreen = await refusalOnScreen(page, f.sel);
+                    const onScreen = await refusalOnScreen(page, f.sel).catch(() => ({ invalid: [] as string[], said: [] as string[], tied: [] as string[] }));
                     const base = effect ? screenAtPress : screenAtStart;
                     const newer = (now: string[] = [], was: string[] = []) => { const left = [...was]; return now.filter(x => { const i = left.indexOf(x); if (i < 0) return true; left.splice(i, 1); return false; }); };
                     const invalidNow = newer(onScreen.invalid, base.invalid);
@@ -4420,18 +4654,22 @@ export async function probeForms(
          * POSTed made a new record (the replay of P179: its create-or-edit form PUT the movie unchanged
          * on the empty submit, then created the QA's own) — that record is the QA's to delete.
          */
-        const editedRecord = () => {
-            const mine = writes.posted().slice(formWritesFrom);
-            if (mine.some(p => (p.method === 'PUT' || p.method === 'PATCH') && String(p.body || '').includes(formMark))) return true;
-            if (mine.some(p => p.method === 'POST')) return false;
-            return openedFilled || mine.some(p => p.method === 'PUT' || p.method === 'PATCH');
-        };
+        /*
+         * …and a POST is a create only when it went to a collection and the rows grew, or answered a new id
+         * (formEditedRecord): the second review of 2026-11-15 — an edit form that POSTs /api/items/1 had its
+         * movie deleted; a create form writing to a hosted database (another origin) never had the QA's own
+         * deleted. Another origin's writes count when they carried this form's mark.
+         */
+        const formEdit = () => formEditedRecord(
+            [...writes.posted().slice(formWritesFrom), ...writes.away().slice(formAwayFrom).filter(w => String(w.body || '').includes(formMark))],
+            formMark, { openedFilled, rowsGrew: rowsGrewOnSubmit, seenIds: idsShownBefore });
+        const editedRecord = () => formEdit().edited;
         let editTold = false;
         const tellEdit = async (mark: string) => {
             if (editTold) return;
             editTold = true;
             metrics.qaRecordsEdited = Number(metrics.qaRecordsEdited || 0) + 1;
-            (metrics.qaRecordsEditedEvidence = metrics.qaRecordsEditedEvidence || []).push({ form: f.label, mark, why: openedFilled ? 'the form opened holding a record' : 'its writes only changed a record (PUT/PATCH)' });
+            (metrics.qaRecordsEditedEvidence = metrics.qaRecordsEditedEvidence || []).push({ form: f.label, mark, why: formEdit().why || 'the form opened holding a record' });
             if (eyeIsOpen()) await eyes.say(page, `«${f.label}» عدّل سجلاً موجوداً — لا أحذفه، فهو ليس سجلاً أنشأه الفحص`);
         };
         //  No free text to carry the run's mark (a form of codes and numbers): what it made is still looked for (newRecordTokens).
@@ -4538,6 +4776,8 @@ export async function probeForms(
                 await page.waitForTimeout(250).catch(() => { });
                 if (anchor) shownAs = await visibleNeedle(needles, f.sel);
             }
+            //  The rows after the submit, beside the rows before: a POST to a collection that grew them made a record (formEditedRecord).
+            if (rowsBefore >= 0) rowsGrewOnSubmit = byRows || await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
             /*
              * ⛔ «LOST» NEEDS PROOF THAT NOTHING WAS KEPT; WHAT THE QA COULD NOT LOOK FOR IS «NOT MEASURED».
              *
@@ -4715,13 +4955,20 @@ export async function probeForms(
                          * apps keep a Bearer token in localStorage, and the QA asked their API with cookies
                          * only — 401, «found nowhere». Asked as the page asks (watchWrites auth).
                          */
-                        //  The QA's own questions: a 404 they get is never the product's failed request (isExpectedRefusal).
-                        try {
-                            if (!page.__joeQaAskedUrls) page.__joeQaAskedUrls = new Set<string>();
-                            //  …but never the collection the page itself writes to: a 404 the page's own list gets there is the product's.
-                            const own = new Set(mine.map(p => bare(p.at)));
-                            for (const u of asks.slice(0, 6)) if (!own.has(u)) page.__joeQaAskedUrls.add(u.replace(/\/+$/, ''));
-                        } catch { /* a frozen page object */ }
+                        /*
+                         * The QA's own questions: a 404 they get is never the product's failed request (isExpectedRefusal) —
+                         * only when asked from inside the page (the fallback below), and only for a few seconds after. The
+                         * second review of 2026-11-15: kept for the rest of the walk, the product's own later GET of the
+                         * same address was excused too. Asked beside the page, the browser writes nothing of it anywhere.
+                         */
+                        const excuseAsked = (until: number) => {
+                            try {
+                                if (!(page.__joeQaAskedUrls instanceof Map)) page.__joeQaAskedUrls = new Map<string, number>();
+                                //  …but never the collection the page itself writes to: a 404 the page's own list gets there is the product's.
+                                const own = new Set(mine.map(p => bare(p.at)));
+                                for (const u of asks.slice(0, 6)) if (!own.has(u)) page.__joeQaAskedUrls.set(u.replace(/\/+$/, ''), until);
+                            } catch { /* a frozen page object */ }
+                        };
                         //  Bounded: an endpoint that never answers (a stream, a long poll, a handler that threw) costs 3 s, never the walk.
                         /*
                          * Asked beside the page, never from inside it: the replays of P189 and P499 (2026-11-15) —
@@ -4746,7 +4993,7 @@ export async function probeForms(
                         const asked: { bodies: Array<{ at: string; body: string }>; statuses: number[] } = await Promise.race([
                             typeof page?.request?.get === 'function'
                                 ? outside(asks.slice(0, 6), writes.auth()).catch(() => ({ bodies: [] as Array<{ at: string; body: string }>, statuses: [] as number[] })) :
-                            page.evaluate(async ({ list, auth }: { list: string[]; auth: Record<string, string> }) => {
+                            (excuseAsked(Date.now() + 25_000), page.evaluate(async ({ list, auth }: { list: string[]; auth: Record<string, string> }) => {
                                 const out: Array<{ at: string; body: string }> = [];
                                 const statuses: number[] = [];
                                 for (const at of list) {
@@ -4757,7 +5004,8 @@ export async function probeForms(
                                     } catch { statuses.push(0); }
                                 }
                                 return { bodies: out, statuses };
-                            }, { list: asks.slice(0, 6), auth: writes.auth() }).catch(() => ({ bodies: [] as Array<{ at: string; body: string }>, statuses: [] as number[] })),
+                            }, { list: asks.slice(0, 6), auth: writes.auth() }).catch(() => ({ bodies: [] as Array<{ at: string; body: string }>, statuses: [] as number[] }))
+                                .finally(() => excuseAsked(Date.now() + 5000))),
                             new Promise<{ bodies: Array<{ at: string; body: string }>; statuses: number[] }>(resolve => setTimeout(() => resolve({ bodies: [], statuses: [] }), 12_000)),
                         ]);
                         serverAnswered = asked.statuses;
@@ -4767,7 +5015,8 @@ export async function probeForms(
                             try { const x = JSON.parse(a.body); return !!x && typeof x === 'object' && !Array.isArray(x) && !('error' in x) && Object.keys(x).length > 1; } catch { return false; }
                         })())) keptBy = 'server';
                         //  …and asked, its own list lacks this record: empty, or other records and not this one (serverListVerdict).
-                        else if (searched) lostAtServer = serverListVerdict(mine, asked.bodies, formMark, answeredWith);
+                        //  Judged on the form's own POST: the one that carried its mark or the values it was sent with (C1, the second review).
+                        else if (searched) lostAtServer = serverListVerdict(mine, asked.bodies, formMark, answeredWith, [...validValues.values()].filter(v => v.kind !== 'check').map(v => v.value));
                     }
                 }
                 try { page.off('response', onServed); } catch { /* the page may be gone */ }

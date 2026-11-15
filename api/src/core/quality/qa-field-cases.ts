@@ -142,7 +142,15 @@ function cardMeaning(f: QaField, type: string, words: string): FieldMeaning | nu
     if (/\bcc-(?:name|given-name|family-name)\b/.test(ac)) return 'cardholder';
     if (has(NOT_A_PAYMENT_CARD, words)) return null;
     const context = String(f.context || '').toLowerCase();
-    const pays = has(PAYMENT_WORDS, words) || has(PAYMENT_WORDS, context);
+    /*
+     * …and a form that holds a card's expiry beside its CVC pays, whatever it is named for. The second
+     * review of 2026-11-15: a clinic's «Book appointment … Patient name … Card number, Expiry date, CVC»
+     * and a school's fees form lost every card case: the patient or the student in its words removed the
+     * card's meaning though the card was paid with. The exclusion words remove it only with no payment
+     * context at all.
+     */
+    const cardForm = (has(EXPIRY_WORDS, context) || has(MMYY_SHAPE, context)) && (has(CVC_WORDS, context) || has(SECURITY_CODE_WORDS, context));
+    const pays = has(PAYMENT_WORDS, words) || has(PAYMENT_WORDS, context) || cardForm;
     //  A form named for a card it does not pay with (a clinic's insurance, a school's student card) that never pays.
     if (context && !pays && has(NOT_PAID_FORM, context)) return null;
     if (has(CVC_WORDS, words)) return 'cvc';

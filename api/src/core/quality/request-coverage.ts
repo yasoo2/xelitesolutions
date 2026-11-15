@@ -1904,8 +1904,14 @@ function bindingStems(record: RequestedRecord): string[] {
 /** A line that registers a route: a method called with a path («app.get('/api/x'», «@app.get("/x"»), never «store.get(id)». */
 const ROUTE_REGISTRATION = /\.\s*(?:get|post|put|patch|delete|all|route|api_route)\s*\(\s*[rf]?['"`]\//u;
 
-/** Whether the delivery's own text writes his word beside this route's resource name. */
-function routeBoundTo(resource: string, record: RequestedRecord, texts: string[]): boolean {
+/**
+ * Whether the delivery's own text writes his word beside this route's resource name. Each match reads
+ * only a window around it (ROUTE_WINDOW): the second review of 2026-11-15 — on a minified bundle of one
+ * line (a megabyte, a build-free site's vendor file) every match scanned the whole line for its start,
+ * its end and a registration, quadratic in the line.
+ */
+const ROUTE_WINDOW = 400;
+export function routeBoundTo(resource: string, record: RequestedRecord, texts: string[]): boolean {
     const stems = bindingStems(record);
     if (!stems.length || !resource) return false;
     const token = new RegExp(`(?<![A-Za-z0-9_-])${escapeRe(resource)}(?![A-Za-z0-9_-])`, 'giu');
@@ -1916,12 +1922,15 @@ function routeBoundTo(resource: string, record: RequestedRecord, texts: string[]
     for (const text of texts) {
         for (const m of String(text || '').matchAll(token)) {
             const at = m.index ?? 0;
-            const lineStart = text.lastIndexOf('\n', at) + 1;
-            const nl = text.indexOf('\n', at);
-            const lineEnd = nl < 0 ? text.length : nl;
+            const from0 = Math.max(0, at - ROUTE_WINDOW);
+            const back = text.slice(from0, at).lastIndexOf('\n');
+            const lineStart = back < 0 ? from0 : from0 + back + 1;
+            const ahead = text.slice(at, at + m[0].length + ROUTE_WINDOW).indexOf('\n');
+            const lineEnd = ahead < 0 ? Math.min(text.length, at + m[0].length + ROUTE_WINDOW) : at + ahead;
             //  Beside it on its own line (a minified bundle's one line is never read as a whole).
             if (holds(text.slice(Math.max(lineStart, at - 120), Math.min(lineEnd, at + m[0].length + 120)))) return true;
-            //  In the handler its registration opens: the few lines up to the next registration.
+            //  In the handler its registration opens: the few lines up to the next registration — on a line that ends within the window.
+            if (ahead < 0 && lineEnd < text.length) continue;
             if (!ROUTE_REGISTRATION.test(text.slice(lineStart, lineEnd))) continue;
             const handler: string[] = [];
             let from = lineEnd + 1;
