@@ -255,7 +255,8 @@ describe('short quoted wording follow-ups', () => {
 
     it('runs measured repair rounds after a project-edit browser finding', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectEditTool.ts'), 'utf-8');
-        expect(source).toContain('worthRepairing(audit?.findings || [])');
+        //  …on what refuses (design v3 §2.3: the inspector's told lines never open a repair round).
+        expect(source).toContain('worthRepairing((audit?.findings || []).filter(refuses))');
         expect(source).toContain('improveUntilItStops(firstMeasurement');
         expect(source).toContain('repairRound(dir, round, { isArabic: isAr, findings })');
         expect(source.indexOf('Per-file history is written after QA')).toBeGreaterThan(source.indexOf('SELF-QA AFTER THE EDIT'));

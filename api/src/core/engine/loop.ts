@@ -20,6 +20,7 @@ import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
 import { firstMessage, languageReminder, languageSection, noteInWrongScript, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
+import { pdfBriefAfterWrite, pdfGiveBrief, pdfRunStart, pdfStartScan, type PdfBriefState } from './pdf-brief';
 import { operatorFirstMessage, operatorSystemPrompt } from './operate';
 import type { FinishArgs } from './finish';
 import type {
@@ -45,6 +46,8 @@ export interface EngineDeps {
      * tells the model, in its first message, what was done and where it stopped.
      */
     before?: (ctx: ToolContext, tools: Map<string, EngineTool>) => Promise<{ finish?: string; note?: string; refused?: (failed: string) => string } | null>;
+    /** Waits between transient model failures; a test hands in one that does not sleep. Settles early when the run is cancelled. */
+    wait?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
 /** Steps with no file changed, no command passing and no page served before the engine steps in. */
@@ -55,6 +58,109 @@ export const REPEAT_LIMIT = 4;
 export const IDLE_LIMIT = 3;
 /** Model calls in a row that fail before the run ends. */
 export const MODEL_FAILURE_LIMIT = 3;
+/**
+ * A PROVIDER'S BAD MINUTES ARE WAITED OUT, NOT TURNED INTO A FAILED RUN.
+ *
+ * The 500-prompt exam on Claude, 2026-11-12/13: P231 («Connection error»), and
+ * P394 and P444 seven minutes apart («503 credential validation failed», one
+ * incident at the provider), each ended as failed after three calls in a row
+ * that the SDK's own quick retries could not carry over. Nothing was wrong with
+ * the work. A failure of the transient kinds — a rate limit (429), the server's
+ * own trouble (5xx, 529 overloaded), a timeout, a connection that dropped — is
+ * now waited out before the call is asked again: 30 s, then 2 min, then 5 min
+ * (longer when the server's Retry-After asks for longer), and the chat says so
+ * while Joe waits. A refusal the provider means (a 4xx: the key, the request)
+ * is not waited on. The run's deadline and its budget guard stay in charge: a
+ * wait that would pass the deadline ends the run now, and every call that
+ * follows a wait still goes through the budget guard.
+ */
+export const TRANSIENT_WAITS_MS: readonly number[] = [30_000, 120_000, 300_000];
+
+/*
+ * ⛔ ONLY THE PROVIDER'S OWN BAD MINUTES ARE WAITED OUT.
+ *
+ * The r40 review, 2026-11-15: with no status, any «timeout» or «overloaded» in
+ * the words was waited on — «Local inference timeout must be between 1 ms and …»
+ * (a setting, OLLAMA_TIMEOUT_INPUT) and «Ollama: model overloaded, out of memory»
+ * (a local model that does not fit) got 30 s + 2 min + 5 min and a fourth call,
+ * and 501 (not implemented) and 505 (version not supported) counted as trouble
+ * that passes. Waited on now: 408, 409, 425, 429, 500, 502, 503, 504, 529; with
+ * no status, only the shapes a provider or the network gives — a rate limit, the
+ * API overloaded, one of those statuses in its words, a connection reset, timed
+ * out or dropped, «Connection error», «fetch failed». A failure that carries a
+ * code of Joe's own (OLLAMA_*, MODEL_*, LOCAL_*, RESOURCE_*) is never one, and
+ * neither are words of a setting or of a model out of memory.
+ */
+const TRANSIENT_STATUSES: ReadonlySet<number> = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+/** The network's own failure codes; any other code on the failure is Joe's own word for it. */
+const NETWORK_CODE = /^(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ECONNABORTED|UND_ERR_(?:SOCKET|CLOSED|CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT))$/u;
+/** Words of a setting, a request or a machine that waiting does not change. */
+const NEVER_WAITED_TEXT = /ECONNREFUSED|out of memory|\boom\b|insufficient (?:memory|vram)|cuda error|must be (?:between|at (?:least|most)|one of|a |an |positive|greater|less|lower|higher)|\binvalid\b|is required|not supported|unsupported|not implemented/iu;
+const PROVIDER_TRANSIENT_TEXT = /\b(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ECONNABORTED|UND_ERR_(?:SOCKET|CLOSED|CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT))\b|connection error|socket hang up|fetch failed|network (?:error|failure)|request timed out|rate[- ]?limit(?:ed|s)?\b|too many requests|overloaded_error|(?:the\s+)?(?:api|model|engine|server|servers|service)\s+(?:is|are)\s+(?:currently\s+|temporarily\s+)?overloaded|^\s*overloaded\.?\s*$|temporarily unavailable|service unavailable|bad gateway|gateway time-?out|internal server error/iu;
+/** A gateway's own failure status in the words, as a number standing alone or by its name. */
+const GATEWAY_STATUS_TEXT = /(?<![\w.-])(?:502|503|504|529)(?![\w.-])(?!\s*(?:ms|s|sec|seconds?|tokens?|bytes?|mb|gb|kb)\b)|bad gateway|service unavailable|gateway time-?out/iu;
+/** One of the waited statuses in the failure's words: at its start, in brackets, or after «status», «HTTP», «error», «code». */
+const STATUS_IN_TEXT = /(?:^\s*|\((?=\d{3}\))|\b(?:status(?:\s*code)?|http(?:\/[\d.]+)?|error|code)\s*[:=]?\s*)(?:408|429|500|502|503|504|529)\b(?!\s*(?:ms|s|sec|seconds?|tokens?|bytes?|mb|gb|kb)\b)/iu;
+
+/** A failure that waiting can cure: a provider's 408, 409, 425, 429, 500, 502, 503, 504, 529, or a network failure with no status. */
+export function transientModelFailure(e: unknown): boolean {
+    const err = e as any;
+    const status = Number(err?.status ?? err?.statusCode ?? err?.response?.status);
+    if (Number.isFinite(status) && status > 0) return TRANSIENT_STATUSES.has(status);
+    //  No status: the call never got an answer. A code of Joe's own names a failure of its own.
+    const code = String(err?.code ?? '');
+    if (code && code !== 'PROVIDER_FAILURE' && !NETWORK_CODE.test(code)) return false;
+    const said = message(e);
+    const text = `${code} ${String(err?.cause?.code ?? '')} ${said}`;
+    //  A connection refused means nothing is listening (a local server that is not started):
+    //  waiting minutes does not start it; nor does it fix a setting or free a machine's memory.
+    //  …but «invalid» beside a gateway's own status (502, 503, 504, 529) is the gateway's bad minute:
+    //  «Invalid response from upstream: 502 Bad Gateway» (the second review of 2026-11-15) is waited out.
+    if (NEVER_WAITED_TEXT.test(text) && !(GATEWAY_STATUS_TEXT.test(text) && !NEVER_WAITED_TEXT.test(text.replace(/\binvalid\b/giu, ' ')))) return false;
+    if (GATEWAY_STATUS_TEXT.test(text) && /\binvalid\b/iu.test(text)) return true;
+    if (NETWORK_CODE.test(code) || NETWORK_CODE.test(String(err?.cause?.code ?? ''))) return true;
+    //  The provider's words come after the engine's own prefix («The Claude API call failed: …»).
+    const theirs = said.replace(/^.*?\bAPI call failed(?:\s*\(\d+\))?:\s*/iu, '');
+    return PROVIDER_TRANSIENT_TEXT.test(said) || PROVIDER_TRANSIENT_TEXT.test(theirs) || STATUS_IN_TEXT.test(said) || STATUS_IN_TEXT.test(theirs);
+}
+
+/** What the server asked us to wait, in ms, from a Retry-After (seconds or a date) or retry-after-ms; 0 when it said nothing. */
+export function retryAfterMs(e: unknown, nowMs: number): number {
+    const err = e as any;
+    if (Number.isFinite(Number(err?.retryAfterMs)) && Number(err.retryAfterMs) > 0) return Number(err.retryAfterMs);
+    const h = err?.headers ?? err?.response?.headers;
+    const read = (name: string): string => {
+        if (!h) return '';
+        if (typeof h.get === 'function') return String(h.get(name) ?? '');
+        //  A plain object's header names keep whatever case they came in («Retry-After»).
+        if (typeof h !== 'object') return '';
+        const key = Object.keys(h).find(k => k.toLowerCase() === name);
+        return key === undefined ? '' : String(h[key] ?? '');
+    };
+    const ms = Number(read('retry-after-ms'));
+    if (Number.isFinite(ms) && ms > 0) return ms;
+    const after = read('retry-after').trim() || String(err?.retryAfter ?? '').trim();
+    if (!after) return 0;
+    if (/^\d+(?:\.\d+)?$/u.test(after)) return Math.round(Number(after) * 1000);
+    const at = Date.parse(after);
+    return Number.isFinite(at) ? Math.max(0, at - nowMs) : 0;
+}
+
+function spokenDuration(ms: number, ar: boolean): string {
+    const s = Math.round(ms / 1000);
+    if (s < 90) return ar ? `${s} ثانية` : `${s} s`;
+    const m = Math.round(s / 60);
+    return ar ? `${m} دقائق` : `${m} min`;
+}
+
+function sleepUnlessCancelled(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise(resolve => {
+        if (signal.aborted) { resolve(); return; }
+        const done = () => { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); };
+        const timer = setTimeout(done, ms);
+        signal.addEventListener('abort', done, { once: true });
+    });
+}
 /**
  * Joe's checks refusing the same thing this many times in a row ends the run.
  * Measured on 2026-11-01: a store whose every requirement worked was refused
@@ -190,51 +296,98 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         ...(req.change ? { change: req.change } : {}),
     };
 
-    const tools = new Map(deps.tools.map(t => [t.name, t] as const));
-    const schemas: ToolSchema[] = deps.tools.map(t => ({
-        type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters },
-    }));
-    const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
-
-    //  Work done before any model call (experience.ts: a request done again from Joe's book).
-    //  Its claim goes through the run's own task_finish: a pass delivers with no model call.
+    //  The Arabic-PDF brief and kit, once per run (pdf-brief.ts): '' for every other request.
+    //  The project's PDFs are remembered first (fs only, no child), before anything of this
+    //  run can write one. The request's scan child is NEVER awaited before the first model
+    //  call (review 3 of r40, finding 8): it starts here, runs beside the work before the
+    //  model and the first model call, and its brief joins the first message only when it
+    //  has already answered — else the result of the first step after it answers.
+    //  The scan returns only its decision; the kit is placed by pdfGiveBrief at the moment
+    //  the brief joins the conversation, never mid-step and never for a run that is ending
+    //  (review 4 of r40, S5).
+    const pdfBrief: PdfBriefState = { given: false };
+    //  Its children stop when the run is cancelled AND when the run ends: a start scan still
+    //  running at the end never places the kit after the delivery. One listener per run.
+    const pdfStop = new AbortController();
+    const stopPdf = () => pdfStop.abort();
+    const endPdf = () => { req.signal.removeEventListener('abort', stopPdf); pdfStop.abort(); };
+    if (req.signal.aborted) stopPdf(); else req.signal.addEventListener('abort', stopPdf, { once: true });
+    const pdfFacts = { runId: req.runId, request: req.request, language: req.language, projectDir: req.projectDir, stateDir, change: req.change, signal: pdfStop.signal };
+    /** The run-start scan: `done` once it answered, `give` its decision, `used` once the loop acted on it. */
+    let pdfStart: { done: boolean; give: boolean; used: boolean; wait: Promise<boolean> } | null = null;
+    //  Every throw from here to the run's own try still stops the scan and its listener
+    //  (review 4 of r40, M5): a run that fails before its first step never gets the kit.
+    let conv: Conversation;
     let preDelivered: string | null = null;
     let preNote = '';
     const lastErrorsBefore: string[] = [];
-    if (deps.before) {
-        try {
-            const pre = await deps.before(ctx, tools);
-            const fin = tools.get('task_finish');
-            if (pre?.finish && fin) {
-                const parsed = fin.parse({ summary: pre.finish });
-                if (parsed.ok) {
-                    const outcome = await fin.run(parsed.value, ctx);
-                    absorbFacts(state, outcome.facts);
-                    if (outcome.facts?.verification?.passed) preDelivered = pre.finish;
-                    else {
-                        const failed = (outcome.facts?.verification?.checks || []).filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
-                        preNote = pre.refused ? pre.refused(failed || firstLine(outcome.output)) : pre.note || '';
-                    }
-                }
-            } else if (pre?.note) preNote = pre.note;
-        } catch (e) {
-            preNote = '';
-            lastErrorsBefore.push(`the work before the model failed: ${message(e)}`);
+    let tools: Map<string, EngineTool>;
+    let schemas: ToolSchema[];
+    try {
+        if (!req.operate) {
+            await pdfRunStart(pdfFacts).catch(() => { /* a later look then reads no project PDF as new */ });
+            const start = { done: false, give: false, used: false, wait: Promise.resolve(false) };
+            start.wait = pdfStartScan(pdfBrief, pdfFacts).catch(() => false).then(g => { start.done = true; start.give = g; return g; });
+            pdfStart = start;
         }
-    }
 
-    const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
-    conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
-    const opening = req.operate
-        ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
-        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change);
-    conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
-    req.emit({ type: 'plan', plan: state.plan });
+        tools = new Map(deps.tools.map(t => [t.name, t] as const));
+        schemas = deps.tools.map(t => ({
+            type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters },
+        }));
+        const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
+
+        //  Work done before any model call (experience.ts: a request done again from Joe's book).
+        //  Its claim goes through the run's own task_finish: a pass delivers with no model call.
+        if (deps.before) {
+            try {
+                const pre = await deps.before(ctx, tools);
+                const fin = tools.get('task_finish');
+                if (pre?.finish && fin) {
+                    const parsed = fin.parse({ summary: pre.finish });
+                    if (parsed.ok) {
+                        const outcome = await fin.run(parsed.value, ctx);
+                        absorbFacts(state, outcome.facts);
+                        if (outcome.facts?.verification?.passed) preDelivered = pre.finish;
+                        else {
+                            const failed = (outcome.facts?.verification?.checks || []).filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
+                            preNote = pre.refused ? pre.refused(failed || firstLine(outcome.output)) : pre.note || '';
+                        }
+                    }
+                } else if (pre?.note) preNote = pre.note;
+            } catch (e) {
+                preNote = '';
+                lastErrorsBefore.push(`the work before the model failed: ${message(e)}`);
+            }
+        }
+
+        conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
+        conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
+        //  The run-start brief, when its scan answered during the work before the model (above):
+        //  the kit is placed now, with it. Not for a run Joe's book already delivered.
+        let pdfOpening = '';
+        if (pdfStart?.done && preDelivered === null && !req.signal.aborted) {
+            pdfStart.used = true;
+            if (pdfStart.give) pdfOpening = await pdfGiveBrief(pdfBrief, pdfFacts).catch(() => '');
+        }
+        const opening = req.operate
+            ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
+            : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change, pdfOpening || undefined);
+        conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
+        req.emit({ type: 'plan', plan: state.plan });
+    } catch (e) {
+        endPdf();
+        throw e;
+    }
 
     const lastErrors: string[] = [...lastErrorsBefore];
     const failures = new Map<string, number>();
     let idle = 0;
     let modelFailures = 0;
+    let transientFailures = 0;
+    const waited: number[] = [];
+    const wait = deps.wait ?? sleepUnlessCancelled;
+    const speaksArabic = /^ar\b/iu.test(String(req.replyLanguage || req.language || ''));
     let cutReplies = 0;
     let quietSteps = 0;
     let warnings = 0;
@@ -268,6 +421,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             try {
                 turn = await deps.model.step(conv.forCall(), schemas, { signal: req.signal, deadlineAt: req.deadlineAt });
                 modelFailures = 0;
+                transientFailures = 0;
+                waited.length = 0;
             } catch (e) {
                 state.modelMs += now() - asked;
                 if (req.signal.aborted) { ending = { status: 'cancelled', reason: 'the run was cancelled' }; break; }
@@ -290,6 +445,32 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     cutReplies++;
                     if (cutReplies >= MODEL_FAILURE_LIMIT) { ending = { status: 'failed', reason: 'the model\'s reply was cut off by the output limit three times in a row' }; break; }
                     conv.push({ role: 'user', content: 'Your last reply was cut off: it was longer than the room left for an answer, so none of it was used. Make smaller calls: write a big file as a short skeleton with file_write, then add each part with file_edit.' });
+                    continue;
+                }
+                if (transientModelFailure(e)) {
+                    transientFailures++;
+                    const failedTimes = transientFailures + modelFailures;
+                    if (transientFailures > TRANSIENT_WAITS_MS.length) {
+                        const after = waited.map(ms => spokenDuration(ms, false)).join(', ');
+                        ending = { status: 'failed', reason: `the model call failed ${failedTimes} times in a row (Joe waited ${after} between them): ${message(e)}` };
+                        break;
+                    }
+                    const ms = Math.max(TRANSIENT_WAITS_MS[transientFailures - 1], retryAfterMs(e, now()));
+                    if (now() + ms >= req.deadlineAt) {
+                        ending = { status: 'failed', reason: `the model call failed ${failedTimes} times in a row, and waiting ${spokenDuration(ms, false)} for it would pass the run's deadline: ${message(e)}` };
+                        break;
+                    }
+                    const left = TRANSIENT_WAITS_MS.length - transientFailures + 1;
+                    req.emit({
+                        type: 'thought',
+                        text: speaksArabic
+                            ? `⏳ تعذّر الوصول إلى النموذج الآن (${firstLine(message(e)).slice(0, 160)}). عطل مؤقت عند المزوّد، فلن أوقف العمل: أنتظر ${spokenDuration(ms, true)} ثم أعيد المحاولة من حيث توقفت (بقيت ${left} محاولة).`
+                            : `⏳ The model cannot be reached right now (${firstLine(message(e)).slice(0, 160)}). This is the provider's temporary trouble, so the work is not stopped: waiting ${spokenDuration(ms, false)}, then asking again from where it stopped (${left} attempt(s) left).`,
+                    });
+                    waited.push(ms);
+                    await wait(ms, req.signal);
+                    if (req.signal.aborted) { ending = { status: 'cancelled', reason: 'the run was cancelled' }; break; }
+                    //  Nothing was appended, so the next step asks again from the same history.
                     continue;
                 }
                 modelFailures++;
@@ -323,6 +504,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             idle = 0;
 
             let progressed = false;
+            /** Files this step's file_write / file_edit wrote: the Arabic-PDF brief's hook reads them as they now are. */
+            const wroteFiles: string[] = [];
             const results: { role: 'tool'; tool_call_id: string; content: string }[] = [];
             const images: { path: string; mime: string; from: string }[] = [];
             for (const call of turn.toolCalls) {
@@ -357,6 +540,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 }
                 const durationMs = now() - started;
                 state.toolMs += durationMs;
+                if (outcome.ok && (call.name === 'file_write' || call.name === 'file_edit') && typeof (args as any)?.path === 'string') wroteFiles.push((args as any).path);
                 absorbFacts(state, outcome.facts);
                 if (madeProgress(outcome)) progressed = true;
 
@@ -420,6 +604,28 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 const last = results[results.length - 1];
                 last.content = `${last.content}\n\n${languageReminder(req.replyLanguage || req.language)}`;
             }
+            //  The run-start scan has answered (or this step wrote a file, and its answer is
+            //  needed first — by now the model has been asked at least once): its brief
+            //  joins this step's last result, once, and the kit is placed now, with it —
+            //  between steps, never for a step that ended the run (review 4 of r40, S5).
+            /*
+             * …and never at the end of a step after which the loop stops (review 5 of r40, M6): the stall's last
+             * warning, the deadline, a cancel — the brief would join a conversation no model call reads, and the
+             * kit would ship without it.
+             */
+            const stopsAfterThisStep = !!ending || req.signal.aborted || now() >= req.deadlineAt
+                || (!progressed && quietSteps + 1 >= STALL_STEPS && warnings >= 2);
+            let pdfLate = '';
+            if (!stopsAfterThisStep && results.length && pdfStart && !pdfStart.used && (pdfStart.done || (wroteFiles.length && !pdfBrief.given))) {
+                const give = await pdfStart.wait;
+                pdfStart.used = true;
+                if (give && !req.signal.aborted) pdfLate = await pdfGiveBrief(pdfBrief, pdfFacts).catch(() => '');
+            }
+            //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
+            if (!stopsAfterThisStep && !req.operate && !pdfLate && results.length && wroteFiles.length && !pdfBrief.given) {
+                pdfLate = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
+            }
+            if (pdfLate) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${pdfLate}`; }
             for (const r of results) conv.push(r);
             if (!ending && images.length && deps.model.vision) {
                 //  Images reach a model only inside a user message. Only the
@@ -445,6 +651,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             }
         }
     } finally {
+        endPdf();
         served = deps.processes.list();
         try { await deps.processes.stopAll(); } catch { /* reported by the registry */ }
         if (browser) { try { await (browser as BrowserSession).close(); } catch { /* already closed */ } }

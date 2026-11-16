@@ -83,6 +83,8 @@ interface Candidate {
     options: string[];
     min: string;
     max: string;
+    /** The control's value as the page opened it (a date range a report set to its data). */
+    value?: string;
 }
 
 /**
@@ -208,7 +210,7 @@ const PAGE_CANDIDATES = `(() => {${PAGE_HELPERS}
   const add = (el, kind, extra) => {
     if (out.length >= 24 || inItem(el)) return;
     el.setAttribute('data-joe-ip', String(++n));
-    out.push(Object.assign({ id: String(n), kind, label: labelOf(el) || kind, options: [], min: el.getAttribute('min') || '', max: el.getAttribute('max') || '' }, extra || {}));
+    out.push(Object.assign({ id: String(n), kind, label: labelOf(el) || kind, options: [], min: el.getAttribute('min') || '', max: el.getAttribute('max') || '', value: el.tagName === 'INPUT' ? String(el.value || '') : '' }, extra || {}));
   };
   for (const el of document.querySelectorAll('select')) {
     if (!visible(el) || el.disabled) continue;
@@ -377,6 +379,29 @@ export function typedChange(before: Snapshot, after: Snapshot, noise: Noise = QU
 
 const sameSnap = (a: Snapshot, b: Snapshot) => JSON.stringify(a) === JSON.stringify(b);
 
+/*
+ * A DATE FAR OUTSIDE THE DATA IS NOT THE ONLY DATE TO TRY.
+ *
+ * P376 (2026-11-12): a shipments report opened with «من» and «إلى» set to its
+ * data's first and last day, and refused a start after its end («تاريخ البداية
+ * يجب أن يكون قبل تاريخ النهاية»). The far ends the probe tried were either
+ * that invalid range or the whole data again, so «the data shown never
+ * changed» — on a filter that worked. A month in from the value the page set,
+ * either way, falls inside the data.
+ */
+function shiftedDate(kind: Candidate['kind'], value: string, days: number): string {
+    const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?(T\d{2}:\d{2})?/u.exec(value || '');
+    if (!m) return '';
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, m[3] ? Number(m[3]) : 1));
+    if (Number.isNaN(d.getTime())) return '';
+    if (kind === 'month') d.setUTCMonth(d.getUTCMonth() + Math.sign(days));
+    else d.setUTCDate(d.getUTCDate() + days);
+    const day = d.toISOString().slice(0, 10);
+    if (kind === 'month') return day.slice(0, 7);
+    if (kind === 'datetime-local') return `${day}${m[4] || 'T00:00'}`;
+    return kind === 'date' ? day : '';
+}
+
 function valuesFor(c: Candidate): string[] {
     const far: Record<string, [string, string]> = {
         date: ['2099-12-31', '1990-01-01'],
@@ -384,10 +409,19 @@ function valuesFor(c: Candidate): string[] {
         week: ['2099-W52', '1990-W01'],
         'datetime-local': ['2099-12-31T23:59', '1990-01-01T00:00'],
     };
-    if (far[c.kind]) return [c.max || far[c.kind][0], c.min || far[c.kind][1]];
+    if (far[c.kind]) {
+        const near = [shiftedDate(c.kind, c.value || '', 30), shiftedDate(c.kind, c.value || '', -30)].filter(Boolean);
+        return Array.from(new Set([c.max || far[c.kind][0], c.min || far[c.kind][1], ...near]));
+    }
     if (c.kind === 'number' || c.kind === 'range') return [c.max || '999999', c.min || '0'];
     return [];
 }
+
+/** An item's words with its numbers folded: «عدد الشحنات ٣٦٠» and «عدد الشحنات ٢٠٢» read alike. */
+const wordsOf = (item: string) => item.replace(/[0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٬٫%]*/gu, '#');
+
+/** A button that turns pages or steps through a list is pagination, never a filter. */
+const PAGE_TURN = /^(?:\d{1,3}|next|prev(?:ious)?|older|newer|more|load more|show more|التالي|السابق|التالية|السابقة|المزيد|عرض المزيد|[‹›«»<>←→]+)$/iu;
 
 /** A word some items carry and others do not: typing it should narrow the list. */
 function searchTerms(items: string[]): string[] {
@@ -558,6 +592,7 @@ export async function measureInteractions(
                 await fresh();
                 const c = candidates.find(x => x.id === id);
                 if (!c) continue;
+                if (cap === 'filtering' && c.kind === 'chip' && PAGE_TURN.test(c.label.trim())) continue;
                 note(cap, byLabel(c));
                 let verdict = '';
                 if (cap === 'sorting') {
@@ -599,7 +634,14 @@ export async function measureInteractions(
                     verdict = await attempt(c, () => at(c).click(), (b, a, n) => {
                         if (!n.items && narrowed(b.items, a.items)) return `the items shown went from ${b.items.length} to ${a.items.length}`;
                         if (b.frame !== a.frame) return '';
-                        return sameMultiset(b.items, a.items) ? dataChanged(b, a, n) : '';
+                        if (sameMultiset(b.items, a.items)) return dataChanged(b, a, n);
+                        //  P376: the period buttons recomputed three KPI cards and
+                        //  redrew three charts. The cards kept their words and
+                        //  changed their numbers: the data shown changed, under
+                        //  the same frame — a view swapped would change the words.
+                        if (n.items || n.numbers || !sameMultiset(b.items.map(wordsOf), a.items.map(wordsOf))) return '';
+                        const redrawn = !n.charts && b.charts.join() !== a.charts.join();
+                        return `the numbers in the ${a.items.length} items shown changed${redrawn ? ' and a chart was redrawn with other data' : ''}`;
                     });
                     if (verdict) verdict = `pressing ${byLabel(c)}: ${verdict}`;
                 } else {

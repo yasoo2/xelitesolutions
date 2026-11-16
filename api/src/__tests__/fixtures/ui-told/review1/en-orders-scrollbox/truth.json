@@ -1,0 +1,9 @@
+{
+ "truth": "SOUND: the table scrolls inside its own box; every button reachable by swiping the box",
+ "targets": [
+  {
+   "sel": "tbody tr:first-child button.del",
+   "at": 390
+  }
+ ]
+}

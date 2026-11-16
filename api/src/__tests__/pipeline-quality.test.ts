@@ -207,7 +207,9 @@ describe('the self-QA runs where the user can watch it', () => {
     it('does not let medium or low findings bypass the repair gate', () => {
         const P = require('fs').readFileSync(
             require('path').join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
-        expect(P).toContain('let blocking = browserQa.findings.slice();');
+        //  Every finding that REFUSES blocks, at every severity — the same rule verify.ts uses
+        //  (browser-mend.ts refuses): since design v3 the inspector's lines and minor taste are told.
+        expect(P).toContain('let blocking = browserQa.findings.filter(refuses);');
     });
 
     it('retries incomplete browser coverage before spending the source repair attempt', () => {

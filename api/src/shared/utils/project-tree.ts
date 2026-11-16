@@ -224,6 +224,28 @@ const YIELD_EVERY_ENTRIES = 512;
 const yieldTurn = () => new Promise<void>(resolve => setImmediate(resolve));
 
 /**
+ * JOE'S PRINT KIT IS NOT HIS SOURCE (design arabic-pdf v9 §3.1).
+ *
+ * The kit Joe places for a right-to-left app that prints or makes a PDF
+ * (core/engine/app-kit.ts): print.css, its fonts, OFL.txt, README.md and
+ * JOE-KIT.json. Every reader that judges the app as its author's work, or
+ * writes repairs into it, skips these folders; the export, the editor and
+ * the app's own server still see and serve them.
+ */
+export const JOE_APP_KIT_DIRS: readonly string[] = ['vendor/joe-kit', 'public/vendor/joe-kit'];
+
+/** True for the kit's folders and anything inside them, `\` or `/`. */
+export function isJoeAppKit(relative: string): boolean {
+    const rel = String(relative || '').replace(/\\/gu, '/').replace(/^\.\/+/u, '').replace(/^\/+/u, '');
+    return JOE_APP_KIT_DIRS.some(dir => rel === dir || rel.startsWith(`${dir}/`));
+}
+
+/** The same, for a walk that knows only the folder's absolute path: a `joe-kit` folder inside a `vendor` folder. */
+export function isJoeAppKitDir(abs: string): boolean {
+    return path.basename(String(abs || '')) === 'joe-kit' && path.basename(path.dirname(String(abs || ''))) === 'vendor';
+}
+
+/**
  * EVERY FILE OF THE PROJECT THAT IS HIS SOURCE, AT ANY DEPTH (round 22).
  *
  * One walker for every reader that asks «what did he write?»: complete (no

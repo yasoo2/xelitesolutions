@@ -59,7 +59,9 @@ describe('browser QA instrumentation regressions', () => {
         //  A record is looked for by what was typed, or (no free text in the form) by what the submit made,
         //  or (nothing of its own to show, L160 2026-11-10) by the row it added.
         expect(source).toMatch(/effect === 'submitted' && f\.expectsPersistence && \(anchor \|\| tokensBefore\.length \|\| rowsBefore >= 0\)/);
-        expect(source).toMatch(/add\|create\|save\|order\|register\|book\|reserve/);
+        //  «order»/«طلب» left the record words in r40 (run500 P041, 2026-11-15): «أرسل طلبك» on a contact form
+        //  sends a message and makes no record; an order is a record only beside words that make one.
+        expect(source).toMatch(/add\|create\|save\|register\|book\|reserve\|new record/);
     });
 
     test('Arabic pages fail visual QA when visible controls remain in English', () => {

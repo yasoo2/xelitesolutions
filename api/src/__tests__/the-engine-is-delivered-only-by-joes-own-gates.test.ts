@@ -23,7 +23,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import { createVerifier, deliveryOutput, type BrowserQa, type DeliveryVerification } from '../core/engine/verify';
-import type { Mender } from '../core/engine/browser-mend';
+import { markInspection, type Mender } from '../core/engine/browser-mend';
 import { COVERAGE_RETRY_TIMEOUT_MS } from '../core/quality/app-audit';
 import { seedRequirementsFromRequest } from '../core/engine/seed';
 import { newPlan, seededRequirements } from '../core/engine/plan';
@@ -472,7 +472,9 @@ describe('a static site', () => {
                 async audit(_dir, auditOpts: any) {
                     timeouts.push(auditOpts.timeoutMs);
                     if (auditOpts.timeoutMs < COVERAGE_RETRY_TIMEOUT_MS) return { score: 49, findings: [exhausted] };
-                    return { score: 60, findings: timeouts.length > 2 ? after : [small(30), semantic] };
+                    //  Inspected whole, and marked so as app-audit.ts marks its lists: only then is a told
+                    //  kind the repair's doing (review r40-2, A5).
+                    return { score: 60, findings: markInspection([...(timeouts.length > 2 ? after : [small(30), semantic])], 'complete') };
                 },
             };
         };

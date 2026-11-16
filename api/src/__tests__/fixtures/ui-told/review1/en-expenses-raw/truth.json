@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN-ish: the page pans ~100px; Delete is off the phone screen until the visitor pans the whole page",
+ "targets": [
+  {
+   "sel": "tbody tr:first-child button.del",
+   "at": 390
+  }
+ ]
+}

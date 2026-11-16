@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: at 390 the «حذف» (delete) and «تعديل» buttons are clipped by the card; no scroll reaches them",
+ "targets": [
+  {
+   "sel": "tbody tr:first-child button.del",
+   "at": 390
+  }
+ ]
+}

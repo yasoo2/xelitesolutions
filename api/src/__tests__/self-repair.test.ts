@@ -83,16 +83,17 @@ describe('the build only claims an improvement it measured', () => {
         expect(read('core', 'quality', 'improve-loop.ts'))
             .toMatch(/const measuredGain = after\.score > current\.score/);
         expect(read('core', 'quality', 'improve-loop.ts'))
-            .toMatch(/if \(after\.skipped \|\| !measuredGain\)/);
+            .toMatch(/if \(after\.skipped \|\| !measuredGain(?: \|\| brought\.length)?\)/);
     });
 
     it('and keeps the first verdict when the repair did not help', () => {
+        // r40 review 3 (11): a round that brought an inspector's told kind is put back too (toldKindsBrought).
         // Stricter than the sentence it replaces: a round must BEAT the
         // previous score, and one that does not is rolled back, not merely
         // left unreported.
         const LOOP = read('core', 'quality', 'improve-loop.ts');
         expect(LOOP).toMatch(/const fewerFindings = uniq\(after\.findingIds\)/);
-        expect(LOOP).toMatch(/if \(after\.skipped \|\| !measuredGain\)/);
+        expect(LOOP).toMatch(/if \(after\.skipped \|\| !measuredGain(?: \|\| brought\.length)?\)/);
         expect(LOOP).toMatch(/verdict: 'no_measured_gain', rolledBack: !!undone,/);
     });
 

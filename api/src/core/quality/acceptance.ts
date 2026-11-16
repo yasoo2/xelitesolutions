@@ -33,7 +33,7 @@ import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisReq
 import { hisWordsOnly } from '../design/page-head';
 import fs from 'fs';
 import path from 'path';
-import { isMachineStateDirectory, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../shared/utils/project-tree';
+import { isJoeAppKit, isJoeAppKitDir, isMachineStateDirectory, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../shared/utils/project-tree';
 import { thePagesHeNamed } from '../design/site-plan';
 import { saysAny, saysWord } from '../language/arabic';
 import { requestedCapabilities, type Capability } from './scope-audit';
@@ -803,7 +803,7 @@ export async function acceptanceSource(dir: string): Promise<string> {
     const root = String(dir || '').trim();
     if (!root) return '';
     const files = await listProjectFiles(root, {
-        skipDirectory: name => name === 'dist' || name.startsWith('.'),
+        skipDirectory: (name, relative) => name === 'dist' || name.startsWith('.') || isJoeAppKit(relative),
         keepFile: (_relative, name) => ACCEPTANCE_SOURCE.test(name),
     });
     const texts = await mapBounded(files, PROJECT_FS_CONCURRENCY, file => fs.promises.readFile(path.join(root, file), 'utf-8').catch(() => ''));
@@ -820,7 +820,7 @@ function sourceOf(dir: string): string {
         for (const e of entries) {
             if (isMachineStateDirectory(e.name, { atRoot: depth === 0 }) || e.name === 'dist' || e.name.startsWith('.')) continue;
             const p = path.join(d, e.name);
-            if (e.isDirectory()) { walk(p, depth + 1); continue; }
+            if (e.isDirectory()) { if (!isJoeAppKitDir(p)) walk(p, depth + 1); continue; }
             if (!/\.(jsx?|tsx?|html|css)$/i.test(e.name)) continue;
             try { out.push(fs.readFileSync(p, 'utf-8')); } catch { /* unreadable is not evidence */ }
         }
