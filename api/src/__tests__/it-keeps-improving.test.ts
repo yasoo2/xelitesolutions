@@ -356,7 +356,8 @@ describe('the model round is contained, not trusted', () => {
         //  deterministic repairer can fix at all. So the early return is
         //  asserted together with the exception that makes it honest.
         expect(REPAIR).toMatch(/if \(known\.changed\.length && !severeFirst\) return known\.changed;/);
-        expect(REPAIR).toContain('const severeFirst = handlerRepairable(');
+        //  Read through modelRepairable since review r40-2 (A3): handlerRepairable on what refuses only.
+        expect(REPAIR).toContain('const severeFirst = modelRepairable(lastAudit).behaviour.length > 0;');
 
     });
 

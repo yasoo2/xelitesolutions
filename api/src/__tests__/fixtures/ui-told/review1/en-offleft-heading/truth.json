@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: the first letters of the heading and of the «Sign up» button are cut at the left edge; nothing scrolls left",
+ "targets": [
+  {
+   "sel": "a.go",
+   "at": 390
+  }
+ ]
+}

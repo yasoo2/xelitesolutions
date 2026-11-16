@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: 3000-row invoices table that pans at 390 (Open buttons need panning); the page is heavy — the 30 s bound must hold",
+ "targets": [
+  {
+   "sel": "table tr:nth-child(2) button",
+   "at": 390
+  }
+ ]
+}

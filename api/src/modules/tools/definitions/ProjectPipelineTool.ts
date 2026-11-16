@@ -19,6 +19,7 @@ import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
 import { auditBuiltApp, AppAudit, COVERAGE_RETRY_TIMEOUT_MS, findingText } from '../../../core/quality/app-audit';
+import { refuses } from '../../../core/engine/browser-mend';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { hasExplicitRecordSchema, isCliRequest as isCliRequestFn } from '../../../core/design/app-blueprints';
 import { requestedArtifact } from '../../../core/design/requested-artifact';
@@ -4087,7 +4088,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // Every measured finding is open work. Treating only
                     // "high" severity as blocking let coverage, accessibility,
                     // responsive, and visual defects pass the gate unchanged.
-                    let blocking = browserQa.findings.slice();
+                    // What refuses is what verify.ts refuses (browser-mend.ts): the
+                    // inspector's lines and a minor finding of taste are told, and
+                    // never start a project repair (design v3 §2.3).
+                    let blocking = browserQa.findings.filter(refuses);
                     // Instrumentation failures belong to Joe's browser rig,
                     // never to the application under test. Sending these to
                     // project_repair made Joe rewrite valid project files in
@@ -4136,7 +4140,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                                     });
                                     if (!recheck?.skipped) {
                                         browserQa = recheck;
-                                        blocking = browserQa.findings.slice();
+                                        blocking = browserQa.findings.filter(refuses);
                                         appendBoundedPipelineLog(logs, `[pipeline] browser QA recheck score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
                                         browserQaRepairStatus = blocking.length === 0 ? 'repaired_and_verified' : 'repaired_blockers_remain';
                                     } else {
@@ -4149,7 +4153,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             }
                         }
                     }
-                    blocking = browserQa.findings.slice();
+                    blocking = browserQa.findings.filter(refuses);
                     if (blocking.length > 0) {
                         browserQaFailed = true;
                         ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${blocking.length} blocking finding(s)` });

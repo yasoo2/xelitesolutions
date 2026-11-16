@@ -1,0 +1,4 @@
+{
+ "truth": "BROKEN: a 190px fixed header plus a 180px sticky filter bar under it — 370px (44%) of the phone screen never scrolls away",
+ "targets": []
+}

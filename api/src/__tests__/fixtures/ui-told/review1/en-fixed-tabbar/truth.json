@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: at 390 the «Profile» and «Settings» tabs are off the screen in a fixed bar; nothing scrolls them in",
+ "targets": [
+  {
+   "sel": "nav.tabs a:last-child",
+   "at": 390
+  }
+ ]
+}

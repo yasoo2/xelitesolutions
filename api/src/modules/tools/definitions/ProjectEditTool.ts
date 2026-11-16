@@ -35,7 +35,7 @@ import { saysWord, words, normalise } from '../../../core/language/arabic';
 import { foldChars, normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 import { isArabicReply } from '../../../shared/reply-language';
 import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
-import { byNameOrder, isJsonStore, isLockfile, jsonStoresWrittenBy, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
+import { byNameOrder, isJoeAppKit, isJsonStore, isLockfile, jsonStoresWrittenBy, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -786,8 +786,11 @@ const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
  */
 async function listFiles(dir: string): Promise<string[]> {
     return listProjectFiles(dir, {
-        skipDirectory: name => BUILD_OUTPUT_DIRS.has(name),
-        keepFile: (_rel, name) => EDITABLE.test(name),
+        // Joe's print kit (print.css, JOE-KIT.json, its fonts) is Joe's file, not
+        // his source: a wording edit such as «rename Cairo» never rewrites it
+        // (review 3 of r40, finding 6).
+        skipDirectory: (name, rel) => BUILD_OUTPUT_DIRS.has(name) || isJoeAppKit(rel),
+        keepFile: (rel, name) => EDITABLE.test(name) && !isJoeAppKit(rel),
     });
 }
 
@@ -2256,14 +2259,15 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 // evidence-driven loop here: repair source, rebuild, remeasure,
                 // and roll back any round that does not improve the result.
                 const { worthRepairing, collectSources } = require('../../../core/quality/self-repair');
-                if (!audit?.skipped && worthRepairing(audit?.findings || [])) {
+                //  Only what refuses opens a repair and reaches it: the inspector's lines are told (design v3 §2.3).
+                const { refuses } = require('../../../core/engine/browser-mend');
+                if (!audit?.skipped && worthRepairing((audit?.findings || []).filter(refuses))) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
                         ? 'أصلح عيوب الجودة التي قاسها المتصفح، ثم أعيد الاختبار نفسه.'
                         : 'Repairing the browser-measured quality findings, then rerunning the same audit.');
                     const { improveUntilItStops, repairRound, improveSummary } = require('../../../core/quality/improve-loop');
                     const { snapshotProject, restoreVersion } = require('../../../core/project/versions');
                     const beforeRepair = collectSources(dir) as Record<string, string>;
-                    const measuredAudits: any[] = [audit];
                     const rebuild = async (): Promise<boolean> => {
                         const { executionEngine } = require('../../../kernel/ExecutionEngine');
                         const { withoutViteConfigForBuild, portableViteBuildArgs } = require('./ReactProjectTool');
@@ -2273,11 +2277,12 @@ This is a correct answer, not a failure. Changing something the user did not ask
                             }).done).ok,
                         );
                     };
-                    const firstMeasurement = {
-                        score: Number(audit.score || 0),
-                        findingIds: (audit.findings || []).map((f: any) => String(f.id)),
-                        findings: (audit.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
-                    };
+                    //  The loop is handed, and keeps or rolls back a round on, what refuses alone (review r40-2, A2):
+                    //  a told line never opens a round, never feeds one, never decides one (browser-mend.ts).
+                    const { refusingMeasurement } = require('../../../core/engine/browser-mend');
+                    const firstMeasurement = refusingMeasurement(audit);
+                    /** Each reading the loop was handed, with the audit it was read from. */
+                    const readings = new Map<any, any>();
                     improvement = await improveUntilItStops(firstMeasurement, {
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
                         say: (line: string) => logs.push(line),
@@ -2286,8 +2291,9 @@ This is a correct answer, not a failure. Changing something the user did not ask
                             const restored = restoreVersion(dir, id);
                             return !!restored?.ok && await rebuild();
                         },
+                        //  A round handed no finding writes nothing: never ui-repair's untargeted blanket.
                         repair: async (round: number, _ids: string[], findings: any[]) =>
-                            (await repairRound(dir, round, { isArabic: isAr, findings })).changed,
+                            findings.length ? (await repairRound(dir, round, { isArabic: isAr, findings })).changed : [],
                         rebuild,
                         measure: async () => {
                             const measured = await auditBuiltApp(path.join(dir, 'dist'), {
@@ -2296,23 +2302,16 @@ This is a correct answer, not a failure. Changing something the user did not ask
                                 requireVisibleBrowser: true,
                             });
                             if (measured?.skipped) return { score: 0, findingIds: [], skipped: true };
-                            measuredAudits.push(measured);
-                            return {
-                                score: Number(measured.score || 0),
-                                findingIds: (measured.findings || []).map((f: any) => String(f.id)),
-                                findings: (measured.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
-                            };
+                            const reading = refusingMeasurement(measured);
+                            readings.set(reading, measured);
+                            return reading;
                         },
                     });
                     // `final` remains the last KEPT measurement after a
-                    // rollback. Select the full audit with that same score and
-                    // finding set, never the rejected measurement that caused
-                    // the rollback.
-                    const finalIds = [...(improvement.final?.findingIds || [])].map(String).sort().join('|');
-                    const matchingAudit = measuredAudits.slice().reverse().find((candidate: any) =>
-                        Number(candidate?.score || 0) === Number(improvement.final?.score || 0)
-                        && [...(candidate?.findings || [])].map((f: any) => String(f.id)).sort().join('|') === finalIds,
-                    );
+                    // rollback. Select the full audit that reading was taken
+                    // from, never the rejected measurement that caused the
+                    // rollback (the first reading keeps the first audit).
+                    const matchingAudit = readings.get(improvement.final);
                     if (matchingAudit) audit = matchingAudit;
                     notes.push(improveSummary(improvement, isAr));
 

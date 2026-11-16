@@ -74,7 +74,7 @@ describe('the authored interface is rolled back by the browser, not only by the 
         const rollbackAt = SRC.indexOf('const runtimeBlockers');
         //  Repointed (0e2ff0962): the verdict reads the final findings into
         //  `openQualityFindings`, and `blockers` is filtered from that.
-        const verdictAt = SRC.indexOf('const openQualityFindings = ((audit?.findings || []) as any[]);');
+        const verdictAt = SRC.indexOf('const openQualityFindings = qualityGate.open;');
         expect({
             rollbackFound: rollbackAt > 0,
             verdictFound: verdictAt > 0,

@@ -1,0 +1,10 @@
+{
+ "truth": "BROKEN: at 390 the users table (min-width 720px) makes the page pan; the sticky toolbar («Add user», search) must keep sticking after any repair",
+ "targets": [
+  {
+   "sel": "table tr:nth-child(2) button",
+   "at": 390
+  }
+ ],
+ "stickyCheck": ".toolbar"
+}

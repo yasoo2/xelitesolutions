@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: at 390, «العروض», «المدونة», «اتصل بنا», «حسابي» are clipped by the nav; no menu button, no scroll",
+ "targets": [
+  {
+   "sel": "header nav a:last-child",
+   "at": 390
+  }
+ ]
+}

@@ -66,6 +66,9 @@ const add = (list: Repair[], id: string, detail: string, count: number) => {
 
 /* ── the document shell ──────────────────────────────────────────────────── */
 
+/** Languages written right to left, by their BCP 47 primary tag. */
+const RTL_LANG = /^(?:ar|fa|he|iw|ur|ps|ku|ckb|yi|dv|sd|ug)(?:-|$)/i;
+
 /**
  * index.html carries the four things a page is judged on before a single
  * component renders: its language, its direction, its viewport and its title.
@@ -81,8 +84,33 @@ export function repairHtmlShell(html: string, opts: { isArabic?: boolean; title?
     if (htmlTag) {
         let tag = htmlTag[0];
         const before = tag;
-        if (!/\blang\s*=/.test(tag)) tag = tag.replace(/<html\b/i, `<html lang="${isAr ? 'ar' : 'en'}"`);
-        if (isAr && !/\bdir\s*=/.test(tag)) tag = tag.replace(/<html\b/i, '<html dir="rtl"');
+        /*
+         * The page's direction is the page's: its own lang, else its own words — the reply language
+         * only for an empty app shell. Before 2026-11-15 an owner whose Joe speaks Arabic got
+         * dir="rtl" on an English page (<html lang="en">) by every mend, and the mend was kept.
+         */
+        const langAttr = (before.match(/\blang\s*=\s*["']?([A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)/i) || [])[1] || '';
+        const body = (text.match(/<body\b[^>]{0,4000}>([\s\S]*)/i) || [])[1] ?? text;
+        //  A template's <noscript> sentence («You need to enable JavaScript…») is the template's words, not the page's.
+        const words = body.replace(/<script\b[\s\S]*?(?:<\/script>|$)|<style\b[\s\S]*?(?:<\/style>|$)|<noscript\b[\s\S]*?(?:<\/noscript>|$)|<[^>]{0,4000}>/gi, ' ');
+        const rtlLetters = (words.match(/[֐-׿؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g) || []).length;
+        const latinLetters = (words.match(/[A-Za-z]/g) || []).length;
+        const appShell = rtlLetters + latinLetters === 0;
+        /*
+         * AN EXISTING lang OR dir IS NEVER CHANGED (review 3 of r40, finding 10). Review r40-2
+         * (C6) rewrote a Vite shell's lang="en" around an empty #root into lang="ar" dir="rtl"
+         * whenever the REQUEST was Arabic; but an Arabic speaker asking for an English site
+         * gets that same shell with a deliberate lang="en", and the mend laid the whole app
+         * out right to left. The two cannot be told apart from the shell, so the shell's lang
+         * is the page's: lang is added only to an <html> with none (from the page's words, the
+         * reply language only for an empty shell), dir="rtl" only for a right-to-left page
+         * (its own lang, or the lang just added) that has no dir.
+         */
+        const pageRtl = langAttr
+            ? RTL_LANG.test(langAttr)
+            : appShell ? isAr : rtlLetters >= latinLetters;
+        if (!langAttr) tag = tag.replace(/<html\b/i, `<html lang="${pageRtl ? (/[֐-׿]/.test(words) && !/[؀-ۿ]/.test(words) ? 'he' : 'ar') : 'en'}"`);
+        if (pageRtl && !/\bdir\s*=/i.test(tag)) tag = tag.replace(/<html\b/i, '<html dir="rtl"');
         if (tag !== before) {
             text = text.replace(before, tag);
             add(repairs, 'html_lang', 'أضفتُ لغة المستند واتجاهه إلى وسم <html>', 1);

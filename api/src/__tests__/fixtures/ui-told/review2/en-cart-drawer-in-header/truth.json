@@ -1,0 +1,9 @@
+{
+ "truth": "SOUND: 64px fixed header; the cart is a closed slide-in drawer (fixed, 100vh, translateX(100%)) inside the header",
+ "targets": [],
+ "after": {
+  "js": "document.querySelector('.cartbtn').click()",
+  "sel": ".cart button",
+  "at": 390
+ }
+}

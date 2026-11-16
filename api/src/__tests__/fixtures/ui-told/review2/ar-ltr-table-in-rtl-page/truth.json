@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: an English (dir=ltr) invoices table 700px wide inside an Arabic RTL page: at 390 «Download PDF» needs panning the whole page",
+ "targets": [
+  {
+   "sel": "table tr:nth-child(2) button",
+   "at": 390
+  }
+ ]
+}

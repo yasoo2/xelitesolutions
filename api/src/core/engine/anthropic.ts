@@ -314,7 +314,9 @@ export function mapApiError(e: any): Error {
     if (status === 400 && NO_CREDIT.test(text)) return coded(`The Claude account has no credit left: ${text}`, 'MODEL_BILLING');
     if ((status === 400 || status === 413) && CONTEXT_OVERFLOW.test(text)) return coded(`The prompt does not fit the model's window: ${text}`, 'RESOURCE_CONTEXT_OVERFLOW');
     if (status === 400 && BOUND_ELSEWHERE.test(text)) return coded(text, 'MODEL_THINKING_BOUND');
-    return coded(`The Claude API call failed${Number.isFinite(status) ? ` (${status})` : ''}: ${text}`, 'PROVIDER_FAILURE', { status });
+    //  The response headers ride along: the Retry-After the API sends with 429/529 is what the loop waits for (loop.ts retryAfterMs).
+    const headers = e?.headers ?? e?.response?.headers;
+    return coded(`The Claude API call failed${Number.isFinite(status) ? ` (${status})` : ''}: ${text}`, 'PROVIDER_FAILURE', { status, ...(headers ? { headers } : {}) });
 }
 
 export interface AnthropicModelDeps {

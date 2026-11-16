@@ -164,6 +164,12 @@ describe('a repair that leaves fewer of the same is kept', () => {
         ['more instances', [small(3)], [small(9)], false],
         ['only a minor note gone', [small(3), { id: 'flat_hierarchy', severity: 'low' }], [small(3)], true],
     ])('%s: kept %s', (_name, before, after, kept) => {
-        expect(mendIsBetter(before, after)).toBe(kept);
+        //  Both walks inspected whole (review r40-2, A5): a told kind is the repair's doing only then.
+        expect(mendIsBetter({ findings: before, uiInspection: 'complete' }, { findings: after, uiInspection: 'complete' })).toBe(kept);
+    });
+
+    test('a told kind the first walk could not see — its inspection was cut short — is not the repair\'s doing', () => {
+        const brought = [{ id: 'mobile_overflow', severity: 'high', detailEn: '2 element(s) spill' }];
+        expect(mendIsBetter({ findings: [small(21), dead], uiInspection: 'partial: time ran out before 390px' }, { findings: brought, uiInspection: 'complete' })).toBe(true);
     });
 });
