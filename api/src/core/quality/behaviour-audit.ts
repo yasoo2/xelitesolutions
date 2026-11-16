@@ -2079,6 +2079,8 @@ export function saysSuccess(text: string): boolean {
          * but not to the server», «تم الحفظ، لكن لم يُرسل البريد» — a clause cut at «,» dropped the «but».
          */
         const sentence = tail.split(/[.!?؟\n]/u)[0] || '';
+        //  «Saved; not really…» (the sixth review, M4): a denial right after the word, across «;».
+        if (/^\s*(?:[^\s;؛.!?؟]+\s*){0,2}[;؛]\s*(?:not|never|\w+n't|\w+n’t|لم|لا|ليس)(?=\s|$|[,.;:!?])/iu.test(tail)) continue;
         if (/(?:^|[\s,،;؛—–-])(?:but|however)\s+(?:not|never|\w+n't|\w+n’t)(?=\s|$|[,.;:!?])/iu.test(sentence)) continue;
         if (/(?:^|[\s,،;؛—–-])و?لكن(?:ه|ها|هم)?\s+(?:لم|لا|لن)(?=\s|$)/u.test(sentence)) continue;
         if (m[1] && /^(?:ال)?(?:رفض|إلغاء|الغاء|ألغاء)/u.test(after[0] || '')) continue;
@@ -2470,6 +2472,8 @@ const ACTION_SEGMENT = /^(?:(?:bulk|batch|soft|hard)[-_]?)?(?:create|add|new|sav
 const DELETE_ADDRESS = /(?:^|\/)(?:delete|remove|destroy|trash|erase|purge)(?:[-_.][\w.-]*)?(?:\/|$)|[?&](?:action|op|do|cmd|method|_method)=(?:delete|remove|destroy)\b/i;
 /** …and a write to an address that deletes, cancels or archives (the fifth review of 2026-11-15, S7): …/bookings/1/cancel, /archive, /soft-delete, ?_method=DELETE. */
 const WRITE_DELETE_ADDRESS = /(?:^|\/)(?:(?:soft|hard)[-_]?)?(?:delete|remove|destroy|trash|erase|purge|cancel|archive|void|deactivate)(?:[-_.][\w.-]*)?(?:\/|$)|[?&](?:action|op|do|cmd|method|_method)=(?:delete|remove|destroy|trash|purge|cancel|archive)\b/i;
+/** A key that asks a delete to take more than its record: deleteBooking, removeParent, cascade, purge, withParent, includeChildren. */
+const DELETE_MORE_KEY = /^(?:(?:delete|remove|destroy|purge|drop|wipe)(?:[A-Z_-]\w*)?|cascade\w*|purge\w*|force|hard|with[A-Z_-]\w*|include[A-Z_-]?\w*|including\w*|also\w*)$/i;
 /** A word that asks for a delete, as an action or a mutation's name: delete, remove, cancel, archive, soft-delete… */
 const DELETE_ACTION = /^(?:(?:soft|hard)[-_]?)?(?:delete|remove|destroy|trash|erase|purge|cancel|archive|void|deactivate)\w*$/i;
 
@@ -2582,6 +2586,98 @@ export function idsOfBody(body: string, typedKeys?: Set<string>): string[] {
     if (q !== null) for (const m of q.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\s*:\s*\[?\s*(?:"([\w-]{1,80})"|(\d{1,19})\b)/g)) { const s = m[1] || m[2]; if (looksLikeRecordId(s)) out.add(s); }
     return [...out];
 }
+/*
+ * ⛔ AN ID IS THE QA'S OWN ONLY WHEN ITS RECORD HOLDS NOTHING THE QA DID NOT SEND.
+ *
+ * The sixth review of 2026-11-15 (U1): «Room notes» POSTed /api/rooms {number: 3, notes}, and the server
+ * UPSERTED — the owner's room 17, «Deluxe sea view, king bed», took the QA's notes, never shown or read
+ * before. Answered {ok: true} with the list read again, or 201 Location: /api/rooms/17, or {id: 17, …}: the
+ * QA deleted room 17. A record holding the QA's mark is not a record the QA made. Now the record an id
+ * names, as the server returned it, is adopted only when every text it holds is a value the QA sent (or
+ * carries its mark), an id, a date or time, a machine token, or a short state word; any other human text
+ * is a record that was there — left and told.
+ */
+/** A field that names another record by a join: owner, author, createdBy, owner_email, category_name, ownerName, article_title (never first_name, display_name). */
+const JOINED_KEY = /^(?:owner|author|creator|created_?by|updated_?by|modified_?by)$|^(?!(?:first|last|full|display|middle|nick|given|family|sur|short|long|legal|user)[_-]?(?:name|title)$)[a-z][a-z0-9]*?(?:_(?:name|title|email|label)|(?:Name|Title|Email|Label))$/i;
+/** Short words a server gives a record it makes on its own: a state, a role, a level, a default. */
+const STATE_WORDS = new Set(('pending active inactive new open closed draft confirmed booked reserved approved published unpublished scheduled available '
+    + 'unavailable paid unpaid received submitted created completed complete done todo progress ok success true false yes no none null default user '
+    + 'customer member guest client staff admin normal low medium high public private free basic cash card online offline local in waiting review '
+    + 'قيد الانتظار المراجعة جديد جديدة نشط نشطة مؤكد مؤكدة محجوز مفتوح مفتوحة مسودة معلق معلقة مستلم مدفوع غير').split(/\s+/));
+/** What the server's own record holds that the QA did not send and that is no machine value — '' when there is none. */
+export function foreignTextInRecord(record: unknown, sent: Iterable<string>, mark: string): string {
+    const said = new Set<string>();
+    for (const s of sent) { const v = String(s ?? '').trim().toLowerCase(); if (v) said.add(v); }
+    const m = String(mark || '').toLowerCase();
+    let found = '';
+    const machine = (s: string) => looksLikeRecordId(s)
+        || /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(s)
+        || /^\d{1,2}:\d{2}(?::\d{2})?$/.test(s)
+        || /^[-+]?\d+(?:[.,]\d+)?$/.test(s)
+        || /^(?:https?:\/\/|\/)\S*$/.test(s)
+        || /^#[0-9a-f]{3,8}$/i.test(s)
+        || /^[A-Z]{3}$/.test(s)
+        || /^[a-z]{2}(?:[-_][A-Za-z]{2})?$/.test(s)
+        || /^\$2[aby]?\$\d+\$/.test(s)
+        || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
+        || /^[A-Z0-9][A-Z0-9_-]{3,39}$/.test(s) && /\d/.test(s)
+        || (!/\s/.test(s) && s.length >= 16 && /\d/.test(s));
+    const stateWords = (s: string) => {
+        const words = s.toLowerCase().split(/[\s_-]+/).filter(Boolean);
+        return words.length > 0 && words.length <= 2 && words.every(w => STATE_WORDS.has(w));
+    };
+    const text = (v: unknown) => {
+        if (found || typeof v !== 'string') return;
+        const s = v.trim();
+        if (!s) return;
+        const low = s.toLowerCase();
+        if ((m && low.includes(m)) || said.has(low) || machine(s) || stateWords(s)) return;
+        found = s.slice(0, 80);
+    };
+    /*
+     * The record's own fields only: another record it carries (an owner, a category, its notes — an object, a list of
+     * objects) or names by a join («owner_email», «category_name», «ownerName», «article_title») is not its text.
+     */
+    const fields = (o: Record<string, unknown>, depth: number) => {
+        for (const [k, v] of Object.entries(o)) {
+            if (found || JOINED_KEY.test(k) || RECORD_KEY.test(k)) continue;
+            if (Array.isArray(v)) { for (const x of v.slice(0, 200)) if (!x || typeof x !== 'object') text(x); continue; }
+            if (v && typeof v === 'object') { if (depth < 3 && GENERIC_HOLDER.test(k)) fields(v as Record<string, unknown>, depth + 1); continue; }
+            text(v);
+        }
+    };
+    if (record && typeof record === 'object' && !Array.isArray(record)) fields(record as Record<string, unknown>, 0);
+    else text(record);
+    return found;
+}
+/** The record a JSON answer holds under this id (the innermost object whose own id it is), or undefined. */
+export function recordOfId(body: string, id: string): Record<string, unknown> | undefined {
+    let value: unknown;
+    try { value = JSON.parse(String(body || '')); } catch { return undefined; }
+    let hit: Record<string, unknown> | undefined;
+    const walk = (v: unknown, depth: number) => {
+        if (hit || depth > 8) return;
+        if (Array.isArray(v)) { for (const x of v.slice(0, 5000)) walk(x, depth + 1); return; }
+        if (!v || typeof v !== 'object') return;
+        const o = v as Record<string, unknown>;
+        if (['id', '_id', 'uuid', 'ID', 'Id'].some(k => (typeof o[k] === 'string' || typeof o[k] === 'number') && String(o[k]) === id)) { hit = o; return; }
+        for (const x of Object.values(o)) walk(x, depth + 1);
+    };
+    walk(value, 0);
+    return hit;
+}
+/** Every value a write's body sent, as text: what the QA's record may hold back. */
+export function valuesOfBody(body: string): string[] {
+    const out: string[] = [];
+    const walk = (v: unknown, depth: number) => {
+        if (depth > 8 || out.length > 2000) return;
+        if (Array.isArray(v)) { for (const x of v) walk(x, depth + 1); return; }
+        if (v && typeof v === 'object') { for (const x of Object.values(v as Record<string, unknown>)) walk(x, depth + 1); return; }
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out.push(String(v));
+    };
+    try { walk(JSON.parse(String(body || '')), 0); } catch { for (const [, v] of formBodyPairs(String(body || ''))) out.push(v); }
+    return out;
+}
 /** The id an address names right after that collection (/items/7, /api/projects/3/tasks/41 for tasks), or ''. */
 export function idAfterCollection(at: string, collection: string): string {
     const parts = addressParts(at).map(p => p.replace(/\.json$/i, ''));
@@ -2610,6 +2706,21 @@ export function deleteRequestVerdict(req: { method: string; url: string; body?: 
     const context = new Set((neutral || []).map(String).filter(Boolean));
     let named = false;
     const foreign: string[] = [];
+    /*
+     * N1 (the sixth review of 2026-11-15): a parent the create named is neutral beside the QA's own record — never
+     * next to a flag that deletes more (deleteBooking: true, cascade, withParent, purge): then it is another record.
+     */
+    let contextNamed = false, deletesMore = false, namesMore = false;
+    const flag = (key: string, v: unknown) => {
+        const k = String(key || '');
+        const s = typeof v === 'string' ? v.trim().toLowerCase() : v;
+        //  «scope: all», «mode: all»: every record, never the QA's one.
+        if (/^(?:scope|mode|target|range|what|which)$/i.test(k) && s === 'all') namesMore = true;
+        if (!DELETE_MORE_KEY.test(k)) return;
+        if (s === true || s === 1 || s === 'true' || s === '1' || s === 'yes' || s === 'on' || s === 'all') deletesMore = true;
+        //  …and a cascade into another collection (?cascade=booking) takes more than the QA's record, whatever else it names.
+        else if (typeof s === 'string' && /^[a-z][\w-]*$/i.test(s) && !/^(?:false|0|no|off|none|null)$/.test(s) && !ofOwnCollection(s)) namesMore = true;
+    };
     const ofOwnCollection = (c: string) => own.some(r => sameCollection(r.collection, c));
     /** One value where `c` names its collection ('' when nothing does): the QA's own pair, another record of that collection, the create's context (neutral), or another record. */
     const judge = (c: string, raw: unknown, underKey: boolean) => {
@@ -2621,24 +2732,31 @@ export function deleteRequestVerdict(req: { method: string; url: string; body?: 
         for (const v of values.map(x => x.trim().replace(/^"|"$/g, '')).filter(Boolean)) {
             if (own.some(r => r.id === v && sameCollection(r.collection, c))) { named = true; continue; }
             if (c && ofOwnCollection(c)) { foreign.push(v); continue; }
-            if (context.has(v)) continue;
+            if (context.has(v)) { contextNamed = true; continue; }
             if (underKey || looksLikeRecordId(v)) foreign.push(v);
         }
     };
     /** A value under a key, in an object that names `holder`. */
     const judgeKey = (key: string, v: unknown, holder: string) => {
+        flag(key, v);
         if (typeof v !== 'string' && typeof v !== 'number') return;
         if (PLAIN_ID_KEY.test(key)) judge(holder, v, true);
         else if (RECORD_KEY.test(key)) judge(keyCollection(key), v, true);
-        else if (!NOT_A_RECORD_KEY.test(key) && looksLikeRecordId(String(v).trim())) judge(key, v, false);
+        //  (PostgREST's «user=eq.1» names record 1 of another column too.)
+        else if (!NOT_A_RECORD_KEY.test(key) && looksLikeRecordId(String(v).trim().replace(/^(?:eq|in)\.\(?|\)$/g, '').split(',')[0])) judge(key, v, false);
     };
     let url: URL | null = null;
     try { url = new URL(String(req.url || '')); } catch { url = null; }
     const resource = url ? collectionOfAddress(url.href) : '';
     if (url) {
         const parts = addressParts(url.href).map(p => p.replace(/\.json$/i, ''));
+        //  After the QA's own id, only what says the delete (…/notes/1/delete): /notes/1/bookings, /notes/1/all, /notes/1/delete-booking name more.
+        const lastOwn = parts.reduce((at, p, i) => (own.some(r => r.id === p && i > 0 && sameCollection(r.collection, parts[i - 1])) ? i : at), -1);
+        if (lastOwn >= 0 && parts.slice(lastOwn + 1).some(p => !ACTION_SEGMENT.test(p) || /[-_](?:all|many|bulk|batch)$/i.test(p))) namesMore = true;
         parts.forEach((p, i) => {
             if (!looksLikeRecordId(p) && !own.some(r => r.id === p)) return;
+            //  A parent in the path is neutral only before the QA's own collection (/projects/3/tasks/41), never as the target (/bookings/1?notes=7).
+            if (context.has(p) && !own.some(r => r.id === p) && !parts.slice(i + 1).some(x => ofOwnCollection(x))) { foreign.push(p); return; }
             judge(i > 0 && !looksLikeRecordId(parts[i - 1]) ? parts[i - 1] : '', p, true);
         });
         url.searchParams.forEach((v, k) => judgeKey(k, v, resource));
@@ -2687,6 +2805,7 @@ export function deleteRequestVerdict(req: { method: string; url: string; body?: 
             }
         }
     }
+    if ((contextNamed && deletesMore) || namesMore) return 'block';
     return named && !foreign.length ? 'allow' : 'block';
 }
 
@@ -2725,6 +2844,9 @@ export function bodyAsksDelete(body: string): boolean {
 
 /** Why a record of the QA's own is left on a page that works over a socket (S3, the fifth review of 2026-11-15). */
 const SOCKET_LEFT = 'the page talks over a live socket the QA cannot hold';
+/** Why a record the server named is not adopted as the QA's own (U1, the sixth review of 2026-11-15). */
+const FOREIGN_RECORD = 'the server answered a record holding text the QA never sent — perhaps an existing record it updated';
+const UNREAD_RECORD = 'the record the server named could not be read — the QA cannot tell it is its own';
 export type DeleteGuard = {
     /** Hold every request but a read to the QA's own records while a delete is pressed: `allowed` its pairs, `neutral` its creates' context. */
     press: (allowed: OwnRecord[], neutral?: string[]) => Promise<void>;
@@ -2826,7 +2948,8 @@ export function guardDeletes(page: any): DeleteGuard {
             if (!deletes && o && o !== pageOrigin() && !wroteTo.has(o)) return pass();
         } else if (!deletes) return pass();
         //  After a press, a form's own submit (it carries the QA's mark) is no delayed delete: only a DELETE or a delete address is.
-        else if (method !== 'DELETE' && override !== 'DELETE' && !WRITE_DELETE_ADDRESS.test(where) && marks.some(m => body.includes(m))) return pass();
+        //  (N2, the sixth review: on a …/cancel or …/archive address too — a cancel or an archive form is tested again.)
+        else if (method !== 'DELETE' && override !== 'DELETE' && marks.some(m => body.includes(m) || (() => { try { return decodeURIComponent(where); } catch { return where; } })().includes(m))) return pass();
         judged.add(request);
         if (pressing) attempted++;
         const verdict = pressing ? deleteRequestVerdict({ method, url, body }, allowed, neutral) : deleteRequestVerdict({ method, url, body }, [...allowedEver.values()], [...neutralEver]);
@@ -2931,7 +3054,11 @@ export function causedByStoppedDelete(page: any, text: string): boolean {
     const s = g.stops();
     if (!s.count || Date.now() - s.lastAt > 15_000) return false;
     const t = String(text || '');
-    if (s.at.some((a: string) => !!a && t.includes(a))) return true;
+    //  N3 (the sixth review): the stopped path itself, never one it begins (/api/bookings/1 is not /api/bookings/12)…
+    const escape = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (s.at.some((a: string) => !!a && new RegExp(`${escape(a)}(?![\\w\\-/.])`).test(t))) return true;
+    //  …or the failure a stopped request throws, within 3 s of the stop.
+    if (Date.now() - s.lastAt > 3_000) return false;
     return /Failed to fetch|NetworkError|Network Error|network error|ERR_ABORTED|ERR_FAILED|\baborted\b|AbortError|Load failed|could(?:n't| not) (?:delete|remove|cancel|archive)|unable to (?:delete|remove)|failed to (?:delete|remove)|delete failed|تعذّ?ر\s*(?:ال)?حذف|فشل\s*(?:ال)?حذف/i.test(t);
 }
 /** How many requests the delete guard has stopped on this page so far (probeControls: a press it held is not a dead control). */
@@ -5844,7 +5971,7 @@ export async function probeForms(
          * 201's or a redirect's Location (/items/7), or — when the answer named none ({ok: true}, insertId)
          * — from the one new record holding the mark in what the page read again of that collection.
          */
-        const ownCreated = (): { records: OwnRecord[]; neutral: string[] } => {
+        const ownCreated = async (): Promise<{ records: OwnRecord[]; neutral: string[]; doubt: string }> => {
             const veto = new Set<string>();
             for (const id of idsShownBefore) for (const f of idForms(id)) veto.add(f);
             for (const id of readStore.before(readsAtFormStart)) veto.add(id);
@@ -5861,6 +5988,17 @@ export async function probeForms(
             //  (a field's `name` is its name attribute first, then its id and its label: the key a body sends is the first word.)
             for (const w of marked) { for (const id of idsOfAddress(w.at)) neutral.add(id); for (const id of idsOfBody(String(w.body || ''), typedKeys)) neutral.add(id); }
             const out = new Map<string, OwnRecord>();
+            /*
+             * U1 (the sixth review): the record an id names, as the server returned it, holds only what the QA sent (or its
+             * mark), ids, dates and short state words — any other text is a record that was there (an upsert): never adopted.
+             */
+            const sent = [...persistenceAnchors, ...[...validValues.values()].map(v => v.value), ...marked.flatMap(w => valuesOfBody(String(w.body || '')))];
+            let doubt = '';
+            const ownRecord = (record: unknown): boolean => {
+                if (!record || typeof record !== 'object') { doubt = doubt || UNREAD_RECORD; return false; }
+                if (foreignTextInRecord(record, sent, formMark)) { doubt = doubt || FOREIGN_RECORD; return false; }
+                return true;
+            };
             /** How many of the marked creates went to each collection with no id in their answer: as many new marked rows of its list may be the QA's. */
             const unnamed = new Map<string, number>();
             for (const w of marked) {
@@ -5868,8 +6006,15 @@ export async function probeForms(
                 if (!collection) continue;
                 const candidates: string[] = [];
                 const answered = w.status < 300 ? answeredRecordId(String(w.answer || '')) : '';
-                if (answered) candidates.push(answered);
-                if (w.location) { const at = idAfterCollection(w.location, collection); if (at) candidates.push(at); }
+                if (answered && ownRecord(recordOfId(String(w.answer || ''), answered))) candidates.push(answered);
+                //  A Location is the QA's own create's address: read once, its record must hold only what the QA sent.
+                if (w.location) {
+                    const at = idAfterCollection(w.location, collection);
+                    if (at && !(answered && candidates.includes(at))) {
+                        if (!locationRecords.has(w.location)) locationRecords.set(w.location, await readOwnAddress(w.location));
+                        if (ownRecord(recordOfId(locationRecords.get(w.location) || '', at) || (() => { try { const v = JSON.parse(locationRecords.get(w.location) || ''); return v && typeof v === 'object' && !Array.isArray(v) ? v : undefined; } catch { return undefined; } })())) candidates.push(at);
+                    }
+                }
                 if (!answered && w.status < 300) unnamed.set(collection, (unnamed.get(collection) || 0) + 1);
                 for (const id of candidates) {
                     if (!id || neutral.has(id) || recordIdOfUrl(w.at) === id || writeNamesId(String(w.body || ''), id)) continue;
@@ -5886,11 +6031,24 @@ export async function probeForms(
                 const held = new Set<string>();
                 for (const r of reads.list()) if (sameCollection(collectionOfAddress(r.at), collection)) for (const id of idsOfRecordsHolding(r.body, formMark)) held.add(id);
                 const fresh = [...held].filter(id => !neutral.has(id) && !idForms(id).some(f => veto.has(f)));
-                if (fresh.length && fresh.length <= count) for (const id of fresh) out.set(`${collection}\u0000${id}`, { collection, id });
+                if (!fresh.length || fresh.length > count) continue;
+                //  …each as its list returned it (the last read holding it): only what the QA sent (U1).
+                for (const id of fresh) {
+                    const row = [...reads.list()].reverse().filter(r => sameCollection(collectionOfAddress(r.at), collection)).map(r => recordOfId(r.body, id)).find(Boolean);
+                    if (ownRecord(row)) out.set(`${collection}\u0000${id}`, { collection, id });
+                }
             }
-            return { records: [...out.values()], neutral: [...neutral] };
+            return { records: [...out.values()], neutral: [...neutral], doubt: out.size ? '' : doubt };
         };
-        const ownCreatedIds = (): string[] => ownCreated().records.map(r => r.id);
+        /** What the QA's own create's Location answers, asked once beside the page with its credentials ('' when it cannot be read). */
+        const locationRecords = new Map<string, string>();
+        const readOwnAddress = async (at: string): Promise<string> => {
+            try {
+                const r = await page.request.get(at, { headers: { accept: 'application/json', ...writes.auth() }, timeout: 4000, failOnStatusCode: false });
+                return r.status() >= 200 && r.status() < 300 ? String(await r.text()).slice(0, 2_000_000) : '';
+            } catch { return ''; }
+        };
+        const ownCreatedIds = async (): Promise<string[]> => (await ownCreated()).records.map(r => r.id);
         /** A delete the network stopped: the row is left, counted and told (S4: merged into the report). */
         const deleteStopped = async (mark: string, stopped: Array<{ method: string; at: string }>) => {
             metrics.qaDeletesBlocked = Number(metrics.qaDeletesBlocked || 0) + stopped.length;
@@ -5912,7 +6070,7 @@ export async function probeForms(
             }), [...validValues.entries()].filter(([, v]) => v.kind === 'select').map(([s, v]) => [s, v.value])).catch(() => [] as string[]);
             const typed = [...persistenceAnchors, ...[...validValues.values()].filter(v => v.kind === 'fill' || v.kind === 'select').map(v => v.value), ...chosen, MARKUP_PROBE].filter(Boolean);
             const verdict = row
-                ? ownRowVerdict({ mark, rowText: row.text, rowIds: row.ids, markedIds, typed, beforeIds: idsShownBefore, beforeRows: rowsShownBefore, nowRows: row.rows, allowedIds: ownCreatedIds() })
+                ? ownRowVerdict({ mark, rowText: row.text, rowIds: row.ids, markedIds, typed, beforeIds: idsShownBefore, beforeRows: rowsShownBefore, nowRows: row.rows, allowedIds: await ownCreatedIds() })
                 : { ok: false, edited: false, why: 'its row could not be read' };
             if (verdict.ok) return true;
             /*
@@ -6381,10 +6539,12 @@ export async function probeForms(
                     //  …and no socket of the page's is open: a delete sent over it no route can hold (S3, the fifth review).
                     const overSocket = !!deleteSelector && await guard.liveSocket().catch(() => false);
                     if (overSocket) await leaveOwn(ownMark, SOCKET_LEFT);
-                    if (deleteSelector && !overSocket && await mayDeleteOwnRow(deleteSelector, ownMark)) {
+                    //  …and the record the server named holds only what the QA sent (U1, the sixth review): else it was there — left, told.
+                    const own = deleteSelector && !overSocket ? await ownCreated() : { records: [] as OwnRecord[], neutral: [] as string[], doubt: '' };
+                    if (own.doubt) await leaveOwn(ownMark, own.doubt);
+                    if (deleteSelector && !overSocket && !own.doubt && await mayDeleteOwnRow(deleteSelector, ownMark)) {
                         await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
                         //  Pressed with the network held to the pairs the server answered to this form's own creates (guardDeletes).
-                        const own = ownCreated();
                         await guard.press(own.records, own.neutral);
                         await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
                         /*
@@ -6436,10 +6596,11 @@ export async function probeForms(
         //  What a wrong value the product kept left behind is the QA's own: removed, never a visitor's — nor one it edited.
         if (savedInvalid && editedRecord()) await tellEdit(formMark);
         else if (savedInvalid && eyeIsOpen() && await guard.liveSocket().catch(() => false)) await leaveOwn(formMark, SOCKET_LEFT);
+        else if (savedInvalid && eyeIsOpen() && (await ownCreated()).doubt) await leaveOwn(formMark, (await ownCreated()).doubt);
         else if (savedInvalid && eyeIsOpen()) {
             //  …one row at a time, each only when it is a record that was not there before (its own id, its own text).
             const removed = await deleteOwnRecords(page, formMark, 4, sel => mayDeleteOwnRow(sel, formMark), {
-                press: () => { const own = ownCreated(); return guard.press(own.records, own.neutral); },
+                press: async () => { const own = await ownCreated(); return guard.press(own.records, own.neutral); },
                 release: () => guard.release(), stopped: stopped => deleteStopped(formMark, stopped),
                 socket: () => leaveOwn(formMark, SOCKET_LEFT),
             });
