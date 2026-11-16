@@ -253,8 +253,10 @@ describe('a change run of a Node server today\'s put-back covers (2T)', () => {
         const summary = summaryOf(report);
         expect(summary).toContain('✅');
         expect(summary).toContain('Joe\'s checks ran on your app the way they always have, trying its forms and buttons');
-        expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days.');
-        expect(summary).toContain('While the checks ran, «data/notes.json» also changed in a way that did not come from the checks');
+        //  Review 7, B3/M2: the copies' retention as pruning really keeps them, the chat that brings one back, and a change
+        //  outside every request that could write told as one that may not have come from the checks.
+        expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To bring one back, ask Joe in the chat.');
+        expect(summary).toContain('While the checks ran, «data/notes.json» also changed at a moment when none of the checks\' requests could save anything, so the change may not have come from the checks');
         expect(report.delivery.log.join('\n')).toMatch(/qa path: a change run \(history\); before the start: 2t/u);
     });
 
@@ -302,9 +304,11 @@ describe('a change run of a Node server today\'s put-back covers (2T)', () => {
             const report = await verify(dir, qa, 8_000);
             expect(qa.audits[0].qaPin.path).toBe('no-write');
             expect(report.delivery.qaPath).toMatchObject({ path: 'no-write', lockBusy: true });
-            //  Path 3 puts nothing back: the fake walk's note stays (a real no-write walk saves none).
+            //  Another check holds the lock, so this one puts nothing back (that check does): the fake walk's note
+            //  stays, and he is told which file changed and why it was not put back (review 7, B1).
             expect(fs.readFileSync(path.join(dir, 'data', 'notes.json'), 'utf8')).toContain('QA Tester note 1');
-            expect(summaryOf(report)).toContain('Another check of this app was still running, so this one ran without saving anything in your app.');
+            expect(summaryOf(report)).toContain('Another check of this app was still running, so this one ran without pressing what saves in your app, and put nothing back.');
+            expect(summaryOf(report)).toMatch(/these data files of your app changed: «data\/notes\.json»; they were not put back, because another check of this app was running at the same time/u);
         } finally {
             await held!.release();
         }
@@ -314,23 +318,25 @@ describe('a change run of a Node server today\'s put-back covers (2T)', () => {
 /* ───────────────────────── path 3 ───────────────────────── */
 
 describe('a change run of a server Joe cannot prove (path 3)', () => {
-    it('walks even when nobody watches, puts nothing back, and says what it did not try instead of «✅»', async () => {
+    it('walks even when nobody watches, puts back what changed (review 7, B1), and says what it did not try instead of «✅»', async () => {
         const dir = notesApp({ delivered: true, net: true });
         const qa = panel({ watching: false, reportsWindows: true });
         const report = await verify(dir, qa);
         expect(report.passed).toBe(true);
         expect(qa.audits).toHaveLength(1);
         expect(qa.audits[0].qaPin.path).toBe('no-write');
-        //  Nothing put back: no stop, no second start, the file as the walk left it.
-        expect(calls.filter(c => c.tool === 'project_stop')).toHaveLength(0);
-        expect(calls.filter(c => c.tool === 'project_run')).toHaveLength(1);
-        expect(fs.readFileSync(path.join(dir, 'data', 'notes.json'), 'utf8')).toContain('QA Tester note 1');
-        expect(report.delivery.qaPath).toMatchObject({ path: 'no-write', why: 'sender', walked: true, notTried: ['form: Add a note'] });
-        expect(report.delivery.qaPath!.recovery).toBeUndefined();
-        expect(filesUnder(path.join(joeData, 'qa-recovery')).filter(c => c.rel.includes(path.basename(dir)))).toEqual([]);
+        //  Never worse than main (review 7, B1): what changed during the checks is put back, the server stopped for it
+        //  and started again; every version is kept outside the project first.
+        expect(calls.filter(c => c.tool === 'project_stop').length).toBeGreaterThanOrEqual(1);
+        expect(calls.filter(c => c.tool === 'project_run')).toHaveLength(2);
+        expect(fs.readFileSync(path.join(dir, 'data', 'notes.json'), 'utf8')).toBe(SEED);
+        expect(report.delivery.qaPath).toMatchObject({ path: 'no-write', why: 'sender', walked: true, notTried: ['form: Add a note'], putBack: ['data/notes.json'] });
+        expect(report.delivery.qaPath!.recovery?.versions).toBeGreaterThan(0);
         const summary = summaryOf(report);
         expect(summary).not.toContain('✅');
-        expect(summary).toMatch(/Your app keeps its data on its server \(its server can send to the outside \(mail, messages or requests\): .+\), so Joe's checks ran on your live app without saving anything in it; not tried: «form: Add a note» \(total: 1\)\./u);
+        //  «without saving anything» is never said when something of his changed: what changed is named instead.
+        expect(summary).toMatch(/Your app keeps its data on its server \(its server can send to the outside \(mail, messages or requests\): .+\), so Joe's checks ran on your live app without pressing what saves; not tried: «form: Add a note» \(total: 1\)\./u);
+        expect(summary).toMatch(/these data files of your app changed: «data\/notes\.json»; they were put back as they were before the checks/u);
     });
 });
 

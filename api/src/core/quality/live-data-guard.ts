@@ -283,6 +283,8 @@ export async function createLiveDataGuard(context: BrowserContext, opts: { signI
     const signals: Array<{ url: string; location: string }> = [];
     const signalShapes = new Set<string>();
     const pathOf = (u: string) => { try { const x = new URL(u); return x.pathname + x.search; } catch { return String(u); } };
+    /** The walk's first navigation (its landing): a redirect there is the app's front door, never a write signal. */
+    let landed = false;
     let g: LiveDataGuard;
 
     const record = (method: string, url: string, kind: GuardAbort['kind']) => {
@@ -338,14 +340,19 @@ export async function createLiveDataGuard(context: BrowserContext, opts: { signI
     const onResponse = (resp: any) => {
         if (removed) return;
         try {
+            const req = resp.request();
+            let navigation = false;
+            try { navigation = req.isNavigationRequest() && req.frame?.()?.parentFrame?.() === null; } catch { navigation = false; }
+            const landing = navigation && !landed;
+            if (navigation && !req.redirectedFrom?.()) landed = true;
             const status = Number(resp.status());
             if (status < 300 || status > 399 || status === 304) return;
-            const req = resp.request();
             const method = String(req.method()).toUpperCase();
             if (method !== 'GET' && method !== 'HEAD') return;
             const url = String(req.url());
             const from = new URL(url);
-            if (STATIC_FILE.test(from.pathname)) return;
+            //  The landing and the root («/» → «/home», «/» → «/dashboard») are an app's door, not a save.
+            if (landing || from.pathname === '/' || STATIC_FILE.test(from.pathname)) return;
             const location = String((resp.headers() || {}).location || '');
             if (!location) return;
             const to = new URL(location, url);

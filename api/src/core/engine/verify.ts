@@ -1587,6 +1587,22 @@ const QA_LINES = {
         "de": "Joes Netzwerkschranke startete nicht; die Prüfungen liefen daher, ohne etwas in Ihrer App zu speichern.",
         "ru": "Сетевой барьер Joe не запустился, поэтому проверки прошли, ничего не сохраняя в приложении."
     },
+    "fenceDownChanged": {
+        "ar": "لم يعمل سياج الشبكة الذي يضعه جو، فجرت الفحوص دون أن تضغط ما يحفظ في تطبيقك.",
+        "en": "Joe's network fence did not start, so the checks ran without pressing what saves in your app.",
+        "es": "La barrera de red de Joe no arrancó, así que las comprobaciones se hicieron sin pulsar lo que guarda en tu aplicación.",
+        "fr": "La barrière réseau de Joe n'a pas démarré ; les vérifications ont donc tourné sans appuyer sur ce qui enregistre dans votre application.",
+        "de": "Joes Netzwerkschranke startete nicht; die Prüfungen liefen daher, ohne in Ihrer App zu drücken, was speichert.",
+        "ru": "Сетевой барьер Joe не запустился, поэтому проверки прошли, не нажимая в приложении то, что сохраняет."
+    },
+    "lockBusyChanged": {
+        "ar": "كان فحص آخر لهذا التطبيق ما زال يعمل، فجرى هذا الفحص دون أن يضغط ما يحفظ في تطبيقك، ولم يُعِد شيئًا.",
+        "en": "Another check of this app was still running, so this one ran without pressing what saves in your app, and put nothing back.",
+        "es": "Otra comprobación de esta aplicación seguía en marcha, así que esta se hizo sin pulsar lo que guarda en tu aplicación y no restauró nada.",
+        "fr": "Une autre vérification de cette application tournait encore ; celle-ci a donc tourné sans appuyer sur ce qui enregistre dans votre application, et n'a rien remis.",
+        "de": "Eine andere Prüfung dieser App lief noch; diese lief daher, ohne in Ihrer App zu drücken, was speichert, und legte nichts zurück.",
+        "ru": "Другая проверка этого приложения ещё шла, поэтому эта прошла, не нажимая в приложении то, что сохраняет, и ничего не возвращала."
+    },
     "lockBusy": {
         "ar": "كان فحص آخر لهذا التطبيق ما زال يعمل، فجرى هذا الفحص دون أن يحفظ شيئًا في تطبيقك، ولم يُعِد شيئًا.",
         "en": "Another check of this app was still running, so this one ran without saving anything in your app, and put nothing back.",
@@ -1677,8 +1693,10 @@ export function qaPathLines(q: DeliveryQaPath | undefined, language: string): st
     const say = (key: QaLineKey, vars: Record<string, string | number> = {}) => fill(QA_LINES[key][lang] || QA_LINES[key].en, vars);
     const quoted = (items: string[], max: number) => `${items.slice(0, max).map(l => `«${l}»`).join(comma)}${items.length > max ? `${comma}…` : ''}`;
     const lines: string[] = [];
-    if (q.fenceDown) lines.push(say('fenceDown'));
-    if (q.lockBusy) lines.push(say('lockBusy'));
+    //  «Nothing saved» is said only when nothing of his changed during the checks (review 7, B1).
+    const changedFirst = !!(q.putBack?.length || q.leftChanged?.files.length || q.putBackFailed?.length);
+    if (q.fenceDown) lines.push(say(changedFirst ? 'fenceDownChanged' : 'fenceDown'));
+    if (q.lockBusy) lines.push(say(changedFirst ? 'lockBusyChanged' : 'lockBusy'));
     if (q.walked && q.origin) {
         if (q.path === 'private-live' && !q.blocked) lines.push(say('checkedPrivately', { origin: q.origin }));
         if (q.path === '2t') lines.push(say('checkedAsBefore', { origin: q.origin }));

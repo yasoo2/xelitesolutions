@@ -253,9 +253,14 @@ function fileNameOf(expr: string, text: string, depth = 0): { parts: string[]; u
         if (NAME_FREE.has(name)) continue;
         //  `cfg.file`, `this.path`: a member read is not this file's to name.
         if (chain.length > 1 || depth >= 3) { unresolved = true; continue; }
-        const def = new RegExp(`\\b(?:const|let|var)\\s+${name.replace(/\$/gu, '\\$')}\\s*=\\s*([^;\\n]+)`, 'u').exec(text);
-        if (!def) { unresolved = true; continue; }
-        follow(def[1]);
+        const esc = name.replace(/\$/gu, '\\$');
+        const def = new RegExp(`\\b(?:const|let|var)\\s+${esc}\\s*=\\s*([^;\\n]+)`, 'u').exec(text);
+        if (def) { follow(def[1]); continue; }
+        //  `const [port, root] = process.argv.slice(2)`: the folder the app was started with is its base, not a name.
+        const unpacked = new RegExp(`\\b(?:const|let|var)\\s*[\\[{][^\\]}=;]*(?<![\\w$])${esc}(?![\\w$])[^\\]}=;]*[\\]}]\\s*=\\s*([^;\\n]+)`, 'u').exec(text);
+        if (unpacked && /\bprocess\s*\.\s*argv\b/u.test(unpacked[1])) continue;
+        if (unpacked) { follow(unpacked[1]); continue; }
+        unresolved = true;
     }
     return { parts: parts.filter(p => p !== '..'), unresolved };
 }
@@ -392,15 +397,6 @@ async function prove2T(root: string, budgetMs: number): Promise<{ ok: boolean; r
                 if (!isData(rel)) c.no('notCovered', `a data file the server writes and the snapshot does not keep: ${r}: ${rel}`);
             }
         }
-        //  T4b (review 7, M1): every file a write call names must be one the snapshot keeps — its name read through
-        //  the file's own constants (`const FILE = DIR + '/orders.json'`, `new JSONFile('orders.json')`); a name
-        //  Joe cannot read to the end (a parameter, an import, an env value) is not proven, so no 2T.
-        for (const t of writeTargets(text)) {
-            if (t.unresolved) { c.no('notCovered', `a file the server writes whose name Joe cannot read to the end: ${r}: ${t.expr.slice(0, 60)}`); continue; }
-            const rel = t.parts.join('/').replace(/\/{2,}/gu, '/').replace(/^\.?\//u, '');
-            if (!rel || /\.log$/iu.test(rel)) continue;
-            if (!isData(rel) && !rel.split('/').some(seg => DATA_DIR.test(seg))) c.no('notCovered', `a file the server writes that the snapshot does not keep: ${r}: ${rel}`);
-        }
         if (STORE_URL.test(text)) c.no('externalStore', `a database address in ${r}`);
         const hm = text.match(HOME_CODE);
         if (hm) c.no('outsidePath', `a data path outside the folder: ${r}: ${hm[0].slice(0, 50)}`);
@@ -429,6 +425,15 @@ async function prove2T(root: string, budgetMs: number): Promise<{ ok: boolean; r
             for (const l of lits) {
                 if (!isData(l) && !dirs.some(dd => DATA_DIR.test(dd)) && !/\.log$/i.test(l)) c.no('notCovered', `a file the server writes that the snapshot does not keep: ${r}: ${l}`);
             }
+        }
+        //  T4b (review 7, M1): every file a write call names must be one the snapshot keeps — its name read through
+        //  the file's own constants (`const FILE = DIR + '/orders.json'`, `new JSONFile('orders.json')`); a name
+        //  Joe cannot read to the end (a parameter, an import, an env value) is not proven, so no 2T.
+        for (const t of writeTargets(text)) {
+            if (t.unresolved) { c.no('notCovered', `a file the server writes whose name Joe cannot read to the end: ${r}: ${t.expr.slice(0, 60)}`); continue; }
+            const rel = t.parts.join('/').replace(/\/{2,}/gu, '/').replace(/^\.?\//u, '');
+            if (!rel || /\.log$/iu.test(rel)) continue;
+            if (!isData(rel) && !rel.split('/').some(seg => DATA_DIR.test(seg))) c.no('notCovered', `a file the server writes that the snapshot does not keep: ${r}: ${rel}`);
         }
     }
     if (facts.dataFiles > SNAP_MAX_FILES || facts.dataBytes > SNAP_MAX_BYTES) c.no('notCovered', `more data than the snapshot keeps (${facts.dataFiles} files, ${Math.round(facts.dataBytes / 1048576)} MB)`);

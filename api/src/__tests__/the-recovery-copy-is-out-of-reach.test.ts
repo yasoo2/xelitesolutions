@@ -176,7 +176,7 @@ describe('12.6 row 9 — the copies do not pile up', () => {
         return dir;
     };
 
-    it('at boot (the boot hook\'s one call): a run older than 14 days and the sixth run of a project go; and the server cap takes the oldest first', async () => {
+    it('at boot (the boot hook\'s one call): a run older than 14 days goes, every younger run stays as he is told (review 7, B3); and the server cap takes the oldest first', async () => {
         const boot = fs.readFileSync(path.join(__dirname, '..', 'api', 'index.ts'), 'utf8');
         expect(boot).toMatch(/require\('\.\.\/core\/quality\/qa-leaves-no-trace'\)\.startRecoveryUpkeep\(\)/);
         const now = Date.now();
@@ -188,8 +188,7 @@ describe('12.6 row 9 — the copies do not pile up', () => {
         upkeep.stop();
         expect(fs.existsSync(old)).toBe(false);
         expect(fs.existsSync(fresh)).toBe(true);
-        expect(fs.existsSync(six[0])).toBe(false);
-        expect(six.slice(1).every(d => fs.existsSync(d))).toBe(true);
+        expect(six.every(d => fs.existsSync(d))).toBe(true);
 
         //  The server-wide cap (5 GB, scaled down here): the oldest runs of any project go first.
         const a = plant('ws-cap', 'cccccccccccccccc', 'run-a', now - 3 * 60_000, 4000);

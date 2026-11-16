@@ -152,7 +152,7 @@ describe('B2 — channel by channel, behind the fence that holds writes', () => 
             await page.waitForTimeout(2500);
             expect(received.filter(r => /^POST |^WS-FRAME/.test(r))).toEqual([]);
             //  W7 still lets the one sign-in through, guard and fence alike.
-            await guard.allowing(account, () => page.evaluate(([id, pw]) => fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: id, password: pw }) }).then(() => undefined), [account.identity, account.password]));
+            await guard.allowing(account, () => page.evaluate(([id, pw]: string[]) => fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: id, password: pw }) }).then(() => undefined), [account.identity, account.password]));
             await page.waitForTimeout(500);
             expect(received.filter(r => /^POST /.test(r)).map(r => r.split(' BODY')[0])).toEqual(['POST /api/login']);
             expect(fence.held().map(h => h.what.replace(/127\.0\.0\.1:\d+/u, 'H'))).toEqual(expect.arrayContaining(['POST H/api/shared-post', 'WS H/live']));

@@ -160,7 +160,8 @@ describe('12.5 row 1 — each 2T shape, nobody else writing: today\'s verificati
             expect(report.delivery.qaPath!.recovery?.versions).toBeGreaterThan(0);
             const summary = h.summaryOf(report, request);
             expect(summary).toContain('Joe\'s checks ran on your app the way they always have, trying its forms and buttons; afterwards your app\'s data files were put back as before.');
-            expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days. Ask Joe if you need one back.');
+            //  Review 7, B3: what pruning really keeps, and the chat that brings a copy back.
+            expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To bring one back, ask Joe in the chat.');
             //  The copies are Joe's, outside the project.
             expect(filesUnder(shape.dir).some(f => /qa-recovery/.test(f.rel))).toBe(false);
         });
@@ -198,7 +199,8 @@ describe('12.5 row 2 — the owner writes at three moments: during the start, du
         expect(fs.readFileSync(shape.store).equals(snapshot)).toBe(true);
         //  The write during the walk, outside its windows, is told; the start's and the stop's are inside windows.
         expect(q.recovery?.unexplained).toEqual(['data/store.json']);
-        expect(h.summaryOf(report)).toContain('While the checks ran, «data/store.json» also changed in a way that did not come from the checks, then were put back.');
+        //  Review 7, M2: told as a change at a moment no request of the checks could save — «may not have come from the checks».
+        expect(h.summaryOf(report)).toContain('While the checks ran, «data/store.json» also changed at a moment when none of the checks\' requests could save anything, so the change may not have come from the checks; then it was put back.');
         expect(filesUnder(shape.dir).some(f => f.bytes.toString('utf8').includes('Owner During The Walk'))).toBe(false);
     });
 });
@@ -262,7 +264,7 @@ describe('12.5 rows 4–5 — what the windows say', () => {
         await h.stop();
         expect(report.delivery.qaPath?.recovery?.unexplained).toEqual(['data/store.json']);
         const summary = h.summaryOf(report);
-        expect(summary).toContain('in a way that did not come from the checks');
+        expect(summary).toContain('so the change may not have come from the checks');
     });
 });
 

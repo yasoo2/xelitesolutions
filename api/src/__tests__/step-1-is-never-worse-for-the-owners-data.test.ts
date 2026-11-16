@@ -257,11 +257,13 @@ describe('12.6 row 5 — the fence starts wherever Joe runs, and when it cannot,
         await h.stop();
         expect(report.delivery.qaPath).toMatchObject({ path: 'no-write', fenceDown: true });
         expect(qa.audits[0].qaPin.path).toBe('no-write');
-        expect(h.summaryOf(report)).toContain('Joe\'s network fence did not start, so the checks ran without saving anything in your app.');
-        //  No 2T copy, no lock left behind.
-        expect(report.delivery.qaPath!.recovery).toBeUndefined();
+        //  The fake walk saved a record: the put-back that main did ran (review 7, B1), and «nothing saved» is never said.
+        expect(fs.readFileSync(shape.store)).toEqual(before);
+        expect(h.summaryOf(report)).toContain('Joe\'s network fence did not start, so the checks ran without pressing what saves in your app.');
+        expect(h.summaryOf(report)).toMatch(/they were put back as they were before the checks/u);
+        //  No lock left behind.
+        expect(report.delivery.qaPath!.putBack).toEqual(['data/store.json']);
         expect(fs.existsSync(require('../core/quality/qa-leaves-no-trace').verifyLockFile('default', shape.dir))).toBe(false);
-        void before;
     });
 });
 
@@ -315,7 +317,9 @@ describe('12.6 row 7 — the verify lock never strands a project', () => {
             const report = await h.verify(shape.dir, savingWalk(true), { deadlineMs: 8_000 });
             await h.stop();
             expect(report.delivery.qaPath).toMatchObject({ path: 'no-write', lockBusy: true });
-            expect(h.summaryOf(report)).toContain('Another check of this app was still running, so this one ran without saving anything in your app.');
+            //  The check that holds the lock puts back; this one puts nothing back, and says which file changed (B1).
+            expect(h.summaryOf(report)).toContain('Another check of this app was still running, so this one ran without pressing what saves in your app, and put nothing back.');
+            expect(h.summaryOf(report)).toMatch(/«data\/store\.json»; they were not put back, because another check of this app was running at the same time/u);
         } finally { await held.release(); }
 
         const thrower = labShape(workspace, 'r7-throws', 'app9', 'native');
