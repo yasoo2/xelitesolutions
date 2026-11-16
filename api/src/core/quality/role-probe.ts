@@ -186,7 +186,9 @@ export async function measureRoles(url: string, accounts: RoleAccount[], opts: {
             if (stopped()) break;
             //  Path 3 (W1, W2): a private context with service workers blocked, so every request passes the guard.
             const context = await browser.newContext(noWrite ? { viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' } : { viewport: { width: 1280, height: 900 } });
-            const guard = noWrite ? await createLiveDataGuard(context, { signIn: accountOf(account) }) : null;
+            //  No fence that reads the traffic (none, or an https app): its workers are not created (W11, review 7 B2).
+            const holdWorkers = !opts.browserProxy?.server || !/^http:/i.test(String(url));
+            const guard = noWrite ? await createLiveDataGuard(context, { signIn: accountOf(account), ...(holdWorkers ? { holdWorkers } : {}) }) : null;
             if (guard) guards.push(guard);
             const page = await context.newPage();
             page.setDefaultTimeout(4_000);

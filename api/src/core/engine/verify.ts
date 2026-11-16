@@ -153,12 +153,25 @@ export interface DeliveryQaPath {
     signedIn?: boolean;
     /** The fence did not start, so the checks ran on path 3 (§4.5). */
     fenceDown?: boolean;
-    /** Another 2T verification of the project held its lock past the wait, so this one ran on path 3 (§5b step 5). */
+    /** Another check of the project held its lock past the wait: this one saved nothing and put nothing back (§5b step 5). */
     lockBusy?: boolean;
     /** A later measurement ran another way than the pin; the first stands (§2.3). */
     notComparable?: { from: QaPath; to: QaPath };
     /** Data files the put-back could not restore. */
     putBackFailed?: string[];
+    /** M3: where the version from before the checks of `putBackFailed` is: among the recovery copies, or a temporary folder. */
+    putBackFailedBefore?: 'copies' | 'snapshot';
+    /**
+     * Review 7, B1/H3: the data files that changed while the checks ran (the project's own tests, the walk, the app's
+     * own start, the owner or his customers) and were put back as they were before them — on every path.
+     */
+    putBack?: string[];
+    /** Data files that changed during the checks and were NOT put back, and why (another check held the lock, the server would not stop). */
+    leftChanged?: { files: string[]; why: 'lockBusy' | 'serverRunning' };
+    /** Path 3 (W10): GETs the app answered with a redirect to a page — a sign they saved something. */
+    writeSignals?: string[];
+    /** Path 3 (W11): the page's background workers were not created (no fence could read what they send). */
+    workersHeld?: boolean;
 }
 
 /** A VerificationReport that also carries what it was computed from. */
@@ -188,12 +201,14 @@ interface AuditQaPath {
     path: QaPath;
     reasons?: QaReason[];
     comparable?: boolean;
-    windows?: Array<{ start: number; end: number; long: boolean }>;
+    windows?: Array<{ start: number; end: number; long: boolean; writes?: boolean }>;
     blocked?: number;
     blockedHosts?: string[];
     notTried?: string[];
     streamed?: boolean;
     signedIn?: boolean;
+    writeSignals?: string[];
+    workersHeld?: boolean;
 }
 const qaOf = (audit: AppAudit | undefined): AuditQaPath | undefined => (audit as (AppAudit & { qaPath?: AuditQaPath }) | undefined)?.qaPath;
 /** A walk measured the way the loop pinned (§2.3): only such a walk is compared with another. */
@@ -415,9 +430,12 @@ export async function keepVerificationLog(projectDir: string, lines: string[]): 
  * every walk it takes (§2.3): a new build as today; Joe's static preview or a
  * proven front in a private, fenced window that writes nothing of his (path 1);
  * a Node server whose data today's put-back covers, walked as today behind the
- * fence, with every version of his data files copied outside the project before
- * anything is put back (2T, §5b); anything else walked without saving anything
- * (path 3, §5). What could not be tried is told, never passed.
+ * fence (2T, §5b); anything else walked without saving anything (path 3, §5).
+ * And on EVERY path (review 7, B1/H3): the snapshot is taken before any check
+ * that can write, the project's own tests included; every version of his data
+ * files is copied outside the project while the checks run; and what changed is
+ * put back as main put it back, and told plainly. What could not be tried is
+ * told, never passed.
  */
 interface QaSpan {
     /** One per verification: the record read once, and the path every walk of it runs (the stricter of this and its own choice). */
@@ -430,7 +448,7 @@ interface QaSpan {
     windows: QaWindows;
     /** The probes' fence (§4.4), started once the app answers. */
     fence?: QaFence;
-    /** 2T only: the recovery watcher, its run folder and its id, and the project's verify lock. */
+    /** Every change run: the recovery watcher, its run folder and its id, and the project's verify lock. */
     watch?: AppDataWatch;
     runDir?: string;
     runKey: string;
@@ -442,6 +460,12 @@ interface QaSpan {
     fenceDown?: boolean;
     lockBusy?: boolean;
     notComparable?: { from: QaPath; to: QaPath };
+    /** B1/H3: what a put-back found changed and wrote back or removed (project-relative, forward slashes). */
+    putBackStores: string[];
+    /** Changed during the checks and not put back (see DeliveryQaPath.leftChanged). */
+    leftChanged?: { files: string[]; why: 'lockBusy' | 'serverRunning' };
+    /** M3: the failed files' version from before the checks was kept: in the recovery copies, or the snapshot left in place. */
+    putBackFailedBefore?: 'copies' | 'snapshot';
 }
 
 /** The workspace the run's project belongs to: the recovery copies are kept per workspace. */
@@ -494,7 +518,7 @@ async function releaseSpan(span: QaSpan): Promise<void> {
 async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: BrowserQa, signIn?: SignInAccount, accounts?: RoleAccount[]): Promise<DeliveryVerification> {
     const span: QaSpan = {
         pin: {}, changeRun: false, windows: createQaWindows(), runKey: `${String(ctx.runId || 'run').slice(0, 60)}-${Date.now().toString(36)}`,
-        workspaceId: workspaceOf(ctx), putBackRan: false, putBackFailed: [],
+        workspaceId: workspaceOf(ctx), putBackRan: false, putBackFailed: [], putBackStores: [],
     };
     try {
         return await verifyDeliveryOnce(ctx, deps, browserQa, span, signIn, accounts);
@@ -600,28 +624,44 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
     const pin = span.pin;
     /** Inside one of this verification's windows, on a change run (a new build keeps none). */
     const inWindow = <T>(what: string, work: () => Promise<T>): Promise<T> => span.changeRun ? span.windows.around(what, work) : work();
-    /** Path 3 from here on, and why (the fence, the lock or the watcher could not be had): 2T's copy and lock are let go. */
+    /**
+     * Path 3 from here on, and why (the fence, the lock or the watcher could not be had). The snapshot, the put-back,
+     * the recovery copy and the lock stay: every change run puts back what its checks changed (review 7, B1).
+     */
     const toNoWrite = async (why: string) => {
         if (pin.path === 'no-write') return;
         note(`qa path: ${pin.path} → no-write: ${why}`);
         pin.path = 'no-write';
-        await endRecovery(span, false);
-        await releaseLock(span);
+        //  The probes' fence holds every write its guard did not see from now on (B2).
+        try { span.fence?.holdWrites(true, signIn ? { signIn } : {}); } catch { /* the fence is gone */ }
     };
-    /** The project's verify lock, for a 2T verification only: a bounded wait, then path 3 (§5b step 5). */
-    const take2T = async () => {
-        if (span.lock) return;
+    /**
+     * The project's verify lock, on every change run (§5b step 5, review 7 B1): one check at a time puts his data
+     * back. A bounded wait; held past it, this check saves nothing (2T → path 3) and puts nothing back.
+     */
+    const takeLock = async () => {
+        if (span.lock || span.lockBusy) return;
         const left = Number(ctx.deadlineAt) - Date.now();
         const waitMs = Math.max(0, Math.min(VERIFY_LOCK_WAIT_MS, Number.isFinite(left) ? left : VERIFY_LOCK_WAIT_MS));
         let lock: VerifyLock | null = null;
         try { lock = await acquireVerifyLock(span.workspaceId, root, span.runKey, { waitMs }); }
-        catch (e) { await toNoWrite(`the verify lock could not be taken (${message(e)})`); return; }
-        if (!lock) { span.lockBusy = true; await toNoWrite('another check of this app held its verify lock past the wait'); return; }
+        catch (e) {
+            //  No lock file could be written: the put-back still runs (as main did), but nothing is walked with writes on.
+            note(`qa path: the verify lock could not be taken (${message(e)}); the checks write nothing, and what they change is still put back`);
+            if (pin.path === '2t') await toNoWrite(`the verify lock could not be taken (${message(e)})`);
+            return;
+        }
+        if (!lock) {
+            span.lockBusy = true;
+            note('qa path: another check of this app held its verify lock past the wait: this one saves nothing and puts nothing back');
+            if (pin.path === '2t') await toNoWrite('another check of this app held its verify lock past the wait');
+            return;
+        }
         span.lock = lock;
     };
-    /** The recovery watch over the whole span the snapshot is held (§5b steps 1–2), on 2T only. */
-    const watch2T = async () => {
-        if (span.watch || !dataBefore || pin.path !== '2t') return;
+    /** The recovery watch over the whole span the snapshot is held (§5b steps 1–2), on every change run that puts back. */
+    const watchSpan = async () => {
+        if (span.watch || !dataBefore || !span.changeRun || span.lockBusy) return;
         try {
             span.runDir = recoveryRunDir(span.workspaceId, root, span.runKey);
             span.watch = watchAppData(dataBefore, { into: span.runDir, budget: RECOVERY_BUDGET });
@@ -774,7 +814,8 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
              * probes and the walk. The delivery record is read once, into the pin; a new build (none) is as today.
              */
             const origin = projectOriginFor(chatSessionOf(ctx) || undefined, root);
-            pin.record = hasDeliveryRecord(root, { origin });
+            //  M4: a folder this run changes (not one it made) that holds records is his app, record or none.
+            pin.record = hasDeliveryRecord(root, { origin, resumed: !!ctx.change });
             span.changeRun = !!pin.record;
             if (span.changeRun) {
                 let kind = 'unknown';
@@ -785,7 +826,7 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
                 pin.first = early;
                 span.choice = early;
                 note(`qa path: a change run (${pin.record}); before the start: ${early.path}${early.reasons.length ? ` — ${early.reasons[0].key}: ${early.reasons[0].detail}` : ''} (${early.facts.files} file(s) read in ${early.facts.ms} ms)`);
-                if (pin.path === '2t') await take2T();
+                await takeLock();
             } else {
                 pin.path = 'as-today';
             }
@@ -799,10 +840,10 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
                 remark('live', `started with the command this run's server ${start.adopted.name} was seen serving with: ${start.adopted.command}`);
             }
             liveStarted = true;
-            //  Read at rest, before the server holds the files: what the QA's records are put back to.
-            //  Taken on every change run too (§7): the path chosen before the start can still change after it.
+            //  Read at rest, before the server holds the files and before ANY check that can write — the project's own
+            //  tests included (review 7, H3): what every change run's put-back writes back (B1), whatever its path.
             dataBefore = await snapshotAppData(root).catch(() => undefined);
-            await watch2T();
+            await watchSpan();
             liveInput = start.input;
             const started = await inWindow('project_run', () => runTool('project_run', start.input));
             liveRun = postRepairRunOutcome(started);
@@ -822,19 +863,14 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
                 pin.path = strictest(pin.path, after.path);
                 if (pin.path === after.path) span.choice = after;
                 note(`qa path: after the start (${kind || 'unknown kind'} in ${path.relative(root, runtimeRoot) || '.'}): ${after.path}; the checks run ${pin.path}`);
-                if (pin.path === '2t' && before !== '2t') {
-                    await take2T();
-                    await watch2T();
-                }
-                if (pin.path !== '2t') {
-                    await endRecovery(span, false);
-                    await releaseLock(span);
-                }
+                //  2T walks with writes on only while this check holds the lock (§5b step 5).
+                if (pin.path === '2t' && before !== '2t' && span.lockBusy) await toNoWrite('another check of this app held its verify lock past the wait');
                 //  The probes that open their own browser reach only the app's own addresses (§4.4); no fence, path 3 (§4.5).
+                //  On path 3 the fence holds every write the probes' guards did not see (review 7, B2).
                 const runUrl = String(liveRun?.output?.url || '').trim();
                 if (runUrl && originOf(runUrl)) {
                     try {
-                        span.fence = await startQaFence({ allow: walkedOrigins() });
+                        span.fence = await startQaFence({ allow: walkedOrigins(), hold: pin.path === 'no-write', ...(signIn ? { signIn } : {}) });
                     } catch (e) {
                         span.fenceDown = true;
                         await toNoWrite(`Joe's network fence did not start (${message(e)})`);
@@ -842,7 +878,8 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
                 }
                 deliveryInput.qaPath = pin.path;
                 if (span.fence) deliveryInput.browserProxy = span.fence.proxy;
-                if (pin.path === '2t') deliveryInput.qaWindows = span.windows;
+                //  Every change run keeps its windows now: its recovery copy tells what changed outside them (B1, M2).
+                deliveryInput.qaWindows = span.windows;
             }
             await delivery.recordLiveAcceptance(liveRun, root, auditRoots);
         });
@@ -869,10 +906,17 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
      * the server did not come back where it was: what is measured next is not the app.
      */
     const putQaRecordsBack = async (startAgain: boolean): Promise<'nothing' | 'left' | 'restored' | 'down'> => {
-        if (!dataBefore || !qaAuditsTaken) return 'nothing';
-        //  §7: only a new build and 2T put back. Path 3 wrote nothing, path 1's origin holds none of his data, and a
-        //  put-back there would erase a write he made meanwhile.
-        if (span.changeRun && pin.path !== '2t') return 'nothing';
+        if (!dataBefore) return 'nothing';
+        //  A new build as today: only after a walk.
+        if (!span.changeRun && !qaAuditsTaken) return 'nothing';
+        /*
+         * ⛔ A CHANGE RUN IS NEVER WORSE FOR HIS DATA THAN MAIN (review 7, B1/H3). Whatever the path, what changed
+         * while the checks ran — a «Mark done» link the walk followed, a worker's write, the project's own tests, the
+         * app's own start — is put back as main put it back, after every check that can write. A write he or his
+         * customers made meanwhile is erased from the app by it, as on main, and kept in the recovery copy (told,
+         * and brought back from the chat). Only another check holding the lock stops it: that check puts back.
+         */
+        if (span.changeRun && span.lockBusy) return 'nothing';
         return inWindow('put-back', () => putBack(startAgain));
     };
     const putBack = async (startAgain: boolean): Promise<'nothing' | 'left' | 'restored' | 'down'> => {
@@ -883,12 +927,14 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
         const stop = await runTool('project_stop', {}).catch((e: unknown) => ({ ok: false, error: message(e) }));
         if (stop?.ok !== true) {
             note(`browser QA: the records its forms left could not be put back, because the server did not stop: ${String((stop as any)?.error || 'project_stop failed')}`);
+            if (span.changeRun) span.leftChanged = { files: changes.map(f => path.relative(root, f).split(path.sep).join('/')), why: 'serverRunning' };
             return 'left';
         }
         //  Said stopped is not stopped: a file written back under a live server is written over again by it.
         //  The address is asked itself when there is one: «released: false» can mean a zombie the port has already left.
         if (liveUrl ? !(await addressIsFree(liveUrl)) : (stop as any)?.output?.released === false) {
             note(`browser QA: the records its forms left were not put back: something still answers at ${liveUrl || 'its address'} after the server was stopped, and a running server keeps its own copy of them`);
+            if (span.changeRun) span.leftChanged = { files: changes.map(f => path.relative(root, f).split(path.sep).join('/')), why: 'serverRunning' };
             return 'left';
         }
         //  2T: one last version of every changed file, the server's shutdown writes in it, before anything is put back (§5b step 2).
@@ -896,6 +942,12 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
         const restored = await restoreAppData(dataBefore, keptOnPurpose);
         if (span.changeRun) {
             span.putBackRan = true;
+            span.leftChanged = undefined;
+            //  Told plainly: which of his data files changed during the checks, and that they were put back (B1).
+            for (const f of [...restored.restored, ...restored.removed]) {
+                const rel = f.split(path.sep).join('/');
+                if (!span.putBackStores.includes(rel)) span.putBackStores.push(rel);
+            }
             for (const abs of restored.failed) {
                 const f = (path.isAbsolute(abs) ? path.relative(root, abs) : abs).split(path.sep).join('/');
                 if (!span.putBackFailed.includes(f)) span.putBackFailed.push(f);
@@ -1031,7 +1083,7 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
                     return measured;
                 } finally {
                     const seen = qaOf(measured)?.windows;
-                    if (seen) for (const w of seen) span.windows.add({ start: w.start, end: w.end, long: !!w.long, what: 'walk' });
+                    if (seen) for (const w of seen) span.windows.add({ start: w.start, end: w.end, long: !!w.long, what: 'walk', writes: w.writes !== false });
                     else span.windows.add({ start: t0, end: Date.now(), long: false, what: 'walk (whole)' });
                 }
             };
@@ -1237,11 +1289,36 @@ async function verifyDeliveryOnce(ctx: ToolContext, deps: VerifierDeps, browserQ
     }
     //  A refused one is put back with its server stopped: the next check opens on his records.
     if (!verdict.verified) await putQaRecordsBack(false);
+    //  Another check held the lock, so nothing was put back: what changed during this one is told (never «nothing saved»).
+    if (span.changeRun && dataBefore && span.lockBusy) {
+        try {
+            const changed = (await appDataChanges(dataBefore, keptOnPurpose)).map(f => path.relative(root, f).split(path.sep).join('/'));
+            if (changed.length) span.leftChanged = { files: changed, why: 'lockBusy' };
+        } catch { /* nothing to tell */ }
+    }
+    /*
+     * M3: a file the put-back could not restore keeps its version from before the checks — among the recovery copies
+     * (a version of its own, brought back from the chat) or, with no recovery copy, in the snapshot folder, which is
+     * then left in place and named in the log. The line says which.
+     */
+    if (span.putBackFailed.length && dataBefore) {
+        const before = span.putBackFailed.map(f => f.replace(/ \([^)]*\)$/u, ''))
+            .map(rel => ({ rel, kept: dataBefore!.files.get(path.join(root, ...rel.split('/'))) }))
+            .filter((x): x is { rel: string; kept: NonNullable<typeof x.kept> } => !!x.kept);
+        if (span.watch && before.length) {
+            try { if (await span.watch.keep(before.map(x => ({ rel: x.rel, from: x.kept.copy })), 'before the checks')) span.putBackFailedBefore = 'copies'; }
+            catch (e) { note(`qa path: the version from before the checks could not be added to the recovery copy: ${message(e)}`); }
+        }
+        if (span.putBackFailedBefore !== 'copies') {
+            span.putBackFailedBefore = 'snapshot';
+            note(`qa path: ${span.putBackFailed.join(', ')} could not be put back; the version from before the checks is kept in ${dataBefore.dir} (removed after 6 hours)`);
+        }
+    }
     //  The last put-back is done: the recovery watch ends (its copies stay only when something was put back over them).
     const watched = span.watch;
     await endRecovery(span, span.putBackRan);
-    //  The copies were for this check only.
-    await discardSnapshot(dataBefore);
+    //  The copies were for this check only — unless they are the only version from before of a file not put back (M3).
+    if (span.putBackFailedBefore !== 'snapshot') await discardSnapshot(dataBefore);
     const qaPath = span.changeRun ? qaPathOfRecord(span, browserAudit, watched, qaTarget, delivery.state.skippedProbes) : undefined;
     if (qaPath) {
         for (const line of qaPathLines(qaPath, 'en')) { note(`qa path: told: ${line}`); remark(qaPath.walked ? 'browser' : 'live', line); }
@@ -1463,12 +1540,12 @@ const QA_LINES = {
         "ru": "Проверки Joe прошли на вашем приложении как обычно и опробовали его формы и кнопки; затем файлы данных приложения были возвращены, как и раньше. Браузер проверок обращался только к адресу приложения {origin}."
     },
     "recoveryKept": {
-        "ar": "أثناء الفحوص تغيّر أيضًا {files} بطريقة لم تأتِ من الفحوص، ثم أُعيد كما كان. كل نسخة رآها جو بين النسخ التي يحتفظ بها؛ اطلبها من جو إن كانت تلك التغييرات منك.",
-        "en": "While the checks ran, {files} also changed in a way that did not come from the checks, then were put back. Every version Joe saw is among the copies it keeps; ask Joe for it if those changes were yours.",
-        "es": "Mientras corrían las comprobaciones, {files} también cambió de una forma que no vino de las comprobaciones, y después se restauró. Cada versión que Joe vio está entre las copias que guarda; pídesela a Joe si esos cambios eran tuyos.",
-        "fr": "Pendant les vérifications, {files} a aussi changé d'une manière qui ne venait pas des vérifications, puis a été remis. Chaque version que Joe a vue fait partie des copies qu'il garde ; demandez-la à Joe si ces changements étaient les vôtres.",
-        "de": "Während der Prüfungen änderte sich {files} auch auf eine Weise, die nicht von den Prüfungen kam, und wurde danach zurückgelegt. Jede Version, die Joe gesehen hat, gehört zu den Kopien, die er aufbewahrt; fragen Sie Joe danach, falls diese Änderungen von Ihnen waren.",
-        "ru": "Пока шли проверки, {files} изменился ещё и не из‑за проверок, а затем был возвращён. Каждая версия, которую видел Joe, есть среди сохранённых копий; попросите её у Joe, если это были ваши изменения."
+        "ar": "أثناء الفحوص تغيّر أيضًا {files} في لحظة لم يكن فيها أي طلب من الفحوص يمكن أن يحفظ شيئًا، فقد لا يكون التغيير منها؛ ثم أُعيد كما كان. كل نسخة رآها جو بين النسخ التي يحتفظ بها؛ اطلبها من جو في المحادثة إن كانت تلك التغييرات منك أو من زبائنك.",
+        "en": "While the checks ran, {files} also changed at a moment when none of the checks' requests could save anything, so the change may not have come from the checks; then it was put back. Every version Joe saw is among the copies it keeps; ask Joe for it in the chat if those changes were yours or your customers'.",
+        "es": "Mientras corrían las comprobaciones, {files} también cambió en un momento en que ninguna petición de las comprobaciones podía guardar nada, así que el cambio puede no venir de ellas; después se restauró. Cada versión que Joe vio está entre las copias que guarda; pídesela a Joe en el chat si esos cambios eran tuyos o de tus clientes.",
+        "fr": "Pendant les vérifications, {files} a aussi changé à un moment où aucune requête des vérifications ne pouvait rien enregistrer, donc le changement ne vient peut-être pas d'elles ; puis il a été remis. Chaque version que Joe a vue fait partie des copies qu'il garde ; demandez-la à Joe dans la discussion si ces changements venaient de vous ou de vos clients.",
+        "de": "Während der Prüfungen änderte sich {files} auch zu einem Zeitpunkt, an dem keine Anfrage der Prüfungen etwas speichern konnte, die Änderung kam also vielleicht nicht von ihnen; danach wurde es zurückgelegt. Jede Version, die Joe gesehen hat, gehört zu den Kopien, die er aufbewahrt; fragen Sie Joe im Chat danach, falls diese Änderungen von Ihnen oder Ihren Kunden waren.",
+        "ru": "Пока шли проверки, {files} изменился ещё и в момент, когда ни один запрос проверок не мог ничего сохранить, поэтому изменение могло прийти не от них; затем он был возвращён. Каждая версия, которую видел Joe, есть среди сохранённых копий; попросите её у Joe в чате, если это были изменения ваши или ваших клиентов."
     },
     "recoveryOverBudget": {
         "ar": "لم يحتفظ جو إلا بآخر نسخة من كل ملف بيانات قبل إعادته؛ فالبيانات أكبر مما يحفظه كاملًا.",
@@ -1479,20 +1556,28 @@ const QA_LINES = {
         "ru": "Joe сохранил только последнюю версию каждого файла данных перед возвратом: данных больше, чем он хранит целиком."
     },
     "putBackFailed": {
-        "ar": "تعذّرت إعادة {files} كما كانت قبل الفحوص؛ آخر نسخة منها بين النسخ التي يحتفظ بها جو خارج مشروعك، والنسخة من قبل الفحوص في مجلد اللقطة المذكور في السجل.",
-        "en": "{files} could not be put back as they were before the checks; their last version is among the copies Joe keeps outside your project, and the version from before is in the snapshot folder shown in the log.",
-        "es": "{files} no se pudo restaurar como estaba antes de las comprobaciones; su última versión está entre las copias que Joe guarda fuera de tu proyecto, y la de antes, en la carpeta de la instantánea indicada en el registro.",
-        "fr": "{files} n'a pas pu être remis comme avant les vérifications ; sa dernière version fait partie des copies que Joe garde hors de votre projet, et celle d'avant est dans le dossier d'instantané indiqué dans le journal.",
-        "de": "{files} konnte nicht wie vor den Prüfungen zurückgelegt werden; die letzte Version gehört zu den Kopien, die Joe außerhalb Ihres Projekts aufbewahrt, die Version von vorher liegt im Snapshot-Ordner, der im Protokoll steht.",
-        "ru": "{files} не удалось вернуть в прежнее состояние; последняя версия есть среди копий, которые Joe хранит вне вашего проекта, а версия до проверок — в папке снимка, указанной в журнале."
+        "ar": "تعذّرت إعادة {files} كما كانت قبل الفحوص؛ نسختها من قبل الفحوص وآخر نسخة منها بين النسخ التي يحتفظ بها جو خارج مشروعك، فاطلب من جو في المحادثة أن يعيد إحداها.",
+        "en": "{files} could not be put back as they were before the checks; their version from before the checks and their last version are among the copies Joe keeps outside your project — ask Joe in the chat to bring one back.",
+        "es": "{files} no se pudo restaurar como estaba antes de las comprobaciones; su versión de antes y su última versión están entre las copias que Joe guarda fuera de tu proyecto: pídele a Joe en el chat que te devuelva una.",
+        "fr": "{files} n'a pas pu être remis comme avant les vérifications ; sa version d'avant et sa dernière version font partie des copies que Joe garde hors de votre projet — demandez à Joe dans la discussion d'en remettre une.",
+        "de": "{files} konnte nicht wie vor den Prüfungen zurückgelegt werden; die Version von vorher und die letzte Version gehören zu den Kopien, die Joe außerhalb Ihres Projekts aufbewahrt — bitten Sie Joe im Chat, eine zurückzuholen.",
+        "ru": "{files} не удалось вернуть в прежнее состояние; версия до проверок и последняя версия есть среди копий, которые Joe хранит вне вашего проекта, — попросите Joe в чате вернуть одну из них."
+    },
+    "putBackFailedSnapshot": {
+        "ar": "تعذّرت إعادة {files} كما كانت قبل الفحوص؛ ونسختها من قبل الفحوص في مجلد مؤقت مذكور في سجل الفحص، يُحذف بعد ست ساعات.",
+        "en": "{files} could not be put back as they were before the checks; their version from before the checks is in a temporary folder named in the verification log, removed after six hours.",
+        "es": "{files} no se pudo restaurar como estaba antes de las comprobaciones; su versión de antes está en una carpeta temporal indicada en el registro de la verificación, que se borra a las seis horas.",
+        "fr": "{files} n'a pas pu être remis comme avant les vérifications ; sa version d'avant est dans un dossier temporaire indiqué dans le journal de la vérification, supprimé au bout de six heures.",
+        "de": "{files} konnte nicht wie vor den Prüfungen zurückgelegt werden; die Version von vorher liegt in einem temporären Ordner, der im Prüfprotokoll steht und nach sechs Stunden gelöscht wird.",
+        "ru": "{files} не удалось вернуть в прежнее состояние; версия до проверок лежит во временной папке, указанной в журнале проверки, и удаляется через шесть часов."
     },
     "recoverySaved": {
-        "ar": "احتفظ جو بملفات بيانات تطبيقك كما كانت قبل كل إعادة، خارج مشروعك، لمدة {days} يومًا. اطلب من جو إن احتجت نسخة منها.",
-        "en": "Joe kept your app's data files as they were before each put-back, outside your project, for {days} days. Ask Joe if you need one back.",
-        "es": "Joe guardó los archivos de datos de tu aplicación tal como estaban antes de cada restauración, fuera de tu proyecto, durante {days} días. Pídeselo a Joe si necesitas alguno.",
-        "fr": "Joe a gardé les fichiers de données de votre application tels qu'ils étaient avant chaque remise, hors de votre projet, pendant {days} jours. Demandez à Joe si vous en avez besoin.",
-        "de": "Joe hat die Datendateien Ihrer App so, wie sie vor jedem Zurücklegen waren, außerhalb Ihres Projekts {days} Tage lang aufbewahrt. Fragen Sie Joe, wenn Sie eine zurück brauchen.",
-        "ru": "Joe сохранил файлы данных приложения в том виде, в каком они были перед каждым возвратом, вне вашего проекта, на {days} дней. Попросите Joe, если нужна какая‑то из них."
+        "ar": "احتفظ جو بملفات بيانات تطبيقك كما كانت قبل كل إعادة، خارج مشروعك، لمدة {days} يومًا، ما لم تمتلئ المساحة التي يخصّصها جو لهذه النسخ قبل ذلك، فتُحذف الأقدم أولًا. لاسترجاع نسخة، اطلب ذلك من جو في المحادثة.",
+        "en": "Joe kept your app's data files as they were before each put-back, outside your project, for {days} days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To bring one back, ask Joe in the chat.",
+        "es": "Joe guardó los archivos de datos de tu aplicación tal como estaban antes de cada restauración, fuera de tu proyecto, durante {days} días, salvo que el espacio que Joe reserva para estas copias se llene antes; entonces se borran primero las más antiguas. Para recuperar una, pídeselo a Joe en el chat.",
+        "fr": "Joe a gardé les fichiers de données de votre application tels qu'ils étaient avant chaque remise, hors de votre projet, pendant {days} jours — sauf si l'espace que Joe réserve à ces copies se remplit avant ; les plus anciennes partent alors en premier. Pour en récupérer une, demandez-le à Joe dans la discussion.",
+        "de": "Joe hat die Datendateien Ihrer App so, wie sie vor jedem Zurücklegen waren, außerhalb Ihres Projekts {days} Tage lang aufbewahrt — es sei denn, der Platz, den Joe für diese Kopien vorsieht, ist vorher voll; dann gehen die ältesten zuerst. Um eine zurückzuholen, fragen Sie Joe im Chat.",
+        "ru": "Joe сохранил файлы данных приложения в том виде, в каком они были перед каждым возвратом, вне вашего проекта, на {days} дней — если только место, которое Joe отводит под эти копии, не заполнится раньше; тогда первыми удаляются самые старые. Чтобы вернуть копию, попросите Joe в чате."
     },
     "fenceDown": {
         "ar": "لم يعمل سياج الشبكة الذي يضعه جو، فجرت الفحوص دون أن تحفظ شيئًا في تطبيقك.",
@@ -1503,12 +1588,68 @@ const QA_LINES = {
         "ru": "Сетевой барьер Joe не запустился, поэтому проверки прошли, ничего не сохраняя в приложении."
     },
     "lockBusy": {
-        "ar": "كان فحص آخر لهذا التطبيق ما زال يعمل، فجرى هذا الفحص دون أن يحفظ شيئًا في تطبيقك.",
-        "en": "Another check of this app was still running, so this one ran without saving anything in your app.",
-        "es": "Otra comprobación de esta aplicación seguía en marcha, así que esta se hizo sin guardar nada en tu aplicación.",
-        "fr": "Une autre vérification de cette application tournait encore ; celle-ci a donc tourné sans rien enregistrer dans votre application.",
-        "de": "Eine andere Prüfung dieser App lief noch; diese lief daher, ohne etwas in Ihrer App zu speichern.",
-        "ru": "Другая проверка этого приложения ещё шла, поэтому эта прошла, ничего не сохраняя в приложении."
+        "ar": "كان فحص آخر لهذا التطبيق ما زال يعمل، فجرى هذا الفحص دون أن يحفظ شيئًا في تطبيقك، ولم يُعِد شيئًا.",
+        "en": "Another check of this app was still running, so this one ran without saving anything in your app, and put nothing back.",
+        "es": "Otra comprobación de esta aplicación seguía en marcha, así que esta se hizo sin guardar nada en tu aplicación y no restauró nada.",
+        "fr": "Une autre vérification de cette application tournait encore ; celle-ci a donc tourné sans rien enregistrer dans votre application, et n'a rien remis.",
+        "de": "Eine andere Prüfung dieser App lief noch; diese lief daher, ohne etwas in Ihrer App zu speichern, und legte nichts zurück.",
+        "ru": "Другая проверка этого приложения ещё шла, поэтому эта прошла, ничего не сохраняя в приложении, и ничего не возвращала."
+    },
+    "dataPutBack": {
+        "ar": "تغيّرت أثناء فحوص جو ملفات بيانات في تطبيقك: {files}؛ وأُعيدت كما كانت قبل الفحوص.",
+        "en": "While Joe's checks ran, these data files of your app changed: {files}; they were put back as they were before the checks.",
+        "es": "Mientras corrían las comprobaciones de Joe cambiaron estos archivos de datos de tu aplicación: {files}; se restauraron como estaban antes de las comprobaciones.",
+        "fr": "Pendant les vérifications de Joe, ces fichiers de données de votre application ont changé : {files} ; ils ont été remis comme avant les vérifications.",
+        "de": "Während Joes Prüfungen änderten sich diese Datendateien Ihrer App: {files}; sie wurden so zurückgelegt, wie sie vor den Prüfungen waren.",
+        "ru": "Пока шли проверки Joe, изменились эти файлы данных приложения: {files}; они возвращены в состояние до проверок."
+    },
+    "leftChangedLock": {
+        "ar": "تغيّرت أثناء هذه الفحوص ملفات بيانات في تطبيقك: {files}؛ ولم تُعَد، لأن فحصًا آخر لهذا التطبيق كان يعمل في الوقت نفسه.",
+        "en": "While these checks ran, these data files of your app changed: {files}; they were not put back, because another check of this app was running at the same time.",
+        "es": "Mientras corrían estas comprobaciones cambiaron estos archivos de datos de tu aplicación: {files}; no se restauraron, porque otra comprobación de esta aplicación estaba en marcha a la vez.",
+        "fr": "Pendant ces vérifications, ces fichiers de données de votre application ont changé : {files} ; ils n'ont pas été remis, car une autre vérification de cette application tournait en même temps.",
+        "de": "Während dieser Prüfungen änderten sich diese Datendateien Ihrer App: {files}; sie wurden nicht zurückgelegt, weil gleichzeitig eine andere Prüfung dieser App lief.",
+        "ru": "Пока шли эти проверки, изменились эти файлы данных приложения: {files}; они не возвращены, потому что одновременно шла другая проверка этого приложения."
+    },
+    "leftChangedServer": {
+        "ar": "تغيّرت أثناء الفحوص ملفات بيانات في تطبيقك: {files}؛ ولم تُعَد، لأن خادم تطبيقك لم يتوقف.",
+        "en": "While the checks ran, these data files of your app changed: {files}; they were not put back, because your app's server did not stop.",
+        "es": "Mientras corrían las comprobaciones cambiaron estos archivos de datos de tu aplicación: {files}; no se restauraron, porque el servidor de tu aplicación no se detuvo.",
+        "fr": "Pendant les vérifications, ces fichiers de données de votre application ont changé : {files} ; ils n'ont pas été remis, car le serveur de votre application ne s'est pas arrêté.",
+        "de": "Während der Prüfungen änderten sich diese Datendateien Ihrer App: {files}; sie wurden nicht zurückgelegt, weil der Server Ihrer App nicht anhielt.",
+        "ru": "Пока шли проверки, изменились эти файлы данных приложения: {files}; они не возвращены, потому что сервер приложения не остановился."
+    },
+    "notWrittenChanged": {
+        "ar": "تطبيقك يحفظ بياناته على خادمه ({why})، فجرت فحوص جو على تطبيقك الحي دون أن تضغط ما يحفظ؛ لم تُجرَّب: {labels} (المجموع: {n}).",
+        "en": "Your app keeps its data on its server ({why}), so Joe's checks ran on your live app without pressing what saves; not tried: {labels} (total: {n}).",
+        "es": "Tu aplicación guarda sus datos en su servidor ({why}), así que las comprobaciones de Joe se hicieron en tu aplicación real sin pulsar lo que guarda; sin probar: {labels} (total: {n}).",
+        "fr": "Votre application garde ses données sur son serveur ({why}) ; les vérifications de Joe ont donc tourné sur votre application réelle sans appuyer sur ce qui enregistre ; non essayé : {labels} (total : {n}).",
+        "de": "Ihre App speichert ihre Daten auf ihrem Server ({why}); Joes Prüfungen liefen deshalb auf Ihrer echten App, ohne zu drücken, was speichert; nicht ausprobiert: {labels} (insgesamt: {n}).",
+        "ru": "Ваше приложение хранит данные на своём сервере ({why}), поэтому проверки Joe прошли на рабочем приложении, не нажимая то, что сохраняет; не опробовано: {labels} (всего: {n})."
+    },
+    "notWrittenChangedSignedIn": {
+        "ar": "تطبيقك يحفظ بياناته على خادمه ({why})، فجرت فحوص جو على تطبيقك الحي دون أن تضغط ما يحفظ غير تسجيل الدخول بالحساب الذي أعطيته؛ لم تُجرَّب: {labels} (المجموع: {n}).",
+        "en": "Your app keeps its data on its server ({why}), so Joe's checks ran on your live app without pressing what saves beyond signing in with the account you gave; not tried: {labels} (total: {n}).",
+        "es": "Tu aplicación guarda sus datos en su servidor ({why}), así que las comprobaciones de Joe se hicieron en tu aplicación real sin pulsar lo que guarda salvo el inicio de sesión con la cuenta que diste; sin probar: {labels} (total: {n}).",
+        "fr": "Votre application garde ses données sur son serveur ({why}) ; les vérifications de Joe ont donc tourné sur votre application réelle sans appuyer sur ce qui enregistre, hormis la connexion avec le compte fourni ; non essayé : {labels} (total : {n}).",
+        "de": "Ihre App speichert ihre Daten auf ihrem Server ({why}); Joes Prüfungen liefen deshalb auf Ihrer echten App, ohne zu drücken, was speichert, außer der Anmeldung mit dem angegebenen Konto; nicht ausprobiert: {labels} (insgesamt: {n}).",
+        "ru": "Ваше приложение хранит данные на своём сервере ({why}), поэтому проверки Joe прошли на рабочем приложении, не нажимая то, что сохраняет, кроме входа под указанной вами учётной записью; не опробовано: {labels} (всего: {n})."
+    },
+    "writeSignal": {
+        "ar": "فتحت الفحوص {n} عنوانًا ردّ عليه تطبيقك بتحويل المتصفح إلى صفحة أخرى ({paths})، وهذا ما تفعله التطبيقات عادة بعد أن تحفظ شيئًا؛ فلم تفتح الفحوص بعدها عناوين على الشكل نفسه.",
+        "en": "The checks opened {n} address(es) your app answered by sending the browser to another page ({paths}), which apps usually do after saving something; so the checks opened no more addresses of that shape.",
+        "es": "Las comprobaciones abrieron {n} dirección(es) a las que tu aplicación respondió enviando el navegador a otra página ({paths}), lo que las aplicaciones suelen hacer tras guardar algo; así que no abrieron más direcciones de esa forma.",
+        "fr": "Les vérifications ont ouvert {n} adresse(s) auxquelles votre application a répondu en envoyant le navigateur vers une autre page ({paths}), ce que font d'habitude les applications après avoir enregistré quelque chose ; elles n'ont donc plus ouvert d'adresses de cette forme.",
+        "de": "Die Prüfungen öffneten {n} Adresse(n), auf die Ihre App mit einer Weiterleitung zu einer anderen Seite antwortete ({paths}) — so antworten Apps meist, nachdem sie etwas gespeichert haben; deshalb öffneten die Prüfungen keine weiteren Adressen dieser Form.",
+        "ru": "Проверки открыли {n} адрес(ов), на которые приложение ответило переходом на другую страницу ({paths}) — так приложения обычно делают после сохранения; поэтому адреса такого вида проверки больше не открывали."
+    },
+    "workersHeld": {
+        "ar": "تشغّل صفحة تطبيقك عمّالًا في الخلفية لا تستطيع فحوص جو أن تحجز ما يرسلونه، فلم تسمح لهم الفحوص بالعمل، وما يقومون به لم يُجرَّب.",
+        "en": "Your app's page starts background workers whose requests Joe's checks cannot hold, so the checks did not let them start, and what they do was not tried.",
+        "es": "La página de tu aplicación inicia procesos en segundo plano cuyas peticiones las comprobaciones de Joe no pueden retener, así que no los dejaron arrancar y lo que hacen no se probó.",
+        "fr": "La page de votre application lance des tâches de fond dont les vérifications de Joe ne peuvent retenir les requêtes ; elles ne les ont donc pas laissées démarrer, et ce qu'elles font n'a pas été essayé.",
+        "de": "Die Seite Ihrer App startet Hintergrund-Worker, deren Anfragen Joes Prüfungen nicht zurückhalten können; die Prüfungen ließen sie daher nicht starten, und was sie tun, wurde nicht ausprobiert.",
+        "ru": "Страница приложения запускает фоновые обработчики, чьи запросы проверки Joe не могут задержать, поэтому проверки не дали им запуститься, и то, что они делают, не опробовано."
     }
 } as const;
 
@@ -1542,11 +1683,18 @@ export function qaPathLines(q: DeliveryQaPath | undefined, language: string): st
         if (q.path === 'private-live' && !q.blocked) lines.push(say('checkedPrivately', { origin: q.origin }));
         if (q.path === '2t') lines.push(say('checkedAsBefore', { origin: q.origin }));
     }
+    //  «Nothing saved» is said only when nothing of his changed during the checks (review 7, B1): else what changed is named below.
+    const changedDuring = !!(q.putBack?.length || q.leftChanged?.files.length || q.putBackFailed?.length);
     if (q.walked && q.path === 'no-write' && q.why) {
         const whyKey = (q.why in QA_LINES.why ? q.why : 'notProven') as keyof typeof QA_LINES.why;
         const why = fill(QA_LINES.why[whyKey][lang] || QA_LINES.why[whyKey].en, { detail: String(q.whyDetail || '').slice(0, 200) });
-        lines.push(say(q.signedIn ? 'notWrittenSignedIn' : 'notWritten', { why, labels: q.notTried.length ? quoted(q.notTried, 3) : '—', n: q.notTried.length }));
+        const key: QaLineKey = changedDuring
+            ? (q.signedIn ? 'notWrittenChangedSignedIn' : 'notWrittenChanged')
+            : (q.signedIn ? 'notWrittenSignedIn' : 'notWritten');
+        lines.push(say(key, { why, labels: q.notTried.length ? quoted(q.notTried, 3) : '—', n: q.notTried.length }));
     }
+    if (q.workersHeld) lines.push(say('workersHeld'));
+    if (q.writeSignals?.length) lines.push(say('writeSignal', { n: q.writeSignals.length, paths: quoted(q.writeSignals, 3) }));
     if (q.blocked > 0 && q.path !== 'as-today') lines.push(say('blocked', { n: q.blocked, hosts: (q.blockedHosts || []).slice(0, 3).join(comma) || '—' }));
     for (const probe of q.skippedProbes) {
         const name = QA_LINES.probeName[probe];
@@ -1558,7 +1706,10 @@ export function qaPathLines(q: DeliveryQaPath | undefined, language: string): st
         if (q.recovery.unexplained.length) lines.push(say('recoveryKept', { files: quoted(q.recovery.unexplained, 6) }));
         if (q.recovery.overBudget) lines.push(say('recoveryOverBudget'));
     }
-    if (q.putBackFailed?.length) lines.push(say('putBackFailed', { files: quoted(q.putBackFailed, 6) }));
+    //  Which of his data files changed during the checks, and what became of them (B1, H3) — on every path.
+    if (q.putBack?.length) lines.push(say('dataPutBack', { files: quoted(q.putBack, 6) }));
+    if (q.leftChanged?.files.length) lines.push(say(q.leftChanged.why === 'lockBusy' ? 'leftChangedLock' : 'leftChangedServer', { files: quoted(q.leftChanged.files, 6) }));
+    if (q.putBackFailed?.length) lines.push(say(q.putBackFailedBefore === 'snapshot' ? 'putBackFailedSnapshot' : 'putBackFailed', { files: quoted(q.putBackFailed, 6) }));
     return lines;
 }
 
@@ -1571,16 +1722,19 @@ function qaPathOfRecord(span: QaSpan, audit: AppAudit | undefined, watched: AppD
     const first = reasons[0];
     //  The probes' browsers went through the verification's own fence: what it refused is the page's too.
     const probeRefusals = (() => { try { return span.fence ? span.fence.appRefusals() : []; } catch { return []; } })();
+    const probeHeld = (() => { try { return span.fence ? span.fence.held().map(h => `request: ${h.what.replace(/^(\S+) [^/\s]+/u, '$1 ')}`.replace(/ {2,}/gu, ' ')) : []; } catch { return []; } })();
     try { for (const w of span.fence?.windows() || []) span.windows.add(w); } catch { /* the fence is gone: the windows already kept stand */ }
     const hosts = Array.from(new Set([...(walk?.blockedHosts || []), ...probeRefusals.map(r => refusedHost(r.what)).filter(Boolean)]));
     const reasonToWhy = QA_LINES.reasonToWhy as Record<QaReasonKey, string>;
     let recovery: DeliveryQaPath['recovery'];
+    //  M2: the windows a change may come from are the requests that could write (a plain GET read explains nothing).
+    const writing = span.windows.list().filter(w => w.writes !== false);
     if (watched && span.putBackRan) {
         const versions = watched.versions();
         recovery = {
             versions: versions.length,
             bytes: versions.reduce((sum, v) => sum + v.bytes, 0),
-            unexplained: unexplainedFiles(watched.changes(), span.windows.list()),
+            unexplained: unexplainedFiles(watched.changes(), writing),
             overBudget: watched.overBudget(),
             keptDays: RECOVERY_BUDGET.keepDays,
             runId: span.runKey,
@@ -1591,7 +1745,8 @@ function qaPathOfRecord(span: QaSpan, audit: AppAudit | undefined, watched: AppD
         ...(first ? { why: reasonToWhy[first.key] || 'notProven', whyDetail: first.detail } : {}),
         blocked: (Number(walk?.blocked) || 0) + probeRefusals.length,
         ...(hosts.length ? { blockedHosts: hosts } : {}),
-        notTried: [...(walk?.notTried || [])],
+        //  What the probes' fence held at his app (a worker's write the probes' guards never saw, B2) is not tried either.
+        notTried: Array.from(new Set([...(walk?.notTried || []), ...probeHeld])),
         skippedProbes: [...(skippedProbes || [])],
         ...(recovery ? { recovery } : {}),
         ...(walked && originOf(walkedUrl) ? { origin: originOf(walkedUrl) } : {}),
@@ -1600,7 +1755,11 @@ function qaPathOfRecord(span: QaSpan, audit: AppAudit | undefined, watched: AppD
         ...(span.fenceDown ? { fenceDown: true } : {}),
         ...(span.lockBusy ? { lockBusy: true } : {}),
         ...(span.notComparable ? { notComparable: span.notComparable } : {}),
-        ...(span.putBackFailed.length ? { putBackFailed: [...span.putBackFailed] } : {}),
+        ...(span.putBackFailed.length ? { putBackFailed: [...span.putBackFailed], ...(span.putBackFailedBefore ? { putBackFailedBefore: span.putBackFailedBefore } : {}) } : {}),
+        ...(span.putBackStores.length ? { putBack: [...span.putBackStores] } : {}),
+        ...(span.leftChanged?.files.length ? { leftChanged: { files: [...span.leftChanged.files], why: span.leftChanged.why } } : {}),
+        ...(walk?.writeSignals?.length ? { writeSignals: [...walk.writeSignals] } : {}),
+        ...(walk?.workersHeld ? { workersHeld: true } : {}),
     };
 }
 
@@ -1672,12 +1831,16 @@ export async function restoreRecoveryVersion(workspaceId: string, projectRoot: s
         }
     };
     await walk(versionDir, '');
-    const aside = path.join(path.dirname(versionDir), `before-restore-${Math.floor(n)}-${Date.now().toString(36)}`);
+    //  What the files are now is kept as a run of its own (one version), so the chat lists it and can bring it back too.
+    const asideRun = path.join(recoveryProjectDir(workspaceId, root, env), `before-restore-${Date.now().toString(36)}`);
+    const aside = path.join(asideRun, '1');
+    let asideBytes = 0;
     const keepAside = async (rel: string, abs: string) => {
         try { if (!(await fs.promises.lstat(abs)).isFile()) return; } catch { return; }
         const to = path.join(aside, ...rel.split('/'));
         await fs.promises.mkdir(path.dirname(to), { recursive: true, mode: 0o700 });
         await fs.promises.copyFile(abs, to);
+        try { asideBytes += (await fs.promises.stat(to)).size; } catch { /* counted when it can be */ }
         out.keptAside.push(rel);
     };
     for (const rel of files.sort()) {
@@ -1703,6 +1866,10 @@ export async function restoreRecoveryVersion(workspaceId: string, projectRoot: s
         } catch (e) {
             out.skipped.push({ file: rel, why: `could not be copied back (${message(e)})` });
         }
+    }
+    if (out.keptAside.length) {
+        const at = Date.now();
+        await fs.promises.writeFile(path.join(asideRun, 'run.json'), JSON.stringify({ runId: path.basename(asideRun), startedAt: at, overBudget: false, versions: [{ n: 1, at, why: 'before a restore', files: [...out.keptAside], bytes: asideBytes }] }, null, 2), { mode: 0o600 }).catch(() => undefined);
     }
     out.ok = out.restored.length > 0 && !out.skipped.length;
     if (!out.restored.length && !out.error) out.error = files.length ? 'nothing in that version could be brought back' : 'that version holds no files';

@@ -366,6 +366,8 @@ export const AgentEngineTool: ToolDefinition = {
                     signedInAs: (result.verification as DeliveryVerification | undefined)?.delivery?.signedInAs,
                     roles: (result.verification as DeliveryVerification | undefined)?.delivery?.roleViews,
                     qaCoverage: qaCoverageOf((result.verification as DeliveryVerification | undefined)?.delivery?.browserQa),
+                    //  How his data was treated on a change run, and what was not tried (design v13.3 §9, review 7 H1).
+                    qaPath: (result.verification as DeliveryVerification | undefined)?.delivery?.qaPath,
                 });
             }
             return {

@@ -20,6 +20,7 @@
  * The fence covers the BROWSER only, never the app's server.
  */
 import { Worker } from 'worker_threads';
+import { ACTION_WORDS, DELETE_URL, QA_GUARD_HEADER, QA_GUARD_TAG, QA_MARKS, type SignInAccount } from './live-data-guard';
 
 /** One refused request: `'POST 127.0.0.1:5055/api/orders'`, `'CONNECT api.x.sa:443'`; `at` is when it was refused. */
 export interface QaFenceRefusal { what: string; at: number }
@@ -29,7 +30,15 @@ export interface QaFenceRefusal { what: string; at: number }
  * From the fence: one per forwarded request, from its start to the end of its response; a response open more
  * than 5 s, or a tunnel (a WebSocket), is `long` and counts only for its first second. `what` names it.
  */
-export interface QaWindow { start: number; end: number; long: boolean; what: string }
+export interface QaWindow {
+    start: number; end: number; long: boolean; what: string;
+    /**
+     * Whether the request could have made the app write (review 7, M2): a method other than GET / HEAD / OPTIONS, a
+     * GET answered with a redirect, or a tunnel's bytes. A plain GET read is `false`: a change to the owner's data
+     * while only reads ran is not explained by them. Absent (as before): counted as a write.
+     */
+    writes?: boolean;
+}
 
 export interface QaFence {
     /** What to pass to `chromium.launch({ proxy })`. */
@@ -49,6 +58,18 @@ export interface QaFence {
      * after a refusal of a request the page made. `''`: charge it as today.
      */
     drops(text: string, url?: string): '' | 'refused-url' | 'refused-text' | 'refused-window';
+    /**
+     * The no-write walk (review 7, B2): while on, a request to a walked origin that does not carry the guard's
+     * mark (`QA_GUARD_HEADER`, so the in-browser guard never saw it: a shared worker, a worker's WebSocket) is held
+     * when it could write — any method but GET / HEAD / OPTIONS, a GET whose address deletes or names an action —
+     * and a WebSocket's client frames are dropped unless they hold the sign-in (`signIn`). The fence is the
+     * browser's whole network, so this holds every channel of a plain-http origin; a TLS tunnel cannot be read.
+     */
+    holdWrites(on: boolean, opts?: { signIn?: SignInAccount }): void;
+    /** Whether writes are held now. */
+    holding(): boolean;
+    /** Every write held at a walked origin (`'POST 127.0.0.1:5055/api/x'`, `'WS 127.0.0.1:5055/live'`): told «not tried». */
+    held(): QaFenceRefusal[];
     /** Stops the worker; every connection through it ends. */
     close(): Promise<void>;
 }
@@ -86,8 +107,63 @@ const keyOf = (h, p) => String(h).toLowerCase().replace(/^\[|\]$/g, '') + ':' + 
 const bare = h => String(h).replace(/^\[|\]$/g, '');
 let seq = 0;
 const tell = m => { try { parentPort.postMessage(m); } catch (e) { /* the parent is gone */ } };
-parentPort.on('message', m => { if (m && m.type === 'allow' && typeof m.key === 'string') allowed.add(m.key); });
+/* Holding writes (the no-write walk): what the guard did not see (no tag) never writes; see QaFence.holdWrites. */
+const TAG_HEADER = String(workerData.tagHeader || 'x-joe-guard').toLowerCase();
+const TAG = String(workerData.tag || '');
+let hold = !!workerData.hold;
+let passes = [];
+const WRITING_GET = workerData.writingGet ? new RegExp(workerData.writingGet.source, workerData.writingGet.flags) : null;
+const ACTIONS = new Set(workerData.actions || []);
+const STATIC = /\.(?:css|js|mjs|map|woff2?|ttf|otf|eot|png|jpe?g|gif|svg|webp|avif|ico)$/i;
+parentPort.on('message', m => {
+  if (m && m.type === 'allow' && typeof m.key === 'string') allowed.add(m.key);
+  if (m && m.type === 'hold') { hold = !!m.on; passes = Array.isArray(m.passes) ? m.passes : []; }
+});
 const refuse = what => tell({ type: 'refused', what, at: Date.now() });
+const held = what => tell({ type: 'held', what, at: Date.now() });
+/* An untagged GET writes when its address holds a delete word or Joe's marks, or names an action (live-data-guard W4, W10). */
+const getWrites = url => {
+  let tail = String(url); try { tail = decodeURIComponent(tail); } catch (e) { /* raw */ }
+  tail = tail.replace(/[ً-ٰـ]/g, '');
+  const q = tail.indexOf('?'); const p = q < 0 ? tail : tail.slice(0, q);
+  if (WRITING_GET && !STATIC.test(p) && WRITING_GET.test(tail)) return true;
+  if (STATIC.test(p)) return false;
+  for (const seg of p.split('/')) for (const t of seg.split(/[-_.]+/)) if (t && ACTIONS.has(t.toLowerCase())) return true;
+  return false;
+};
+/* A client frame holds a sign-in when it holds one spelling of the identity and one of the password (W7). */
+const holdsPass = text => passes.some(pair => Array.isArray(pair) && pair.length === 2 && pair[0].some(s => text.includes(s)) && pair[1].some(s => text.includes(s)));
+/*
+ * The client side of a held WebSocket: control frames (close, ping, pong) pass; a data message passes only when it
+ * holds a sign-in; every other data frame is dropped, and told. Returns the bytes to forward.
+ */
+const frameFilter = what => {
+  let buf = Buffer.alloc(0); let passing = false; let told = 0;
+  return chunk => {
+    buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
+    const out = [];
+    for (;;) {
+      if (buf.length < 2) break;
+      const b0 = buf[0], b1 = buf[1];
+      const opcode = b0 & 0x0f; const masked = (b1 & 0x80) !== 0; let len = b1 & 0x7f; let off = 2;
+      if (len === 126) { if (buf.length < 4) break; len = buf.readUInt16BE(2); off = 4; }
+      else if (len === 127) { if (buf.length < 10) break; len = Number(buf.readBigUInt64BE(2)); off = 10; }
+      const keyAt = off; if (masked) off += 4;
+      if (buf.length < off + len) break;
+      const frame = buf.subarray(0, off + len);
+      buf = buf.subarray(off + len);
+      if (opcode >= 8) { out.push(frame); continue; }
+      if (opcode !== 0) {
+        let payload = Buffer.from(frame.subarray(off));
+        if (masked) { const k = frame.subarray(keyAt, keyAt + 4); for (let i = 0; i < payload.length; i++) payload[i] ^= k[i % 4]; }
+        passing = passes.length > 0 && holdsPass(payload.toString('utf8'));
+      }
+      if (passing) { out.push(frame); continue; }
+      if (told < 50) { told++; held('WS ' + what); }
+    }
+    return out.length ? Buffer.concat(out) : null;
+  };
+};
 const HOP = new Set(['proxy-connection', 'proxy-authorization', 'keep-alive', 'connection', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 const server = http.createServer((q, r) => {
   q.on('error', () => {}); r.on('error', () => {});
@@ -97,12 +173,18 @@ const server = http.createServer((q, r) => {
   if (u.protocol !== 'http:' || !allowed.has(keyOf(u.hostname, port))) {
     refuse(m + ' ' + u.host + u.pathname); r.writeHead(403, { 'x-joe-fence': 'refused', 'content-type': 'text/plain' }); return r.end('refused by Joe: not the walked origin');
   }
+  const tagged = !!TAG && String(q.headers[TAG_HEADER] || '') === TAG;
+  if (hold && !tagged && ((m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS') || (m !== 'OPTIONS' && getWrites(u.pathname + u.search)))) {
+    held(m + ' ' + u.host + u.pathname); r.writeHead(403, { 'x-joe-fence': 'held', 'content-type': 'text/plain' }); return r.end('held by Joe: the checks save nothing in this app');
+  }
   const id = ++seq; tell({ type: 'open', id, start: Date.now(), what: m + ' ' + u.host + u.pathname, tunnel: false });
-  let closed = false; const closeWin = () => { if (closed) return; closed = true; tell({ type: 'close', id, end: Date.now() }); };
+  let status = 0;
+  let closed = false; const closeWin = () => { if (closed) return; closed = true; tell({ type: 'close', id, end: Date.now(), status }); };
   r.on('close', closeWin);
-  const headers = {}; for (const [k, v] of Object.entries(q.headers)) if (!HOP.has(k.toLowerCase())) headers[k] = v;
+  const headers = {}; for (const [k, v] of Object.entries(q.headers)) if (!HOP.has(k.toLowerCase()) && k.toLowerCase() !== TAG_HEADER) headers[k] = v;
   const up = http.request({ host: bare(u.hostname), port, path: u.pathname + u.search, method: m, headers }, ur => {
     const back = {}; for (const [k, v] of Object.entries(ur.headers)) if (!HOP.has(k.toLowerCase())) back[k] = v;
+    status = ur.statusCode || 502;
     r.writeHead(ur.statusCode || 502, back); ur.pipe(r);
   });
   up.on('error', () => { try { if (!r.headersSent) r.writeHead(502); r.end(); } catch (e) { /* gone */ } closeWin(); });
@@ -126,7 +208,38 @@ server.on('connect', (q, sock, head) => {
   const parts = String(q.url).split(/:(?=\d+$)/); const h = parts[0]; const p = parts[1] || '443';
   if (!allowed.has(keyOf(h, p))) { refuse('CONNECT ' + q.url); sock.end('HTTP/1.1 403 Forbidden\r\nx-joe-fence: refused\r\n\r\n'); return; }
   const start = Date.now();
-  const up = net.connect(Number(p), bare(h), () => { sock.write('HTTP/1.1 200 Connection Established\r\n\r\n'); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up); });
+  const up = net.connect(Number(p), bare(h), () => {
+    sock.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+    up.pipe(sock);
+    if (!hold) { if (head && head.length) up.write(head); sock.pipe(up); return; }
+    /*
+     * Holding writes: a plain (ws://) tunnel is read. Its first request must be a GET (a WebSocket's upgrade) and
+     * then only control frames and sign-in messages go on; a TLS tunnel cannot be read, and goes on as it is (the
+     * walk then keeps workers from being created: live-data-guard W11).
+     */
+    let first = Buffer.alloc(0); let filter = null; let tls = false;
+    const onData = chunk => {
+      if (tls) { up.write(chunk); return; }
+      if (filter) { const out = filter(chunk); if (out) up.write(out); return; }
+      first = first.length ? Buffer.concat([first, chunk]) : chunk;
+      if (first[0] === 0x16) { tls = true; up.write(first); first = Buffer.alloc(0); return; }
+      const end = first.indexOf('\r\n\r\n');
+      if (end < 0) { if (first.length > 65536) { held('TUNNEL ' + q.url); sock.destroy(); up.destroy(); } return; }
+      const headText = first.subarray(0, end + 4).toString('latin1');
+      const line = headText.split('\r\n')[0];
+      const method = line.split(' ')[0].toUpperCase();
+      const target = line.split(' ')[1] || '/';
+      const upgrade = /\r\nupgrade:\s*websocket/i.test(headText);
+      if (method !== 'GET' || !upgrade) { held(method + ' ' + q.url + target); sock.end('HTTP/1.1 403 Forbidden\r\nx-joe-fence: held\r\n\r\n'); up.destroy(); return; }
+      up.write(first.subarray(0, end + 4));
+      filter = frameFilter(q.url + target);
+      const rest = first.subarray(end + 4); first = Buffer.alloc(0);
+      if (rest.length) { const out = filter(rest); if (out) up.write(out); }
+    };
+    if (head && head.length) onData(head);
+    sock.on('data', onData);
+    sock.on('end', () => up.end());
+  });
   up.on('error', () => sock.destroy()); sock.on('error', () => up.destroy());
   tunnel('CONNECT ' + q.url, start, sock, up);
 });
@@ -138,8 +251,15 @@ server.on('upgrade', (q, sock, head) => {
   const start = Date.now();
   const up = net.connect(Number(port), bare(u.hostname), () => {
     let text = String(q.method) + ' ' + (u.pathname + u.search) + ' HTTP/1.1\r\n';
-    for (let i = 0; i < q.rawHeaders.length; i += 2) if (!/^proxy-/i.test(q.rawHeaders[i])) text += q.rawHeaders[i] + ': ' + q.rawHeaders[i + 1] + '\r\n';
-    up.write(text + '\r\n'); if (head && head.length) up.write(head); up.pipe(sock); sock.pipe(up);
+    for (let i = 0; i < q.rawHeaders.length; i += 2) if (!/^proxy-/i.test(q.rawHeaders[i]) && String(q.rawHeaders[i]).toLowerCase() !== TAG_HEADER) text += q.rawHeaders[i] + ': ' + q.rawHeaders[i + 1] + '\r\n';
+    up.write(text + '\r\n'); up.pipe(sock);
+    if (!hold) { if (head && head.length) up.write(head); sock.pipe(up); return; }
+    //  Holding writes: only control frames and sign-in messages go on from the client.
+    const filter = frameFilter(u.host + u.pathname);
+    const onData = chunk => { const out = filter(chunk); if (out) up.write(out); };
+    if (head && head.length) onData(head);
+    sock.on('data', onData);
+    sock.on('end', () => up.end());
   });
   up.on('error', () => sock.destroy()); sock.on('error', () => up.destroy());
   tunnel('UPGRADE ' + u.host + u.pathname, start, sock, up);
@@ -147,6 +267,14 @@ server.on('upgrade', (q, sock, head) => {
 server.on('error', e => tell({ type: 'error', message: String(e && e.message || e) }));
 server.listen(Number(workerData.port) || 0, '127.0.0.1', () => tell({ type: 'listening', port: server.address().port }));
 `;
+
+/** W7's spellings of the sign-in the fence lets a WebSocket message carry (raw, URL-encoded, JSON-escaped). */
+function passesOf(account?: SignInAccount): string[][][] {
+    const id = String(account?.identity || ''), pw = String(account?.password || '');
+    if (id.length < 3 || pw.length < 4) return [];
+    const spell = (s: string) => { const enc = encodeURIComponent(s); return [...new Set([s, enc, enc.replace(/%20/g, '+'), JSON.stringify(s).slice(1, -1)])]; };
+    return [[spell(id), spell(pw)]];
+}
 
 /** `host:port` as the fence compares it: lowercased, IPv6 brackets off, the scheme's default port filled in. */
 function originKey(origin: string): string | null {
@@ -176,14 +304,26 @@ function refusalTargets(what: string): { pathKey?: string; tunnelKey?: string; h
  * or cannot listen within 10 s (§4.5: the caller then runs the walk as path 3 and tells `fenceDown`).
  * `port`: a fixed port to listen on (tests; 0 or absent = any free port).
  */
-export function startQaFence(input: { allow: string[]; port?: number }): Promise<QaFence> {
+export function startQaFence(input: { allow: string[]; port?: number; hold?: boolean; signIn?: SignInAccount }): Promise<QaFence> {
     const keys = (input.allow || []).map(originKey).filter((k): k is string => !!k);
+    const writingGet = new RegExp(`(?:${QA_MARKS.source})|(?:${DELETE_URL.source})`, 'iu');
     let worker: Worker;
-    try { worker = new Worker(QA_FENCE_SOURCE, { eval: true, workerData: { allow: keys, port: input.port || 0 } }); }
+    try {
+        worker = new Worker(QA_FENCE_SOURCE, {
+            eval: true,
+            workerData: {
+                allow: keys, port: input.port || 0, hold: !!input.hold, tag: QA_GUARD_TAG, tagHeader: QA_GUARD_HEADER,
+                writingGet: { source: writingGet.source, flags: writingGet.flags }, actions: ACTION_WORDS.map(w => w.toLowerCase()),
+            },
+        });
+        if (input.hold) worker.postMessage({ type: 'hold', on: true, passes: passesOf(input.signIn) });
+    }
     catch (e: any) { return Promise.reject(new Error(`the fence could not start (${String(e?.message || e).split('\n')[0]})`)); }
     const refused: QaFenceRefusal[] = [];
-    const open = new Map<number, { start: number; end: number; what: string; tunnel: boolean }>();
-    const done: Array<{ start: number; end: number; what: string; tunnel: boolean }> = [];
+    const heldWrites: QaFenceRefusal[] = [];
+    let holdingNow = !!input.hold;
+    const open = new Map<number, { start: number; end: number; what: string; tunnel: boolean; status?: number }>();
+    const done: Array<{ start: number; end: number; what: string; tunnel: boolean; status?: number }> = [];
     const bursts: QaWindow[] = [];
     let lastAppRefusal = -Infinity;
     const keep = <T>(list: T[], item: T) => { if (list.length < MAX_KEPT) list.push(item); };
@@ -217,12 +357,19 @@ export function startQaFence(input: { allow: string[]; port?: number }): Promise
                     if (!BROWSER_OWN.test(r.what)) lastAppRefusal = Math.max(lastAppRefusal, r.at);
                     return;
                 }
+                case 'held': {
+                    const r = { what: String(m.what), at: Number(m.at) };
+                    keep(heldWrites, r);
+                    lastAppRefusal = Math.max(lastAppRefusal, r.at);
+                    return;
+                }
                 case 'open': if (open.size < MAX_KEPT) open.set(Number(m.id), { start: Number(m.start), end: NaN, what: String(m.what), tunnel: !!m.tunnel }); return;
                 case 'close': {
                     const w = open.get(Number(m.id));
                     if (!w) return;
                     open.delete(Number(m.id));
                     w.end = Number(m.end);
+                    if (Number.isFinite(Number(m.status))) w.status = Number(m.status);
                     keep(done, w);
                     return;
                 }
@@ -244,16 +391,18 @@ export function startQaFence(input: { allow: string[]; port?: number }): Promise
                 appRefusals,
                 windows() {
                     const now = Date.now();
-                    const shape = (w: { start: number; end: number; what: string; tunnel: boolean }): QaWindow => {
+                    const shape = (w: { start: number; end: number; what: string; tunnel: boolean; status?: number }): QaWindow => {
                         const end = Number.isFinite(w.end) ? w.end : now;
-                        return { start: w.start, end, long: w.tunnel || end - w.start > FENCE_LONG_MS, what: w.what };
+                        const read = !w.tunnel && /^(?:GET|HEAD|OPTIONS) /.test(w.what) && !(Number(w.status) >= 300 && Number(w.status) < 400);
+                        return { start: w.start, end, long: w.tunnel || end - w.start > FENCE_LONG_MS, what: w.what, writes: !read };
                     };
-                    return [...done.map(shape), ...[...open.values()].map(shape), ...bursts.map(b => ({ ...b }))].sort((a, b) => a.start - b.start);
+                    return [...done.map(shape), ...[...open.values()].map(shape), ...bursts.map(b => ({ ...b, writes: true }))].sort((a, b) => a.start - b.start);
                 },
                 drops(text: string, url?: string) {
                     const t = String(text || '');
                     if (FENCE_TEXT.test(t)) return 'refused-text';
-                    const app = appRefusals();
+                    //  A write the fence held is its own doing too (a held WebSocket is matched by its host:port).
+                    const app = [...appRefusals(), ...heldWrites.map(h => ({ ...h, what: /^WS /.test(h.what) ? `CONNECT ${h.what.slice(3).split('/')[0]}` : h.what }))];
                     if (url) {
                         try {
                             const u = new URL(url);
@@ -267,6 +416,12 @@ export function startQaFence(input: { allow: string[]; port?: number }): Promise
                     if (Date.now() - lastAppRefusal < FENCE_DROP_WINDOW_MS) return 'refused-window';
                     return '';
                 },
+                holdWrites(on: boolean, opts?: { signIn?: SignInAccount }) {
+                    holdingNow = !!on;
+                    if (!closed) worker.postMessage({ type: 'hold', on: !!on, passes: passesOf(opts?.signIn) });
+                },
+                holding: () => holdingNow,
+                held: () => heldWrites.slice(),
                 async close() {
                     if (closed) return;
                     closed = true;

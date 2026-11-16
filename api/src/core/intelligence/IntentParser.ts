@@ -10,7 +10,7 @@ import { readModelJsonObject } from '../../shared/utils/json';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseQuotedTextWriteRequest, hasGlobalExplicitReadDenial } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
-import { isUndoRequest } from '../engine/select';
+import { isDataRecoveryRequest, isUndoRequest } from '../engine/select';
 import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, isWebOrder, clearIntentCache, reportsAFaultOrOrdersAFix } from './intent-classifier';
 import { hasRequestedAction, withoutFileDenials } from './requested-action';
 import { hasTerminalExecutionDenial, boundedNoFileTerminalCommands, parseRuntimeDiagnosticFacts } from '../orchestrator/runtime-diagnostic-contract';
@@ -464,6 +464,18 @@ Return ONLY a JSON object:
         // then put before its undo: Joe asked which files to review (live,
         // 2026-11-05). An undo names no capability; the planner's undo decides
         // whose history it is (the chat's project, or its page).
+        //  His data files' copies (review 7, B3): the chat brings one back, the code's undo is not asked.
+        if (isDataRecoveryRequest(raw)) {
+            return {
+                goal: raw,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'Dev',
+                requiredTools: ['project_data_recovery'],
+                constraints: ['List or bring back a copy Joe kept of the app\'s data files; never rebuild.'],
+                rawIntent: { primary: raw, dataRecoveryRequest: true, deterministic: true },
+            };
+        }
         if (isUndoRequest(raw)) {
             return {
                 goal: raw,

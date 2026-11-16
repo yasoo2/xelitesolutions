@@ -332,29 +332,31 @@ export function restoreLine(r: AppDataRestore): string {
 // Folders are made with mode 0700, files 0600. Bringing a version back is a file copy by Joe's code, never a read
 // into a prompt.
 //
-// Only 2T uses any of this (a new build and paths 1 and 3 do not): nothing above this line changed for them.
+// Every change run uses it now (review 7, B1): whatever its path, the verification puts back what its checks
+// changed, so every version is kept first. A new build does not: nothing above this line changed for it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The folder name under Joe's data folder. */
 export const QA_RECOVERY = 'qa-recovery';
 
-/** How much the recovery copies may hold (§5b step 3). */
+/**
+ * How much the recovery copies may hold (§5b step 3). What the owner is told is what this keeps (review 7, B3): every
+ * run's copy for `keepDays`, however many runs there were, unless the space below fills first — then the oldest go
+ * first (`recoverySaved` says so).
+ */
 export interface RecoveryBudget {
-    /** Per project, every run and every flush included (512 MB). Over it, only the newest version of each file is kept. */
+    /** Per project, every run and every flush included (512 MB). Over it, only the newest version of each file is kept, then the oldest runs go. */
     projectBytes: number;
     /** For the whole `qa-recovery` folder of this server (5 GB). Over it, the oldest runs of any project go first. */
     serverBytes: number;
-    /** Per project, the newest runs kept (5). */
-    keepRuns: number;
-    /** Nothing older than this many days is kept (14). */
+    /** Nothing older than this many days is kept (14); nothing younger is removed but to make room. */
     keepDays: number;
 }
 
-/** The design's numbers: 512 MB a project, 5 GB a server, the newest 5 runs, 14 days. */
+/** The design's numbers: 512 MB a project, 5 GB a server, 14 days. */
 export const RECOVERY_BUDGET: RecoveryBudget = Object.freeze({
     projectBytes: 512 * 1024 * 1024,
     serverBytes: 5 * 1024 * 1024 * 1024,
-    keepRuns: 5,
     keepDays: 14,
 });
 
@@ -429,6 +431,11 @@ export interface AppDataWatch {
      * `project_stop` and `addressIsFree`, immediately before `restoreAppData`, so the server's shutdown writes are in it.
      */
     flush(why: string): Promise<void>;
+    /**
+     * Adds one version made of the given files (`rel` project-relative, `from` the copy to read): the version from
+     * before the checks of a file the put-back could not restore (review 7, M3). Resolves whether it was kept.
+     */
+    keep(entries: Array<{ rel: string; from: string }>, why: string): Promise<boolean>;
     /** Stops polling (the copies stay; an empty run folder is removed). */
     stop(): Promise<void>;
     /** Whether the per-project cap was hit, so only the newest version of each file is kept (`recoveryOverBudget`). */
@@ -504,9 +511,10 @@ const isActive = (dir: string) => activeRuns.has(path.resolve(dir));
 export interface RecoveryPrune { removedRuns: string[]; bytesFreed: number }
 
 /**
- * Applies §5b step 3. With `projectDir`: that project's retention (the newest `keepRuns` runs, nothing older than
- * `keepDays`, at most `projectBytes`); without it: every project's. Then the server-wide cap (`serverBytes`, the
- * oldest runs of any project first) over `recoveryHome(env)`. A run a watcher is writing is never removed.
+ * Applies §5b step 3. With `projectDir`: that project's retention (nothing older than `keepDays`, at most
+ * `projectBytes`, the oldest runs first); without it: every project's. Then the server-wide cap (`serverBytes`, the
+ * oldest runs of any project first) over `recoveryHome(env)`. A run younger than `keepDays` is removed only to make
+ * room under a cap (`recoverySaved` tells exactly that). A run a watcher is writing is never removed.
  * Called when `watchAppData` starts, at boot and hourly (`startRecoveryUpkeep`).
  */
 export async function pruneRecovery(opts: { env?: NodeJS.ProcessEnv; budget?: RecoveryBudget; projectDir?: string; home?: string; now?: number } = {}): Promise<RecoveryPrune> {
@@ -529,7 +537,7 @@ export async function pruneRecovery(opts: { env?: NodeJS.ProcessEnv; budget?: Re
         const kept: RunEntry[] = [];
         for (const r of runs) {
             const tooOld = now - r.startedAt > budget.keepDays * 24 * 60 * 60 * 1000;
-            if (!isActive(r.dir) && (tooOld || kept.length >= budget.keepRuns)) { await drop(r); total -= r.bytes; continue; }
+            if (!isActive(r.dir) && tooOld) { await drop(r); total -= r.bytes; continue; }
             kept.push(r);
         }
         for (let i = kept.length - 1; i >= 0 && total > budget.projectBytes; i--) {
@@ -823,6 +831,33 @@ export function watchAppData(s: AppDataSnapshot, opts: { into: string; budget: R
         async flush(why: string) {
             await start;
             await serial(async () => { await poll(String(why || 'flush'), true).catch(() => 0); });
+        },
+        async keep(entries: Array<{ rel: string; from: string }>, why: string) {
+            await start;
+            let kept = false;
+            await serial(async () => {
+                const n = ++seq;
+                const dest = path.join(into, String(n));
+                const version = { n, files: [] as string[], at: Date.now(), bytes: 0, why: String(why || 'kept') };
+                for (const e of entries) {
+                    const relPath = String(e.rel || '').split(/[\\/]/u).filter(p => p && p !== '..' && p !== '.').join('/');
+                    if (!relPath || !isData(relPath)) continue;
+                    try {
+                        const buf = await fs.promises.readFile(e.from);
+                        const to = path.join(dest, ...relPath.split('/'));
+                        await mkdirPrivate(path.dirname(to));
+                        await writePrivate(to, buf);
+                        version.files.push(relPath);
+                        version.bytes += buf.length;
+                    } catch { /* that copy is gone */ }
+                }
+                if (!version.files.length) { await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => { }); return; }
+                versions.push(version);
+                runBytes += version.bytes;
+                await writeIndex();
+                kept = true;
+            });
+            return kept;
         },
         stop() {
             if (stopping) return stopping;

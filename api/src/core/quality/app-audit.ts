@@ -29,7 +29,7 @@ import { productProfile, proveJourneys } from './qa-product-profile';
 import { AuditEyes, evalInPage, streamPrivateWalk, type PrivateStream } from './audit-eyes';
 import { chooseQaPath, hasDeliveryRecord, pinnedPath, type QaPath, type QaPathChoice, type QaPin, type QaReason } from './qa-target';
 import { startQaFence, type QaFence } from './qa-fence';
-import { createLiveDataGuard, isDeleteControl, LIVE_DATA_NOT_MEASURED, type LiveDataGuard, type SignInAccount } from './live-data-guard';
+import { createLiveDataGuard, isActionUrl, isDeleteControl, LIVE_DATA_NOT_MEASURED, type LiveDataGuard, type SignInAccount } from './live-data-guard';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { markInspection } from '../engine/browser-mend';
 import { isWithinRoot } from '../../modules/tools/path-containment';
@@ -231,13 +231,17 @@ export interface AppAudit {
         path: QaPath;
         reasons: QaReason[];
         comparable: boolean;
-        windows?: Array<{ start: number; end: number; long: boolean; what?: string }>;
+        windows?: Array<{ start: number; end: number; long: boolean; what?: string; writes?: boolean }>;
         blocked: number;
         blockedHosts: string[];
         notTried: string[];
         streamed: boolean;
         signedIn: boolean;
         fenceDown?: boolean;
+        /** Path 3 (W10): the GETs the app answered with a redirect to a page — a sign they saved something. */
+        writeSignals?: string[];
+        /** Path 3 (W11): workers were kept from being created, because no fence could read what they send. */
+        workersHeld?: boolean;
     };
 }
 
@@ -750,6 +754,10 @@ export interface QaDoor {
     fenceDown: boolean;
     /** Path 3's guard, installed on the walk's private context once it exists. */
     guard: LiveDataGuard | null;
+    /** The walked address (the audit's `serveUrl`). */
+    origin: string;
+    /** Path 3 (W11): no fence can read this walk's traffic (none, or an https origin), so workers are not created. */
+    holdWorkers: boolean;
     /** The panel id the walk streams to, and the stream once it runs. */
     streamId: string;
     stream: PrivateStream | null;
@@ -821,7 +829,7 @@ export async function openQaDoor(distDir: string, opts: AuditBuiltAppOptions | u
     const base = { choice, streamId, notTried, watching, refusedAssets: new Set<string>() };
     if (ranPath === 'as-today') {
         return {
-            ...base, path: 'as-today', comparable: ran.comparable, fence: null, fenceDown: false, guard: null, stream: null, context: null,
+            ...base, path: 'as-today', comparable: ran.comparable, fence: null, fenceDown: false, guard: null, origin: givenUrl, holdWorkers: false, stream: null, context: null,
             dropped: () => false, blocks: () => 0,
             summary: (a: AppAudit) => ({ path: 'as-today', reasons: [], comparable: ran.comparable, blocked: 0, blockedHosts: [], notTried: [], streamed: false, signedIn: !!a.authenticated }),
             close: async () => { /* nothing opened */ },
@@ -830,8 +838,11 @@ export async function openQaDoor(distDir: string, opts: AuditBuiltAppOptions | u
     let fence: QaFence | null = null;
     let fenceDown = false;
     const allow = [...new Set([givenUrl, ...(opts.walkedOrigins || [])].map(originOf).filter(Boolean))];
+    //  Path 3 (review 7, B2): the fence holds every write the in-browser guard did not see — a shared worker's, a
+    //  worker's WebSocket — so no channel of the page writes into his live app.
+    const account = opts.credentials ? { identity: String(opts.credentials.identity ?? opts.credentials.email ?? ''), password: String(opts.credentials.password ?? '') } : undefined;
     try {
-        fence = await startQaFence({ allow });
+        fence = await startQaFence({ allow, hold: ranPath === 'no-write', ...(account ? { signIn: account } : {}) });
     } catch {
         //  §4.5: without the fence every fenced walk runs as path 3, under the in-browser guard, and is told.
         fenceDown = true;
@@ -845,6 +856,9 @@ export async function openQaDoor(distDir: string, opts: AuditBuiltAppOptions | u
         fence,
         fenceDown,
         guard: null,
+        origin: givenUrl,
+        //  A fence reads a plain-http origin whole; with none, or over TLS, a worker's traffic cannot be held (W11).
+        holdWorkers: ranPath === 'no-write' && (!fence || !/^http:\/\//i.test(givenUrl)),
         stream: null,
         context: null,
         dropped(text: string, url?: string) {
@@ -864,8 +878,13 @@ export async function openQaDoor(distDir: string, opts: AuditBuiltAppOptions | u
             let refused: Array<{ what: string }> = [];
             let windows: NonNullable<AppAudit['qaPath']>['windows'];
             try { refused = door.fence ? door.fence.appRefusals() : []; } catch { refused = []; }
-            try { windows = door.fence ? door.fence.windows().map(w => ({ start: w.start, end: w.end, long: w.long, what: w.what })) : undefined; } catch { windows = undefined; }
+            try { windows = door.fence ? door.fence.windows().map(w => ({ start: w.start, end: w.end, long: w.long, what: w.what, writes: w.writes !== false })) : undefined; } catch { windows = undefined; }
             const guardNotTried = door.guard ? [...door.guard.notTriedLabels] : [];
+            //  What the fence held at his app (a worker's write, a WebSocket message): not tried either (B2).
+            let fenceHeld: string[] = [];
+            try { fenceHeld = door.fence ? door.fence.held().map(h => `request: ${h.what.replace(/^(\S+) [^/\s]+/u, '$1 ')}`.replace(/ {2,}/gu, ' ')) : []; } catch { fenceHeld = []; }
+            let signals: string[] = [];
+            try { signals = door.guard ? door.guard.writeSignals().map(s => { try { return new URL(s.url).pathname; } catch { return s.url; } }) : []; } catch { signals = []; }
             return {
                 path: door.path,
                 reasons: [...choice.reasons],
@@ -873,10 +892,12 @@ export async function openQaDoor(distDir: string, opts: AuditBuiltAppOptions | u
                 ...(windows ? { windows } : {}),
                 blocked: refused.length,
                 blockedHosts: [...new Set(refused.map(r => refusedHost(r.what)).filter(Boolean))],
-                notTried: [...new Set([...guardNotTried, ...own])],
+                notTried: [...new Set([...guardNotTried, ...fenceHeld, ...own])],
                 streamed: (door.stream?.frames || 0) > 0,
                 signedIn: door.path === 'no-write' ? !!(door.guard && door.guard.signInUrl()) : !!a.authenticated,
                 ...(door.fenceDown ? { fenceDown: true } : {}),
+                ...(signals.length ? { writeSignals: [...new Set(signals)] } : {}),
+                ...(door.holdWorkers && guardNotTried.some(l => l.startsWith('channel:')) ? { workersHeld: true } : {}),
             };
         },
         async close() {
@@ -913,7 +934,7 @@ async function openPrivatePage(browser: any, door: QaDoor, opts: AuditBuiltAppOp
     if (door.path === 'no-write') {
         const c = opts?.credentials;
         const signIn: SignInAccount | undefined = c ? { identity: String(c.identity ?? c.email ?? ''), password: String(c.password ?? '') } : undefined;
-        door.guard = await createLiveDataGuard(context, signIn ? { signIn } : {});
+        door.guard = await createLiveDataGuard(context, { ...(signIn ? { signIn } : {}), ...(door.holdWorkers ? { holdWorkers: true } : {}) });
     }
     const page = await context.newPage();
     if (door.streamId) {
@@ -941,12 +962,16 @@ async function closePrivatePage(door: QaDoor): Promise<void> {
     try { await door.guard?.remove(); } catch { /* the context is gone */ }
 }
 
-/** Path 3, W5: a link whose text or href deletes is not walked; it is listed «not tried». */
+/**
+ * Path 3, W5 and W10: a link whose text or href deletes, or whose href names an action (`/tasks/1/done`, a GET
+ * that saves), is not walked; it is listed «not tried».
+ */
 function linksThatDoNotDelete(links: Array<AppLink & { text?: string }>, door: QaDoor | null): AppLink[] {
     if (!door?.guard) return links;
     const kept: AppLink[] = [];
     for (const l of links) {
-        if (isDeleteControl(String(l.text || ''), String(l.href || ''))) door.guard.notTried(`link: ${String(l.text || l.href || '').trim().slice(0, 60)}`);
+        const href = String(l.href || '');
+        if (isDeleteControl(String(l.text || ''), href) || isActionUrl(href)) door.guard.notTried(`link: ${String(l.text || l.href || '').trim().slice(0, 60)}`);
         else kept.push(l);
     }
     return kept;

@@ -214,7 +214,7 @@ describe('retention and disk', () => {
         await fs.promises.writeFile(path.join(dir, '1', 'data', 'store.json'), 'x'.repeat(bytes));
     }
 
-    it('drops runs older than 14 days and keeps the newest five of a project', async () => {
+    it('drops runs older than 14 days and keeps every younger run of a project (review 7, B3: as he is told)', async () => {
         const penv = { JOE_DATA_DIR: path.join(base, 'prune-a') };
         const root = await project('retain', { 'data/store.json': '[]' });
         const now = Date.now();
@@ -222,8 +222,8 @@ describe('retention and disk', () => {
         await fakeRun(recoveryRunDir('ws1', root, 'run-old', penv), now - 15 * DAY);
         const r = await pruneRecovery({ env: penv });
         const left = fs.readdirSync(recoveryProjectDir('ws1', root, penv)).sort();
-        expect(left).toEqual(['run-0', 'run-1', 'run-2', 'run-3', 'run-4']);
-        expect(r.removedRuns.map(d => path.basename(d)).sort()).toEqual(['run-5', 'run-old']);
+        expect(left).toEqual(['run-0', 'run-1', 'run-2', 'run-3', 'run-4', 'run-5']);
+        expect(r.removedRuns.map(d => path.basename(d)).sort()).toEqual(['run-old']);
     });
 
     it('holds the server under its cap, the oldest runs of any project first', async () => {
@@ -245,7 +245,7 @@ describe('retention and disk', () => {
         await fakeRun(recoveryRunDir('ws1', root, 'run-ancient', penv), Date.now() - 30 * DAY);
         const snap = await snapshotAppData(root);
         const into = recoveryRunDir('ws1', root, 'run-live', penv);
-        const watch = watchAppData(snap, { into, budget: { ...RECOVERY_BUDGET, keepRuns: 1 } });
+        const watch = watchAppData(snap, { into, budget: RECOVERY_BUDGET });
         await until(() => !fs.existsSync(recoveryRunDir('ws1', root, 'run-ancient', penv)));
         //  The boot pass and the hourly one: the live run is never touched, an old one is.
         await fakeRun(recoveryRunDir('ws1', root, 'run-ancient-2', penv), Date.now() - 30 * DAY);

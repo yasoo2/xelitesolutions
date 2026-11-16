@@ -502,7 +502,9 @@ export async function measureInteractions(
         if (noWrite) {
             //  Path 3 (W1, W2): a private context with service workers blocked, so every request passes the guard.
             const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
-            guard = await createLiveDataGuard(context, opts.signIn ? { signIn: { identity: String(opts.signIn.identity || ''), password: String(opts.signIn.password || '') } } : {});
+            //  No fence that reads the traffic (none, or an https app): its workers are not created (W11, review 7 B2).
+            const holdWorkers = !opts.browserProxy?.server || !/^http:/i.test(String(url));
+            guard = await createLiveDataGuard(context, { ...(opts.signIn ? { signIn: { identity: String(opts.signIn.identity || ''), password: String(opts.signIn.password || '') } } : {}), ...(holdWorkers ? { holdWorkers } : {}) });
             page = await context.newPage();
         } else {
             page = await browser.newPage({ viewport: { width: 1280, height: 900 } });

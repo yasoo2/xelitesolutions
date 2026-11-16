@@ -156,7 +156,8 @@ export async function agentEngineRoute(
         operate.noteOperate(context?.sessionId, words, following);
         return { kind: 'operate', target: following };
     }
-    // The planner's undo (project_undo) puts back the copy the change kept.
+    // His data copies (project_data_recovery) and the planner's undo (project_undo) put back what Joe kept.
+    if (project && isDataRecoveryRequest(text)) return null;
     if (project && isUndoRequest(text)) return null;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isActionableEditRequest } = require('../../modules/tools/definitions/ProjectEditTool');
@@ -324,6 +325,21 @@ export function chatProjectOrigin(sessionId: unknown): 'built' | 'imported' | un
         const origin = readJoeProjectForRun(previewKey(sid), null)?.origin;
         return origin === 'imported' ? 'imported' : origin === 'built' ? 'built' : undefined;
     } catch { return undefined; }
+}
+
+/**
+ * Does this message ask for a copy of the app's DATA back — the copies Joe kept of his data files before each
+ * put-back of the checks (review 7, B3)? A data word with a bring-back or copy word: «رجّع بيانات تطبيقي»,
+ * «استرجع نسخة البيانات رقم 2», «وين نسخ بياناتي», «restore my data copy», «bring back the records Joe kept».
+ * Not a request to BUILD a backup feature («أضف نسخة احتياطية للبيانات»), and not a long brief.
+ */
+const DATA_WORD = /(?:بيانات|سجلات|سجلّات|\bdata\b|\brecords?\b)/iu;
+const RECOVER_WORD = /(?:رجّع|رجع|ارجع|أرجع|استرجع|استرجاع|استعد|استعادة|أعد|اعد|نسخ|\brecover\w*|\brestore\w*|bring\s+back|\bcop(?:y|ies)\b|\bget\s+back\b)/iu;
+const FEATURE_WORD = /(?:أضف|اضف|ضيف|إضافة|اضافة|أنشئ|انشئ|ابن|ابني|اصنع|صمم|طور|برمج|ميزة|ميزه|خاصية|خاصيه|زر|\badd\b|\bbuild\b|\bcreate\b|\bmake\b|\bimplement\b|\bfeature\b|\bbutton\b)/iu;
+export function isDataRecoveryRequest(text: string): boolean {
+    const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
+    if (!t || t.length > 300 || startsAfresh(t)) return false;
+    return DATA_WORD.test(t) && RECOVER_WORD.test(t) && !FEATURE_WORD.test(t);
 }
 
 /** Does this message ask to put the project back, or to see its kept versions? */

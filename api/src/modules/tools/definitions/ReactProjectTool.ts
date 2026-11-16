@@ -7443,9 +7443,21 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 projectRoot: proj, serverRoot: bootsPackaged ? apiDir : proj, hasServeUrl: bootsPackaged,
                 ...(bootsPackaged ? { startKind: 'node-entry' } : {}), sessionId,
             });
+            /*
+             * THE OWNER'S DATA ACROSS THIS BUILD'S AUDITS (review 7, H2): on a change run, the verification's net —
+             * the verify lock, a snapshot taken before the packaged server boots, the recovery copy — and what the
+             * audits changed is put back once they are done (the server stopped first, and booted again).
+             */
+            const dataSpan = qaPin.record
+                ? await require('../../../core/quality/owner-data-span').openOwnerDataSpan({
+                    projectRoot: bootsPackaged ? apiDir : proj, pin: qaPin, runId: `react-${String(sessionId || 'run')}`,
+                    workspaceId: String(context?.workspaceId || 'default'), log: term,
+                })
+                : null;
             liveServer = await bootPackagedServer();
             //  Nothing was started: the audits serve dist/ themselves, so the pin is chosen for that.
             if (bootsPackaged && !liveServer) qaPin = await seedLoopQaPin({ projectRoot: proj, hasServeUrl: false, sessionId });
+            dataSpan?.restrict(qaPin);
             const qaStreamTo = String(context?.browserSessionId || '').trim();
             const qaOptions = {
                 projectRoot: proj, qaPin,
@@ -8174,6 +8186,22 @@ Use the actual definitions above. Do not rewrite these files or implement persis
              * preview panel opens it, the delivery message carries its
              * address, and `project_run` adopts it instead of racing it.
              */
+            //  H2: every audit of this build is done — what they changed in his data is put back, the server booted again.
+            if (dataSpan) {
+                try {
+                    const walked = liveServer;
+                    await dataSpan.settle(walked ? {
+                        liveUrl: walked.url,
+                        stop: async () => { walked.stop(); return true; },
+                        start: async () => { liveServer = await bootPackagedServer(); },
+                    } : {});
+                    for (const line of dataSpan.lines(isAr ? 'ar' : 'en')) {
+                        term(`self-QA: told: ${line}`);
+                        if (sessionId) broadcastThinkingDetail(sessionId, line);
+                    }
+                } catch { /* the net never fails the build */ }
+                await dataSpan.close().catch(() => undefined);
+            }
             if (liveServer) {
                 try {
                     const prevPid = Number(prevEntry?.live?.pid || 0);

@@ -38,9 +38,11 @@ export interface QaReason { key: QaReasonKey; detail: string }
  *   'history'   `.joe/history.json` holds a delivered run (or an undone one that had been delivered);
  *   'result'    `.joe/result.json` says delivered;
  *   'delivered' the `.joe/delivered` marker written at the outermost delivery (never pruned);
- *   'imported'  the chat's project origin is an imported repository (the loop owner passes it).
+ *   'imported'  the chat's project origin is an imported repository (the loop owner passes it);
+ *   'data'      none of these, but the run CHANGES a folder that already exists (`resumed`) and it holds data
+ *               files with records in them: an app delivered before the marker existed (review 7, M4).
  */
-export type QaRecord = '' | 'history' | 'result' | 'delivered' | 'imported';
+export type QaRecord = '' | 'history' | 'result' | 'delivered' | 'imported' | 'data';
 
 /** The choice for one folder: the path, why, the record it stood on, and what reading the folder cost. */
 export interface QaPathChoice {
@@ -83,7 +85,7 @@ export const NODE_SERVER_KINDS: ReadonlySet<string> = new Set(['npm-start', 'nod
  * missing, unreadable, failed, cancelled, `.joe/transcript.jsonl`, `.joe/delivery/*.jpg`, `.joe-versions/` — is ''.
  * Synchronous and cheap; read once per loop into `QaPin.record`.
  */
-export function hasDeliveryRecord(projectRoot: string, opts: { origin?: 'built' | 'imported' } = {}): QaRecord {
+export function hasDeliveryRecord(projectRoot: string, opts: { origin?: 'built' | 'imported'; resumed?: boolean } = {}): QaRecord {
     const joe = path.join(projectRoot, '.joe');
     try {
         const h = JSON.parse(fs.readFileSync(path.join(joe, 'history.json'), 'utf8'));
@@ -96,7 +98,46 @@ export function hasDeliveryRecord(projectRoot: string, opts: { origin?: 'built' 
     } catch { /* no result */ }
     try { if (fs.statSync(path.join(joe, 'delivered')).isFile()) return 'delivered'; } catch { /* no marker */ }
     if (opts.origin === 'imported') return 'imported';
+    if (opts.resumed && hasOwnerData(projectRoot)) return 'data';
     return '';
+}
+
+/** A data file holds records when it is more than an empty list, object or nothing. */
+const EMPTY_RECORDS = /^\s*(?:\[\s*\]|\{\s*\}|null)?\s*$/u;
+
+/**
+ * Review 7, M4: whether an existing folder holds data files with records in them (the snapshot's own list,
+ * `isData`): a database file of any size, or a records file that is not empty. A bounded, synchronous look
+ * (depth 4, 400 entries); links are never followed.
+ */
+export function hasOwnerData(projectRoot: string): boolean {
+    let seen = 0;
+    const walk = (dir: string, rel: string, depth: number): boolean => {
+        if (depth > 4 || seen > 400) return false;
+        let es: fs.Dirent[];
+        try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+        for (const e of es) {
+            if (++seen > 400) return false;
+            if (e.isSymbolicLink()) continue;
+            const r = rel ? `${rel}/${e.name}` : e.name;
+            const abs = path.join(dir, e.name);
+            if (e.isDirectory()) {
+                if (NOT_DATA_DIRS.has(e.name.toLowerCase()) || e.name === '.joe-versions' || e.name === '.joe-qa') continue;
+                if (walk(abs, r, depth + 1)) return true;
+                continue;
+            }
+            if (!e.isFile() || !isData(r)) continue;
+            try {
+                const st = fs.statSync(abs);
+                if (!st.size) continue;
+                if (/\.(?:db|sqlite|sqlite3|db3)$/iu.test(e.name)) return true;
+                if (st.size > 64 * 1024) return true;
+                if (!EMPTY_RECORDS.test(fs.readFileSync(abs, 'utf8'))) return true;
+            } catch { /* gone */ }
+        }
+        return false;
+    };
+    return walk(path.resolve(projectRoot), '', 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,6 +202,79 @@ const OTHER_RUNTIME_SERVER = /\.(?:py|php|rb|go|cs|java)$|^(?:requirements[\w.-]
 const ENV_FILE_REF = /--env-file(?:-if-exists)?[= ]['"]?([^\s'"]+)|loadEnvFile\s*\(\s*['"`]([^'"`]+)|dotenv[\w.]*\.config\s*\(\s*\{[^}]*\bpath\s*:\s*[^'"`]*['"`]([^'"`]+)|env-cmd\s+(?:-f\s+)?([^\s]+)/g;
 const WRITE_CALL = /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|DatabaseSync|Database|open|openSync)\s*\(([^;\n]{0,240})/g;
 const WRITES = /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|rename|renameSync|copyFile|copyFileSync|DatabaseSync|Database|Datastore|open|openSync)\s*\(\s*([\w$.]+)/g;
+
+/** The write calls whose target T4b reads: `[call, which argument is the file]`. */
+const TARGET_CALLS: ReadonlyArray<[RegExp, number]> = [
+    [/\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|outputFile|outputFileSync|outputJson|outputJsonSync|writeJson|writeJsonSync)\s*\(/g, 0],
+    [/\b(?:rename|renameSync|copyFile|copyFileSync|move|moveSync)\s*\(/g, 1],
+    [/\bnew\s+(?:JSONFile|JSONFileSync|TextFile|TextFileSync|DataFile|DataFileSync|FileSync|FileAsync|DatabaseSync|Database)\s*\(/g, 0],
+];
+/** Names a file expression may hold that are no part of its name. */
+const NAME_FREE = new Set(['path', 'fs', 'fsp', 'promises', 'join', 'resolve', 'dirname', 'basename', 'normalize', '__dirname', '__filename', 'process', 'cwd',
+    'import', 'meta', 'fileURLToPath', 'URL', 'new', 'require', 'JSON', 'String', 'posix', 'win32', 'sep', 'true', 'false', 'null', 'undefined', 'await']);
+
+/** One call's arguments, split at its top-level commas (strings and brackets kept whole). */
+function callArgs(text: string, open: number): string[] {
+    const args: string[] = [];
+    let depth = 0, cur = '', quote = '';
+    for (let i = open; i < text.length && i < open + 600; i++) {
+        const ch = text[i];
+        if (quote) { cur += ch; if (ch === '\\') { cur += text[++i] || ''; continue; } if (ch === quote) quote = ''; continue; }
+        if (ch === '"' || ch === '\'' || ch === '`') { quote = ch; cur += ch; continue; }
+        if (ch === '(' || ch === '[' || ch === '{') { depth++; cur += ch; continue; }
+        if (ch === ')' || ch === ']' || ch === '}') { if (depth === 0) { args.push(cur.trim()); return args; } depth--; cur += ch; continue; }
+        if (ch === ',' && depth === 0) { args.push(cur.trim()); cur = ''; continue; }
+        cur += ch;
+    }
+    args.push(cur.trim());
+    return args;
+}
+
+/**
+ * What one file expression names, read through the file's own constants (three deep): the string parts in order,
+ * or `unresolved` when a part comes from something the file does not define (a parameter, an import, the env).
+ */
+function fileNameOf(expr: string, text: string, depth = 0): { parts: string[]; unresolved: boolean } {
+    const parts: string[] = [];
+    let unresolved = false;
+    const push = (literal: string) => { for (const p of literal.split('/')) if (p && p !== '.') parts.push(p); };
+    const follow = (inner: string) => { const sub = fileNameOf(inner, text, depth + 1); parts.push(...sub.parts); unresolved = unresolved || sub.unresolved; };
+    if (/\bprocess\.env\b|\bimport\.meta\.env\b/u.test(expr)) unresolved = true;
+    //  In source order: a template literal (its text, then each ${…}), a quoted string, a name (or a member read).
+    const TOKEN = /`((?:\\[\s\S]|[^`\\])*)`|(['"])((?:\\.|(?!\2)[^\\])*)\2|([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)/gu;
+    for (const m of expr.matchAll(TOKEN)) {
+        if (m[1] !== undefined) {
+            m[1].split(/\$\{([^}]*)\}/u).forEach((piece, i) => (i % 2 === 0 ? push(piece) : follow(piece)));
+            continue;
+        }
+        if (m[3] !== undefined) { push(m[3]); continue; }
+        const chain = String(m[4] || '').split('.').map(x => x.trim());
+        const name = chain[0];
+        if (NAME_FREE.has(name)) continue;
+        //  `cfg.file`, `this.path`: a member read is not this file's to name.
+        if (chain.length > 1 || depth >= 3) { unresolved = true; continue; }
+        const def = new RegExp(`\\b(?:const|let|var)\\s+${name.replace(/\$/gu, '\\$')}\\s*=\\s*([^;\\n]+)`, 'u').exec(text);
+        if (!def) { unresolved = true; continue; }
+        follow(def[1]);
+    }
+    return { parts: parts.filter(p => p !== '..'), unresolved };
+}
+
+/** T4b: every file a server file's write calls name, read as far as the file itself names it. */
+function writeTargets(text: string): Array<{ expr: string; parts: string[]; unresolved: boolean }> {
+    const out: Array<{ expr: string; parts: string[]; unresolved: boolean }> = [];
+    for (const [re, which] of TARGET_CALLS) {
+        for (const m of text.matchAll(re)) {
+            const args = callArgs(text, (m.index || 0) + m[0].length);
+            const expr = String(args[which] || '').trim();
+            //  An in-memory database, or a handle (a file descriptor, a stream) and not a name: nothing to read.
+            if (!expr || /^['"`]:memory:['"`]$/u.test(expr) || /^\d+$/u.test(expr)) continue;
+            out.push({ expr, ...fileNameOf(expr, text) });
+            if (out.length >= 200) return out;
+        }
+    }
+    return out;
+}
 
 interface Collect { reasons: QaReason[]; no(key: QaReasonKey, detail: string): void }
 function collector(): Collect {
@@ -277,6 +391,15 @@ async function prove2T(root: string, budgetMs: number): Promise<{ ok: boolean; r
                 const rel = lits.join('/');
                 if (!isData(rel)) c.no('notCovered', `a data file the server writes and the snapshot does not keep: ${r}: ${rel}`);
             }
+        }
+        //  T4b (review 7, M1): every file a write call names must be one the snapshot keeps — its name read through
+        //  the file's own constants (`const FILE = DIR + '/orders.json'`, `new JSONFile('orders.json')`); a name
+        //  Joe cannot read to the end (a parameter, an import, an env value) is not proven, so no 2T.
+        for (const t of writeTargets(text)) {
+            if (t.unresolved) { c.no('notCovered', `a file the server writes whose name Joe cannot read to the end: ${r}: ${t.expr.slice(0, 60)}`); continue; }
+            const rel = t.parts.join('/').replace(/\/{2,}/gu, '/').replace(/^\.?\//u, '');
+            if (!rel || /\.log$/iu.test(rel)) continue;
+            if (!isData(rel) && !rel.split('/').some(seg => DATA_DIR.test(seg))) c.no('notCovered', `a file the server writes that the snapshot does not keep: ${r}: ${rel}`);
         }
         if (STORE_URL.test(text)) c.no('externalStore', `a database address in ${r}`);
         const hm = text.match(HOME_CODE);

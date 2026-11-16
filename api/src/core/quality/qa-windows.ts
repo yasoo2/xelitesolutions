@@ -43,7 +43,7 @@ export function createQaWindows(now: () => number = Date.now): QaWindows {
         },
         add(w: QaWindow) {
             if (!w || !Number.isFinite(w.start)) return;
-            kept.push({ start: w.start, end: Number.isFinite(w.end) ? w.end : w.start, long: !!w.long, what: String(w.what ?? '') });
+            kept.push({ start: w.start, end: Number.isFinite(w.end) ? w.end : w.start, long: !!w.long, what: String(w.what ?? ''), ...(w.writes === false ? { writes: false } : {}) });
         },
         list: () => kept.map(w => ({ ...w })),
     };

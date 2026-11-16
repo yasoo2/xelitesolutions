@@ -26,6 +26,13 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
 import { isArabicReply } from '../../../shared/reply-language';
 import { refuses, refusingScore } from '../../../core/engine/browser-mend';
+import type { OwnerDataSpan } from '../../../core/quality/owner-data-span';
+
+/** What the repair holds of the owner's data across its run (review 7, H2), closed however it ends. */
+interface RepairDataHeld {
+    span?: OwnerDataSpan;
+    hooks?: () => { stop?: () => Promise<boolean>; start?: () => Promise<unknown>; liveUrl?: string };
+}
 
 export async function recoverPackagedQaAuth(packagedDir: string): Promise<any | null> {
     const dbFile = path.join(packagedDir, 'db.js');
@@ -91,7 +98,35 @@ export class ProjectRepairTool extends BaseTool {
     auditFields = ['projectDir'];
     mockSupported = false;
 
+    /**
+     * THE OWNER'S DATA ACROSS THE REPAIR (review 7, H2): on a change run the repair's audits get the verification's
+     * net — the verify lock, a snapshot before its first audit, the recovery copy, and what they changed put back
+     * at the end (the revived server stopped first and started again). Run inside a pipeline, the pipeline's own
+     * net covers it (`joeOwnerDataSpan`).
+     */
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
+        const held: RepairDataHeld = {};
+        let result: ToolExecutionResult | undefined;
+        try {
+            result = await this.repair(input, context, held);
+            return result;
+        } finally {
+            const span = held.span;
+            if (span) {
+                try {
+                    await span.settle(held.hooks?.() || {});
+                    const isAr = isArabicReply({ language: context?.language, text: String(input?.request || input?.prompt || input?.text || '') });
+                    const told = span.lines(isAr ? 'ar' : 'en');
+                    const out: any = result && (result as any).output;
+                    if (told.length && out && typeof out === 'object') out.message = [String(out.message || ''), ...told].filter(Boolean).join('\n');
+                    if (told.length && result) ((result as any).logs || []).push(...told.map(l => `repair: told: ${l}`));
+                } catch { /* the net never fails the repair */ }
+                await span.close().catch(() => undefined);
+            }
+        }
+    }
+
+    private async repair(input: any, context: any, held: RepairDataHeld): Promise<ToolExecutionResult> {
         const logs: string[] = [];
         const sessionId = context?.sessionId || input?.sessionId;
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -172,6 +207,26 @@ export class ProjectRepairTool extends BaseTool {
             projectRoot: dir, serverRoot: qaServerRoot, hasServeUrl: !!serveUrl || reviving,
             ...(qaStartKind ? { startKind: qaStartKind } : {}), sessionId,
         });
+        /*
+         * H2: the owner's ALREADY-RUNNING live server (his recorded live address, not one this repair or a pipeline
+         * started) is never walked with writes on: Joe cannot stop it to put his data back. Path 3 there.
+         */
+        const walksOwnersLiveServer = !!serveUrl && !reviving && projectEntry?.live?.url === serveUrl && !givenServerRoot;
+        const { strictest } = require('../../../core/quality/qa-target');
+        if (walksOwnersLiveServer && qaPin.record) {
+            qaPin.path = strictest(qaPin.path, 'no-write');
+            term('repair: the owner\'s own live server is walked without saving anything (no-write)');
+        }
+        //  The verification's net, unless a pipeline that called this repair holds its own (H2).
+        if (!context?.joeOwnerDataSpan && qaPin.record) {
+            const { openOwnerDataSpan } = require('../../../core/quality/owner-data-span');
+            held.span = await openOwnerDataSpan({
+                projectRoot: reviving ? packagedDir : qaServerRoot, pin: qaPin, runId: `repair-${sessionKey}`,
+                workspaceId: String(context?.workspaceId || 'default'), log: term,
+            });
+            //  His own running server: nothing of Joe's to stop, so nothing is written under it — told if it changed.
+            if (walksOwnersLiveServer) held.hooks = () => ({ stop: async () => false });
+        }
         if (reviving) {
             const port = 4600 + Math.floor(Math.random() * 300);
             try {
@@ -189,6 +244,21 @@ export class ProjectRepairTool extends BaseTool {
                     serveUrl = candidate;
                     projectEntry.live = { url: candidate, port, pid: child.pid, cwd: packagedDir, at: Date.now() };
                     term(`repair: revived the packaged system at ${candidate} — browser QA includes its real API`);
+                    //  H2: the revived server is this repair's: stopped to put his data back, and started again on its port.
+                    let running: any = child;
+                    held.hooks = () => ({
+                        liveUrl: candidate,
+                        stop: async () => { try { running?.kill(); } catch { /* already gone */ } await running?.done?.catch?.(() => undefined); return true; },
+                        start: async () => {
+                            const again = executionEngine.runArgvStreaming(process.execPath, ['server.js'], {
+                                cwd: packagedDir, env: { PORT: String(port), NODE_NO_WARNINGS: '1' },
+                                onLine: (line: string) => term(`  ${line.slice(0, 160)}`),
+                            });
+                            running = again;
+                            for (let i = 0; i < 30 && !(await this.urlAnswers(candidate)); i++) await new Promise(resolve => setTimeout(resolve, 250));
+                            if (projectEntry.live?.url === candidate) projectEntry.live.pid = again.pid;
+                        },
+                    });
                 } else {
                     try { child.kill(); } catch { /* already stopped */ }
                 }

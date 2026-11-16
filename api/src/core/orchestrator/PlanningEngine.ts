@@ -3507,6 +3507,35 @@ Rules:
             || /(تراجع|استرجع|(ارجع|أرجع|رجّع)[^.\n]{0,20}نسخ|نسخ(ة|ه)\s*(السابق|القديم|رقم)|اعرض\s*النسخ|إصدار\s*سابق|\bundo\b|\brollback\b|\brevert\b|version\s*history)/i.test(probe);
 
         /**
+         * [DATA RECOVERY FAST-PATH] «رجّع بيانات تطبيقي» (review 7, B3). When Joe's checks put the owner's data
+         * files back, every version they saw is kept outside the project, and he is told to ask Joe in the chat for
+         * one. That ask lands here — ahead of the undo, whose «استرجع» it shares — on the session's project:
+         * project_data_recovery lists the copies, or brings back the one he numbered. No menu, no button.
+         */
+        {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { isDataRecoveryRequest } = require('../engine/select');
+            const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const active = ((global as any).joeProjects || {})[sessionKey];
+            if (active?.dir && !longConstructionBrief && isDataRecoveryRequest(userGoal)) {
+                const numbered = String(userGoal).replace(/[٠-٩]/gu, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).match(/(?:رقم|#|number|no\.?)\s*(\d{1,3})\b/iu);
+                return {
+                    id: `data_recovery_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_data_recovery',
+                        description: numbered ? 'إعادة نسخة من بيانات التطبيق احتفظ بها جو' : 'عرض نسخ بيانات التطبيق التي احتفظ بها جو',
+                        tool: 'project_data_recovery',
+                        agent: 'Dev',
+                        input: { projectDir: active.dir, ...(numbered ? { version: numbered[1] } : { list: true }), request: userGoal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'low', riskLevel: numbered ? 'medium' : 'low' },
+                };
+            }
+        }
+
+        /**
          * [UNDO FAST-PATH] «تراجع» on a PROJECT goes to the project's own
          * history, not to the page tool's.
          *
