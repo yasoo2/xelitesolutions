@@ -1,0 +1,2 @@
+# Joe's own assets are copied byte for byte into apps and compared byte for byte by tests: never converted to CRLF on a Windows checkout.
+api/assets/** -text

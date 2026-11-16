@@ -24,6 +24,7 @@ import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
 import { HANDOFF_SCHEME, isExpectedRefusal, sameDocumentUrl } from './behaviour-audit';
+import { causedByStoppedDelete, startWalkWatch, endWalkWatch } from './behaviour-audit';
 import { productProfile, proveJourneys } from './qa-product-profile';
 import { AuditEyes, evalInPage, streamPrivateWalk, type PrivateStream } from './audit-eyes';
 import { chooseQaPath, hasDeliveryRecord, pinnedPath, type QaPath, type QaPathChoice, type QaPin, type QaReason } from './qa-target';
@@ -111,6 +112,18 @@ export interface AppAudit {
     formsPersistenceUnproven?: number;
     qaRecordsDeleted?: number;
     qaRecordsNotDeleted?: number;
+    /**
+     * What the QA did not delete, told to the owner and never refusing (the fourth review of 2026-11-15, S4):
+     * records of his it edited, its own test records it left in his app, the deletes the network stopped
+     * (behaviour-audit guardDeletes), and the lost-looking records a list could not prove lost.
+     */
+    qaRecordsEdited?: number;
+    qaRecordsLeft?: number;
+    qaDeletesBlocked?: number;
+    /** Console and page errors a request the guard stopped made the page write: the QA's, never a finding (the fifth review, S2). */
+    qaDeleteNoiseExcused?: number;
+    formsListUnprovenLoss?: number;
+    qaRecordsTold?: Array<{ form: string; why: string; kind: 'edited' | 'left' }>;
     /** Semantic fields challenged with invalid and valid values. */
     semanticFieldsTested?: number;
     /** Wrong and valid values tried in the fields (qa-field-cases.ts), and those sent with their form. */
@@ -909,18 +922,23 @@ async function openPrivatePage(browser: any, door: QaDoor, opts: AuditBuiltAppOp
     return page;
 }
 
-/** W1: every page of the private context is sent to about:blank before it closes; the stream and the guard go first. */
+/**
+ * W1: every page of the private context is sent to about:blank before it closes; the stream goes first. The guard
+ * comes off only once no page of the owner's app is left: a page still open after it (a heartbeat POST each second,
+ * an unload beacon) would write into his live app — measured: «POST /api/ping» reached him in 12.3 row 5.
+ */
 async function closePrivatePage(door: QaDoor): Promise<void> {
     try { await door.stream?.stop(); } catch { /* the panel gets its loop back on its next ask */ }
-    try { await door.guard?.remove(); } catch { /* the context is going anyway */ }
     const context = door.context;
-    if (!context) return;
+    if (!context) { try { await door.guard?.remove(); } catch { /* no context */ } return; }
     try {
         for (const p of context.pages?.() || []) {
             try { await p.goto('about:blank', { timeout: 3_000 }); } catch { /* a page that will not leave is closed anyway */ }
         }
     } catch { /* no pages */ }
     try { await context.close(); } catch { /* already gone */ }
+    //  Nothing of his app runs any more: the guard's routes go with the context (a no-op once it is closed).
+    try { await door.guard?.remove(); } catch { /* the context is gone */ }
 }
 
 /** Path 3, W5: a link whose text or href deletes is not walked; it is listed «not tried». */
@@ -1178,6 +1196,13 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
+        /*
+         * What a request the QA's own delete guard stopped made the page write (the fifth review of 2026-11-15,
+         * S2): «Could not delete task TypeError: Failed to fetch» is the QA's doing, never the product's — kept
+         * here, told in the report, and never a finding. The page is watched from its first load (startWalkWatch).
+         */
+        const stoppedDeleteNoise: string[] = [];
+        startWalkWatch(page);
         const successfulExternalRequests: Array<{ url: string; status: number; body?: any }> = [];
         const externalResponseReads: Array<Promise<void>> = [];
         let externalRuntimeEvidence: NonNullable<AppAudit['externalApiRuntime']> | null = null;
@@ -1251,8 +1276,13 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
         const heavyImages: string[] = [];
         /** Set only when the address the audit was given refused its own root. */
         let frontDoor: { url: string; status: number; recovered: boolean } | null = null;
-        //  §4.3, W9: an error the fence's refusal or the guard's block caused is told, never charged.
-        const onPageError = (e: any) => (door?.dropped(String(e?.message || e)) ? 0 : pageErrors.push(String(e).slice(0, 120)));
+        //  An error a request the QA's delete guard stopped made the page write is the QA's (counted, told) — and,
+        //  §4.3, W9: one the fence's refusal or the no-write guard's block caused is told, never charged.
+        const onPageError = (e: any) => {
+            if (causedByStoppedDelete(page, String(e))) { if (stoppedDeleteNoise.length < 20) stoppedDeleteNoise.push(String(e).slice(0, 120)); return; }
+            if (door?.dropped(String(e?.message || e))) return;
+            pageErrors.push(String(e).slice(0, 120));
+        };
         page.on('pageerror', onPageError);
         /**
          * A console error must name the RESOURCE, not just the complaint.
@@ -1276,6 +1306,7 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
             // than a second application defect.
             if (weatherConsoleError && (expectedWeatherNetworkFailure || initialWeatherScenario)) return;
             if (expectedExternalNetworkFailure && /(?:ERR_FAILED|Failed to fetch|NetworkError|aborted)/iu.test(String(m.text()) + where)) return;
+            if (causedByStoppedDelete(page, `${String(m.text())} ${consoleLocationUrl}`)) { if (stoppedDeleteNoise.length < 20) stoppedDeleteNoise.push(String(m.text()).slice(0, 120)); return; }
             // Chrome asks every site for /favicon.ico and reports the miss as a
             // console error with the URL only in the location. It was costing a
             // clean build 15 points for a file the browser invented a request for.
@@ -1330,6 +1361,7 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
                 // No live server behind the page → any /api/… it asks for is
                 // its own backend, which is not running. Unverified, not broken.
                 if (!givenUrl && /\/api\//.test(r.url())) unverifiedLiveData.push(r.url().slice(-60));
+                else if (causedByStoppedDelete(page, (() => { try { return new URL(r.url()).pathname; } catch { return r.url(); } })())) { if (stoppedDeleteNoise.length < 20) stoppedDeleteNoise.push(`${r.status()} ${r.url().slice(-60)}`); }
                 else if (!door?.dropped(`${r.status()} ${r.url()}`, r.url())) failedRequests.push(`${r.status()} ${r.url().slice(-60)}`);
             }
             try {
@@ -1792,6 +1824,13 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
             for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'formsPersisted', 'formsPersistenceUnproven', 'qaRecordsDeleted', 'qaRecordsNotDeleted', 'semanticFieldsTested', 'semanticValidationFailures', 'fieldCasesTried', 'fieldCasesSubmitted', 'fieldCasesFailed', 'markupTried', 'formsRevealed', 'intentsJudged', 'intentsMet']) {
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
+            //  …and what the QA left or edited in his app, and the deletes the network stopped: counted and told, never refusing (S4).
+            for (const k of ['qaRecordsEdited', 'qaRecordsLeft', 'qaDeletesBlocked', 'formsListUnprovenLoss']) {
+                behaviourMetrics[k] = Number(behaviourMetrics[k] || 0) + Number(p.metrics[k] || 0);
+            }
+            for (const k of ['qaRecordsEditedEvidence', 'qaRecordsLeftEvidence', 'qaDeletesBlockedEvidence']) {
+                behaviourMetrics[k] = [...(behaviourMetrics[k] || []), ...(p.metrics[k] || []).map((x: any) => ({ ...x, route }))].slice(0, 40);
+            }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
             behaviourMetrics.fieldCaseFailures.push(...(p.metrics.fieldCaseFailures || []).map((x: any) => ({ ...x, route })));
             behaviourMetrics.intentFailures = [...(behaviourMetrics.intentFailures || []), ...(p.metrics.intentFailures || []).map((x: any) => ({ ...x, route }))];
@@ -1999,7 +2038,8 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
                     // Keep the real upstream request, but hold it briefly so a
                     // genuine loading state is observable instead of inferred.
                     await new Promise(resolve => setTimeout(resolve, 350));
-                    await route.continue();
+                    //  fallback, never continue: the QA's own routes (guardDeletes, the no-write guard) still judge it.
+                    await route.fallback();
                 };
                 await page.evaluate(() => {
                     const root = window as any;
@@ -2676,6 +2716,12 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
 
         behaviourMetrics.pressed = allControls.filter(c => c.kind !== 'anchor').length;
         behaviourMetrics.dead = allControls.filter(c => c.kind !== 'anchor' && !c.worked).length;
+        //  The walk is over: the delete guard comes down, and the delayed deletes it stopped since the last form are counted (S7).
+        const lateStops = await endWalkWatch(page).catch(() => [] as Array<{ method: string; at: string }>);
+        if (lateStops.length) {
+            behaviourMetrics.qaDeletesBlocked = Number(behaviourMetrics.qaDeletesBlocked || 0) + lateStops.length;
+            behaviourMetrics.qaDeletesBlockedEvidence = [...(behaviourMetrics.qaDeletesBlockedEvidence || []), ...lateStops.slice(0, 3).map(s => ({ form: '(after a press)', ...s }))].slice(0, 40);
+        }
         const behaviour = judgeBehaviour(allControls, behaviourMetrics, [], allForms);
         /*
          * ⛔ THE JOURNEY OF WHAT WAS BUILT (qa-product-profile.ts).
@@ -2892,6 +2938,15 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
             formsPersistenceUnproven: behaviourMetrics.formsPersistenceUnproven,
             qaRecordsDeleted: behaviourMetrics.qaRecordsDeleted,
             qaRecordsNotDeleted: behaviourMetrics.qaRecordsNotDeleted,
+            qaRecordsEdited: Number(behaviourMetrics.qaRecordsEdited || 0),
+            qaRecordsLeft: Number(behaviourMetrics.qaRecordsLeft || 0),
+            qaDeletesBlocked: Number(behaviourMetrics.qaDeletesBlocked || 0),
+            qaDeleteNoiseExcused: stoppedDeleteNoise.length,
+            formsListUnprovenLoss: Number(behaviourMetrics.formsListUnprovenLoss || 0),
+            qaRecordsTold: [
+                ...(behaviourMetrics.qaRecordsEditedEvidence || []).map((x: any) => ({ form: String(x.form || ''), why: String(x.why || ''), kind: 'edited' as const })),
+                ...(behaviourMetrics.qaRecordsLeftEvidence || []).map((x: any) => ({ form: String(x.form || ''), why: String(x.why || ''), kind: 'left' as const })),
+            ].slice(0, 12),
             semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
             //  The case matrix and the widths, counted for the owner (certificate.ts qaCoverageLine).
             fieldCasesTried: behaviourMetrics.fieldCasesTried,
@@ -3066,11 +3121,43 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
         : (isAr ? 'في متصفّح خاصّ لم تره' : 'in a private browser you could not see');
     if (!a.findings.length) {
         return isAr
-            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${suite}${external}`
-            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${suite}${external}`;
+            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${qaRecordsToldLine(a, isAr)}${suite}${external}`
+            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${qaRecordsToldLine(a, isAr)}${suite}${external}`;
     }
     const lines = a.findings.map(f => `   • ${findingText(f, isAr)}`).join('\n');
+    const told = qaRecordsToldLine(a, isAr);
     return isAr
-        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${suite}${external}`
-        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${suite}${external}`;
+        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${told}${suite}${external}`
+        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${told}${suite}${external}`;
+}
+
+/*
+ * ⛔ WHAT THE QA LEFT OR CHANGED IN HIS APP IS TOLD TO HIM — NEVER A REFUSAL.
+ *
+ * The fourth review of 2026-11-15 (S4): a record the QA edited, or a test record of its own it left
+ * (it could not prove at the network that the record was its own, or the delete was stopped), was said
+ * once in the chat, if the eye was open, and nowhere in the report. Now the report says how many, in
+ * which forms, and why — a line of the summary, never a finding that refuses.
+ */
+export function qaRecordsToldLine(a: Pick<AppAudit, 'qaRecordsEdited' | 'qaRecordsLeft' | 'qaDeletesBlocked' | 'formsListUnprovenLoss' | 'qaRecordsTold' | 'qaDeleteNoiseExcused'>, isAr: boolean): string {
+    const edited = Number(a.qaRecordsEdited || 0), left = Number(a.qaRecordsLeft || 0), blocked = Number(a.qaDeletesBlocked || 0), unproven = Number(a.formsListUnprovenLoss || 0);
+    const noise = Number(a.qaDeleteNoiseExcused || 0);
+    if (!edited && !left && !blocked && !unproven && !noise) return '';
+    const forms = (kind: 'edited' | 'left') => [...new Set((a.qaRecordsTold || []).filter(t => t.kind === kind).map(t => t.form).filter(Boolean))].slice(0, 4);
+    const named = (list: string[]) => list.length ? (isAr ? ` (${list.map(f => `«${f}»`).join('، ')})` : ` (${list.map(f => `"${f}"`).join(', ')})`) : '';
+    const parts: string[] = [];
+    if (isAr) {
+        if (edited) parts.push(`عدّل الفحص ${edited} سجلاً كان موجوداً في تطبيقك${named(forms('edited'))} ولم يحذفه`);
+        if (left) parts.push(`وترك ${left} سجل اختبار أنشأه في تطبيقك دون حذف${named(forms('left'))} — لم يثبت عند الشبكة أنه سجله وحده، فاحذفه بنفسك إن شئت`);
+        if (blocked) parts.push(`وأوقف ${blocked} طلب حذف لم يسمِّ سجلاً أنشأه الفحص`);
+        if (unproven) parts.push(`و${unproven} سجل لم تُظهره القائمة ولم يثبت ضياعه`);
+        if (noise) parts.push(`و${noise} خطأ كتبته الصفحة لأن الفحص أوقف طلب حذف — لم يُحسب على تطبيقك`);
+        return `\nℹ️ للعلم فقط، لا يمنع التسليم: ${parts.join('، ').replace(/^و/, '')}.`;
+    }
+    if (edited) parts.push(`the QA changed ${edited} record(s) that were already in your app${named(forms('edited'))} and did not delete them`);
+    if (left) parts.push(`it left ${left} test record(s) of its own in your app${named(forms('left'))} — it could not prove at the network that they were its own; delete them yourself if you like`);
+    if (blocked) parts.push(`it stopped ${blocked} delete request(s) that named no record it made`);
+    if (unproven) parts.push(`${unproven} record(s) a list did not show were not proven lost`);
+    if (noise) parts.push(`${noise} error(s) the page wrote because the QA stopped a delete request were not counted against your app`);
+    return `\nℹ️ For your information, not a refusal: ${parts.join('; ')}.`;
 }

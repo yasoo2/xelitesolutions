@@ -20,7 +20,7 @@ import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
 import { firstMessage, languageReminder, languageSection, noteInWrongScript, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
-import { pdfBriefAfterWrite, pdfBriefAtStart, type PdfBriefState } from './pdf-brief';
+import { pdfBriefAfterWrite, pdfGiveBrief, pdfRunStart, pdfStartScan, type PdfBriefState } from './pdf-brief';
 import { operatorFirstMessage, operatorSystemPrompt } from './operate';
 import type { FinishArgs } from './finish';
 import type {
@@ -296,50 +296,89 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         ...(req.change ? { change: req.change } : {}),
     };
 
-    const tools = new Map(deps.tools.map(t => [t.name, t] as const));
-    const schemas: ToolSchema[] = deps.tools.map(t => ({
-        type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters },
-    }));
-    const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
-
-    //  Work done before any model call (experience.ts: a request done again from Joe's book).
-    //  Its claim goes through the run's own task_finish: a pass delivers with no model call.
+    //  The Arabic-PDF brief and kit, once per run (pdf-brief.ts): '' for every other request.
+    //  The project's PDFs are remembered first (fs only, no child), before anything of this
+    //  run can write one. The request's scan child is NEVER awaited before the first model
+    //  call (review 3 of r40, finding 8): it starts here, runs beside the work before the
+    //  model and the first model call, and its brief joins the first message only when it
+    //  has already answered — else the result of the first step after it answers.
+    //  The scan returns only its decision; the kit is placed by pdfGiveBrief at the moment
+    //  the brief joins the conversation, never mid-step and never for a run that is ending
+    //  (review 4 of r40, S5).
+    const pdfBrief: PdfBriefState = { given: false };
+    //  Its children stop when the run is cancelled AND when the run ends: a start scan still
+    //  running at the end never places the kit after the delivery. One listener per run.
+    const pdfStop = new AbortController();
+    const stopPdf = () => pdfStop.abort();
+    const endPdf = () => { req.signal.removeEventListener('abort', stopPdf); pdfStop.abort(); };
+    if (req.signal.aborted) stopPdf(); else req.signal.addEventListener('abort', stopPdf, { once: true });
+    const pdfFacts = { runId: req.runId, request: req.request, language: req.language, projectDir: req.projectDir, stateDir, change: req.change, signal: pdfStop.signal };
+    /** The run-start scan: `done` once it answered, `give` its decision, `used` once the loop acted on it. */
+    let pdfStart: { done: boolean; give: boolean; used: boolean; wait: Promise<boolean> } | null = null;
+    //  Every throw from here to the run's own try still stops the scan and its listener
+    //  (review 4 of r40, M5): a run that fails before its first step never gets the kit.
+    let conv: Conversation;
     let preDelivered: string | null = null;
     let preNote = '';
     const lastErrorsBefore: string[] = [];
-    if (deps.before) {
-        try {
-            const pre = await deps.before(ctx, tools);
-            const fin = tools.get('task_finish');
-            if (pre?.finish && fin) {
-                const parsed = fin.parse({ summary: pre.finish });
-                if (parsed.ok) {
-                    const outcome = await fin.run(parsed.value, ctx);
-                    absorbFacts(state, outcome.facts);
-                    if (outcome.facts?.verification?.passed) preDelivered = pre.finish;
-                    else {
-                        const failed = (outcome.facts?.verification?.checks || []).filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
-                        preNote = pre.refused ? pre.refused(failed || firstLine(outcome.output)) : pre.note || '';
-                    }
-                }
-            } else if (pre?.note) preNote = pre.note;
-        } catch (e) {
-            preNote = '';
-            lastErrorsBefore.push(`the work before the model failed: ${message(e)}`);
+    let tools: Map<string, EngineTool>;
+    let schemas: ToolSchema[];
+    try {
+        if (!req.operate) {
+            await pdfRunStart(pdfFacts).catch(() => { /* a later look then reads no project PDF as new */ });
+            const start = { done: false, give: false, used: false, wait: Promise.resolve(false) };
+            start.wait = pdfStartScan(pdfBrief, pdfFacts).catch(() => false).then(g => { start.done = true; start.give = g; return g; });
+            pdfStart = start;
         }
-    }
 
-    const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
-    conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
-    //  The Arabic-PDF brief and kit, once per run (pdf-brief.ts): '' for every other request.
-    const pdfBrief: PdfBriefState = { given: false };
-    const pdfFacts = { runId: req.runId, request: req.request, language: req.language, projectDir: req.projectDir, change: req.change, signal: req.signal, cancelled };
-    const pdfOpening = req.operate ? '' : await pdfBriefAtStart(pdfBrief, pdfFacts).catch(() => '');
-    const opening = req.operate
-        ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
-        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change, pdfOpening || undefined);
-    conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
-    req.emit({ type: 'plan', plan: state.plan });
+        tools = new Map(deps.tools.map(t => [t.name, t] as const));
+        schemas = deps.tools.map(t => ({
+            type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters },
+        }));
+        const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
+
+        //  Work done before any model call (experience.ts: a request done again from Joe's book).
+        //  Its claim goes through the run's own task_finish: a pass delivers with no model call.
+        if (deps.before) {
+            try {
+                const pre = await deps.before(ctx, tools);
+                const fin = tools.get('task_finish');
+                if (pre?.finish && fin) {
+                    const parsed = fin.parse({ summary: pre.finish });
+                    if (parsed.ok) {
+                        const outcome = await fin.run(parsed.value, ctx);
+                        absorbFacts(state, outcome.facts);
+                        if (outcome.facts?.verification?.passed) preDelivered = pre.finish;
+                        else {
+                            const failed = (outcome.facts?.verification?.checks || []).filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
+                            preNote = pre.refused ? pre.refused(failed || firstLine(outcome.output)) : pre.note || '';
+                        }
+                    }
+                } else if (pre?.note) preNote = pre.note;
+            } catch (e) {
+                preNote = '';
+                lastErrorsBefore.push(`the work before the model failed: ${message(e)}`);
+            }
+        }
+
+        conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
+        conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
+        //  The run-start brief, when its scan answered during the work before the model (above):
+        //  the kit is placed now, with it. Not for a run Joe's book already delivered.
+        let pdfOpening = '';
+        if (pdfStart?.done && preDelivered === null && !req.signal.aborted) {
+            pdfStart.used = true;
+            if (pdfStart.give) pdfOpening = await pdfGiveBrief(pdfBrief, pdfFacts).catch(() => '');
+        }
+        const opening = req.operate
+            ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
+            : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change, pdfOpening || undefined);
+        conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
+        req.emit({ type: 'plan', plan: state.plan });
+    } catch (e) {
+        endPdf();
+        throw e;
+    }
 
     const lastErrors: string[] = [...lastErrorsBefore];
     const failures = new Map<string, number>();
@@ -565,11 +604,28 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 const last = results[results.length - 1];
                 last.content = `${last.content}\n\n${languageReminder(req.replyLanguage || req.language)}`;
             }
-            //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
-            if (!ending && !req.operate && results.length && wroteFiles.length && !pdfBrief.given) {
-                const brief = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
-                if (brief) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${brief}`; }
+            //  The run-start scan has answered (or this step wrote a file, and its answer is
+            //  needed first — by now the model has been asked at least once): its brief
+            //  joins this step's last result, once, and the kit is placed now, with it —
+            //  between steps, never for a step that ended the run (review 4 of r40, S5).
+            /*
+             * …and never at the end of a step after which the loop stops (review 5 of r40, M6): the stall's last
+             * warning, the deadline, a cancel — the brief would join a conversation no model call reads, and the
+             * kit would ship without it.
+             */
+            const stopsAfterThisStep = !!ending || req.signal.aborted || now() >= req.deadlineAt
+                || (!progressed && quietSteps + 1 >= STALL_STEPS && warnings >= 2);
+            let pdfLate = '';
+            if (!stopsAfterThisStep && results.length && pdfStart && !pdfStart.used && (pdfStart.done || (wroteFiles.length && !pdfBrief.given))) {
+                const give = await pdfStart.wait;
+                pdfStart.used = true;
+                if (give && !req.signal.aborted) pdfLate = await pdfGiveBrief(pdfBrief, pdfFacts).catch(() => '');
             }
+            //  The builder's own write added a PDF mechanism to a right-to-left app: the brief, once (pdf-brief.ts).
+            if (!stopsAfterThisStep && !req.operate && !pdfLate && results.length && wroteFiles.length && !pdfBrief.given) {
+                pdfLate = await pdfBriefAfterWrite(pdfBrief, pdfFacts, wroteFiles).catch(() => '');
+            }
+            if (pdfLate) { const last = results[results.length - 1]; last.content = `${last.content}\n\n${pdfLate}`; }
             for (const r of results) conv.push(r);
             if (!ending && images.length && deps.model.vision) {
                 //  Images reach a model only inside a user message. Only the
@@ -595,6 +651,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             }
         }
     } finally {
+        endPdf();
         served = deps.processes.list();
         try { await deps.processes.stopAll(); } catch { /* reported by the registry */ }
         if (browser) { try { await (browser as BrowserSession).close(); } catch { /* already closed */ } }

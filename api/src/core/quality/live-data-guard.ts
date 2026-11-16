@@ -13,7 +13,8 @@
  *   W7  sign-in passes only inside `allowing(account, work)`: exactly one non-GET per call, whose body holds both
  *       the identity (≥ 3 characters) and the password (≥ 4), raw, URL-encoded or JSON-escaped; after the first
  *       sign-in, only to that same origin + path;
- *   W9  the errors a block caused are dropped, not charged (`drops`).
+ *   W9  the errors a block caused are dropped, not charged (`drops`) — a socket whose frame was dropped, for as
+ *       long as it stays open and 3 s after it closes, for the errors that name it or speak of its answer.
  *
  * The guard starts no process and stores nothing; `remove()` takes its routes off the context.
  */
@@ -81,6 +82,15 @@ const NETWORK_TEXT = /Failed to fetch|NetworkError|Load failed|ERR_[A-Z_]+|net::
 const BLOCK_TEXT = /ERR_BLOCKED_BY_CLIENT|ERR_TUNNEL_CONNECTION_FAILED|x-joe-fence/i;
 /** How long after an abort the page's messages are its consequence. */
 export const GUARD_DROP_WINDOW_MS = 1500;
+/**
+ * W9 for a socket: a page that sent a frame the guard dropped waits for an answer that never comes, and says so
+ * when ITS timer runs out (seconds later: «live updates: the server did not answer the subscription», 3 s after the
+ * dropped subscribe — the 1,500 ms window missed it). Its errors stay the block's while that socket is open and
+ * for this long after it closes.
+ */
+export const GUARD_SOCKET_TAIL_MS = 3000;
+/** An error that speaks of a live socket, its subscription or its missing answer: a dropped socket's own (W9). */
+const SOCKET_TEXT = /web\s?socket|\bsocket\b|\bwss?:\/\/|subscri(?:be|bed|ption)|live[ -]?updates?|real[ -]?time|did(?: not|n't) (?:answer|reply|respond)|no (?:answer|reply|response) from|disconnect|الاتصال المباشر|التحديثات? المباشرة|الاشتراك|لم يرد الخادم|لم يستجب الخادم/i;
 /** A static file, judged by its query only (a stylesheet named reset.css is not a GET that writes). */
 const STATIC_FILE = /\.(?:css|js|mjs|map|woff2?|ttf|otf|eot|png|jpe?g|gif|svg|webp|avif|ico)$/i;
 
@@ -154,9 +164,11 @@ export interface LiveDataGuard {
      * W9: whether a console message, page error or failed request is the block's doing: `'blocked-text'` it names a
      * block (`ERR_BLOCKED_BY_CLIENT`, the fence's refusal); `'aborted-url'` its URL was aborted; `'action-window'`
      * within 1,500 ms after an aborted action request; `'background-network'` a network-shaped message within
-     * 1,500 ms after an aborted background request. `''`: charge it.
+     * 1,500 ms after an aborted background request; `'socket-window'` while a socket whose frame was dropped is
+     * open (and 3 s after it closes), a message that names that socket or speaks of a socket, its subscription
+     * or its missing answer. `''`: charge it.
      */
-    drops(text: string, url?: string): '' | 'blocked-text' | 'aborted-url' | 'action-window' | 'background-network';
+    drops(text: string, url?: string): '' | 'blocked-text' | 'aborted-url' | 'action-window' | 'background-network' | 'socket-window';
     /** W7: runs `work` with one sign-in request allowed. */
     allowing<T>(account: SignInAccount, work: () => Promise<T>): Promise<T>;
     /** The origin + path the first sign-in went to ('' before it). */
@@ -194,6 +206,8 @@ export async function createLiveDataGuard(context: BrowserContext, opts: { signI
     let passedThisCall = false;
     let signInUrl = '';
     let removed = false;
+    /** The page's sockets the guard saw (W3): their address, whether a frame of theirs was dropped, when they closed. */
+    const sockets: Array<{ url: string; dropped: boolean; closedAt: number }> = [];
 
     const record = (method: string, url: string, kind: GuardAbort['kind']) => {
         const key = `${method} ${originPath(url)}`;
@@ -233,14 +247,35 @@ export async function createLiveDataGuard(context: BrowserContext, opts: { signI
     await context.routeWebSocket(/.*/, (ws: WebSocketRoute) => {
         const server = ws.connectToServer();
         if (removed) return;
+        const socket = { url: String(ws.url() || ''), dropped: false, closedAt: Infinity };
+        if (sockets.length < 500) sockets.push(socket);
+        /*
+         * When it closes, from either side (W9's socket tail). A close handler turns off Playwright's own forwarding
+         * of the close to the other side, so each side's close is passed on here, as Playwright would.
+         */
+        const shut = (side: { close: (o?: { code?: number; reason?: string }) => Promise<void> }, code?: number, reason?: string) => {
+            if (socket.closedAt === Infinity) socket.closedAt = now();
+            Promise.resolve().then(() => side.close({ code, reason })).catch(() => Promise.resolve().then(() => side.close()).catch(() => undefined));
+        };
+        try { ws.onClose((code, reason) => shut(server, code, reason)); } catch { /* no close events: the socket stays «open» for W9 */ }
+        try { server.onClose((code, reason) => shut(ws, code, reason)); } catch { /* the same */ }
         ws.onMessage(message => {
             if (removed) { server.send(message); return; }
             const text = typeof message === 'string' ? message : Buffer.from(message).toString('utf8');
             //  A sign-in sent over the socket is the call's one allowance, like a sign-in POST.
             if (allow && !passedThisCall && holdsBoth(text)) { passedThisCall = true; server.send(message); return; }
+            socket.dropped = true;
             record('WS', ws.url(), 'ws');
         });
     });
+    /** Whether a message names a socket: its full address, or its host and path. */
+    const namesSocket = (t: string, url: string | undefined, socketUrl: string) => {
+        if (!socketUrl) return false;
+        if (url && url === socketUrl) return true;
+        let short = '';
+        try { const u = new URL(socketUrl); short = `${u.host}${u.pathname}`; } catch { short = ''; }
+        return t.includes(socketUrl) || (!!short && short.length > 1 && t.includes(short));
+    };
 
     const g: LiveDataGuard = {
         aborted: () => aborts,
@@ -255,6 +290,9 @@ export async function createLiveDataGuard(context: BrowserContext, opts: { signI
             if (url && g.wasAborted(url)) return 'aborted-url';
             if (at - lastActionAt < GUARD_DROP_WINDOW_MS) return 'action-window';
             if (at - lastBackgroundAt < GUARD_DROP_WINDOW_MS && NETWORK_TEXT.test(t)) return 'background-network';
+            //  A dropped socket's own error, while it is open and 3 s after it closes — only one that is about it.
+            const held = sockets.filter(x => x.dropped && at - x.closedAt < GUARD_SOCKET_TAIL_MS);
+            if (held.length && (SOCKET_TEXT.test(t) || held.some(x => namesSocket(t, url, x.url)))) return 'socket-window';
             return '';
         },
         async allowing<T>(account: SignInAccount, work: () => Promise<T>): Promise<T> {

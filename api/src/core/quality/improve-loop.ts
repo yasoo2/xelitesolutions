@@ -61,6 +61,45 @@ export interface Measurement {
      * the `skipped` branch, and the first measurement stands — told with `notComparable`.
      */
     notComparable?: NotComparable;
+    /**
+     * The TOLD finding ids the walk saw (they never open, feed or score a round), and the
+     * status of the walk's inspection ('complete', 'partial: …', 'failed: …'). With both,
+     * a round that brings an inspector's told kind the page did not have is put back —
+     * browser-mend's mendIsBetter rule, and only when both inspections are complete
+     * (review 3 of r40, 11). A measurement without them is judged as before.
+     */
+    told?: string[];
+    inspection?: string;
+}
+
+/**
+ * The inspector's told kinds a round brought: in `after`, not in `before`, and only when
+ * both walks were inspected completely (a partial walk's absence proves nothing). The
+ * kinds are browser-mend's INSPECTOR_TOLD, the set mendIsBetter vetoes on.
+ */
+export function toldKindsBrought(before: Measurement, after: Measurement): string[] {
+    if (before?.inspection !== 'complete' || after?.inspection !== 'complete') return [];
+    let inspector: ReadonlySet<string> = new Set();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    try { inspector = require('../engine/browser-mend').INSPECTOR_TOLD || new Set(); } catch { /* no inspector, nothing vetoed */ }
+    const had = new Set((before.told || []).map(String));
+    return uniqIds((after.told || []).map(String).filter(id => inspector.has(id) && !had.has(id)));
+}
+const uniqIds = (a: string[]) => a.filter((v, i) => a.indexOf(v) === i);
+
+/**
+ * A loop measurement with the walk's told ids and inspection status, read from the
+ * audit it came from (its `uiInspection`, else the status app-audit.ts marks on its
+ * findings list): what a caller hands the loop so the veto above can be read.
+ */
+export function withToldKinds<T extends Measurement>(m: T, audit: { findings?: Array<{ id?: unknown }>; uiInspection?: string } | null | undefined): T {
+    let mend: any = {};
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    try { mend = require('../engine/browser-mend'); } catch { return m; }
+    const all = Array.isArray(audit?.findings) ? audit!.findings! : [];
+    const told = all.filter((f: any) => typeof mend.refuses === 'function' && !mend.refuses(f)).map((f: any) => String(f?.id || '')).filter(Boolean);
+    const status = typeof audit?.uiInspection === 'string' ? audit.uiInspection : (all as any)[mend.INSPECTION_STATUS];
+    return { ...m, told, ...(typeof status === 'string' ? { inspection: status } : {}) };
 }
 
 export interface ImproveRound {
@@ -256,7 +295,11 @@ export async function improveUntilItStops(
         const after = await opts.measure().catch(() => ({ score: -1, findingIds: [], skipped: true } as Measurement));
         const fewerFindings = uniq(after.findingIds).length < uniq(current.findingIds).length;
         const measuredGain = after.score > current.score || (after.score === current.score && fewerFindings);
-        if (after.skipped || !measuredGain) {
+        //  A CSS round that fixes small_targets but makes a table spill off the phone is no gain:
+        //  the refusing score hides the told lines, so the inspector's kinds it brought veto it
+        //  (mendIsBetter's rule, both inspections complete — review 3 of r40, 11).
+        const brought = after.skipped ? [] : toldKindsBrought(current, after);
+        if (after.skipped || !measuredGain || brought.length) {
             const undone = snapshotId ? await opts.rollback(snapshotId).catch(() => false) : false;
             const rollbackState: ImproveRound['rollback'] = snapshotId === '' ? 'none' : undone ? 'done' : 'failed';
             const rollbackMessage = rollbackState === 'none'
@@ -277,7 +320,9 @@ export async function improveUntilItStops(
                 ? `improve: round ${round} — ${notComparableLine(opts.language, notComparable.from, notComparable.to)} — ${rollbackMessage}, stopping at ${current.score}/100`
                 : after.skipped
                 ? `improve: round ${round} could not be measured — ${rollbackMessage}, stopping at ${current.score}/100`
-                : `improve: round ${round} measured ${current.score} → ${after.score} — no gain, ${rollbackMessage}, stopping`);
+                : brought.length
+                    ? `improve: round ${round} measured ${current.score} → ${after.score} but the page now shows what it did not before: ${brought.join(', ')} — ${rollbackMessage}, stopping`
+                    : `improve: round ${round} measured ${current.score} → ${after.score} — no gain, ${rollbackMessage}, stopping`);
             break;
         }
 
@@ -320,6 +365,8 @@ const normaliseMeasurement = (value: unknown, fallback: Measurement): Measuremen
             : normaliseStrings(fallback.findingIds),
         findings,
         ...(source.skipped === true ? { skipped: true } : {}),
+        ...(Array.isArray(source.told) ? { told: normaliseStrings(source.told) } : {}),
+        ...(typeof source.inspection === 'string' ? { inspection: source.inspection } : {}),
     };
 };
 

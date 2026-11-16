@@ -13,8 +13,8 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { listProjectFiles } from '../../shared/utils/project-tree';
-import { findJoeAsset } from './outside-scan';
+import { listProjectFiles, mapBounded } from '../../shared/utils/project-tree';
+import { callCancel, findJoeAsset } from './outside-scan';
 
 export interface PdfJob { pdf: string; marker?: string; number?: string; fontFiles: string[] | null; readMs?: number; appLang?: string }
 export interface ProofLimits { memMB: number; jobMs: number; readMs: number; pageOps: number; pageGlyphs: number; depth: number; fileBytes: number }
@@ -106,6 +106,7 @@ export async function provePdfs(jobs: PdfJob[], opts: {
     if (!jobs.length) return [];
     const got = new Map<number, PdfProof>();
     let dir = '';
+    const stop = callCancel(opts.signal, opts.signal ? undefined : opts.cancelled);
     try {
         const script = opts.script || findJoeAsset(path.join('pdf-proof', 'prove.mjs'));
         const nodeModules = proofNodeModules();
@@ -124,7 +125,7 @@ export async function provePdfs(jobs: PdfJob[], opts: {
             const firstAtStart = first;
             const handle = executionEngine.runArgvStreaming(process.execPath, ['--max-old-space-size=384', script, jobFile], {
                 cwd: dir, timeout: Math.max(1000, opts.deadlineAt - Date.now()), env: { NODE_OPTIONS: '', NODE_NO_WARNINGS: '1' },
-                ...(opts.cancelled ? { cancel: opts.cancelled } : {}),
+                ...(stop.cancel ? { cancel: stop.cancel } : {}),
             });
             children++;
             const done: { ok: boolean; exitCode: number | null; error?: string } = await handle.done;
@@ -159,6 +160,7 @@ export async function provePdfs(jobs: PdfJob[], opts: {
         }
     } catch { /* every job without a line is said so below */ }
     finally {
+        stop.done();
         if (dir) await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => { /* best effort */ });
     }
     return jobs.map((_, i) => got.get(i) || nothing(i, 'no time left', 'budget'));
@@ -173,7 +175,10 @@ const isFontBytes = (b: Buffer) => {
     const s = b.toString('latin1', 0, 4);
     return s === 'wOF2' || s === 'wOFF' || s === 'OTTO' || s === 'true' || b.readUInt32BE(0) === 0x00010000;
 };
-const smallEnough = (file: string) => { try { const st = fs.statSync(file); return st.isFile() && st.size <= FONT_FILE_MAX_BYTES; } catch { return false; } };
+/** A font candidate's size, read asynchronously: Joe's thread serves every other user meanwhile (review 3 of r40, finding 7). */
+const smallEnough = async (file: string): Promise<boolean> => {
+    try { const st = await fs.promises.stat(file); return st.isFile() && st.size <= FONT_FILE_MAX_BYTES; } catch { return false; }
+};
 
 /**
  * Every data: URI font in a text, of any media type and quoting, decoded and kept when
@@ -218,31 +223,58 @@ export function fontsInDataUris(text: string, max = 40): Buffer[] {
     return out;
 }
 
-/** Fonts the app takes from its dependencies (≤ 4 a package, two levels) and a Next.js build's own copies. */
-export function dependencyFontFiles(root: string, max = 40): string[] {
+/** A dependency folder's entries read for fonts, at most: a package of thousands of files is sampled, never walked whole. */
+export const DEPENDENCY_FONT_ENTRIES = 400;
+/** The whole dependency search ends by this: what was found by then is the answer. */
+export const DEPENDENCY_FONT_MS = 5_000;
+
+/**
+ * Fonts the app takes from its dependencies (≤ 4 a package, two levels) and a Next.js
+ * build's own copies.
+ *
+ * ASYNCHRONOUS, BOUNDED (review 3 of r40, finding 7). The first version walked every
+ * dependency's folder with readdirSync/statSync: 1.7 s cold, 0.4–0.9 s warm on api/'s
+ * 77 dependencies, all of it on Joe's thread, so every Arabic PDF delivery stalled
+ * every other user's run. Now every read is fs.promises (the thread is handed back at
+ * each one), a few packages are read at a time, each package's walk stops after
+ * DEPENDENCY_FONT_ENTRIES entries, and the search ends at DEPENDENCY_FONT_MS.
+ */
+export async function dependencyFontFiles(root: string, max = 40, opts: { deadlineMs?: number; signal?: AbortSignal } = {}): Promise<string[]> {
     const out: string[] = [];
+    if (max <= 0) return out;
+    const endAt = Date.now() + Math.max(0, opts.deadlineMs ?? DEPENDENCY_FONT_MS);
+    const over = () => Date.now() > endAt || !!opts.signal?.aborted;
     let pkg: any = {};
-    try { pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')); } catch { /* none */ }
+    try { pkg = JSON.parse(await fs.promises.readFile(path.join(root, 'package.json'), 'utf8')); } catch { /* none */ }
     const deps = Object.keys({ ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) });
-    const walk = (dir: string, depth: number, found: string[]) => {
+    const walk = async (dir: string, depth: number, found: string[], seen: { n: number }) => {
+        if (over() || found.length >= 12 || seen.n >= DEPENDENCY_FONT_ENTRIES) return;
         let es: fs.Dirent[] = [];
-        try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        try { es = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
         for (const e of es) {
-            if (found.length >= 12) return;
+            if (found.length >= 12 || ++seen.n > DEPENDENCY_FONT_ENTRIES || over()) return;
             const p = path.join(dir, e.name);
-            if (e.isDirectory()) { if (depth < 2 && e.name !== 'node_modules') walk(p, depth + 1, found); }
-            else if (FONT_FILE.test(e.name) && smallEnough(p)) found.push(p);
+            if (e.isDirectory()) { if (depth < 2 && e.name !== 'node_modules') await walk(p, depth + 1, found, seen); }
+            else if (FONT_FILE.test(e.name) && await smallEnough(p)) found.push(p);
         }
     };
-    for (const d of deps) {
+    const perPackage = await mapBounded(deps, 4, async d => {
         const found: string[] = [];
-        walk(path.join(root, 'node_modules', d), 0, found);
+        await walk(path.join(root, 'node_modules', d), 0, found, { n: 0 });
         found.sort((a, b) => Number(FONT_NAME_FIRST.test(path.basename(b))) - Number(FONT_NAME_FIRST.test(path.basename(a))));
-        out.push(...found.slice(0, 4));
+        return found.slice(0, 4);
+    });
+    for (const found of perPackage) {
+        out.push(...found);
         if (out.length >= max) break;
     }
     const media = path.join(root, '.next', 'static', 'media');
-    try { for (const f of fs.readdirSync(media)) if (FONT_FILE.test(f) && out.length < max && smallEnough(path.join(media, f))) out.push(path.join(media, f)); } catch { /* no build */ }
+    let names: string[] = [];
+    try { names = await fs.promises.readdir(media); } catch { /* no build */ }
+    for (const f of names.slice(0, DEPENDENCY_FONT_ENTRIES)) {
+        if (out.length >= max || over()) break;
+        if (FONT_FILE.test(f) && await smallEnough(path.join(media, f))) out.push(path.join(media, f));
+    }
     return out.slice(0, max);
 }
 
@@ -261,9 +293,9 @@ export async function projectFontFiles(root: string, jobDir: string, max = 60): 
     for (const rel of files) {
         if (out.length >= max) break;
         const abs = path.join(root, rel);
-        if (FONT_FILE.test(rel) && smallEnough(abs)) out.push(abs);
+        if (FONT_FILE.test(rel) && await smallEnough(abs)) out.push(abs);
     }
-    out.push(...dependencyFontFiles(root, Math.max(0, max - out.length)));
+    out.push(...await dependencyFontFiles(root, Math.max(0, max - out.length)));
     let n = 0;
     for (const rel of files) {
         if (out.length >= max) break;

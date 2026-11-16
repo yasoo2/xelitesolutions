@@ -180,6 +180,47 @@ describe('what the guard tells and drops (W9)', () => {
         expect(guard.notTriedLabels).toEqual(['form: Add customer', 'link: Remove Owner A']);
         expect(LIVE_DATA_NOT_MEASURED).toBe('live_data_not_measured');
     });
+
+    it('holds a dropped socket\'s own errors while it is open and 3 s after it closes — and no other error', async () => {
+        let t = 50_000;
+        let wsHandler: ((ws: any) => void) | null = null;
+        const context: any = {
+            route: async () => undefined,
+            routeWebSocket: async (_: RegExp, h: any) => { wsHandler = h; },
+            unroute: async () => undefined,
+        };
+        const guard = await createLiveDataGuard(context, { now: () => t });
+        //  A page socket: its frames to the server, and both sides' close.
+        const on: { message?: (m: string) => void; pageClose?: (c?: number, r?: string) => void; serverClose?: (c?: number, r?: string) => void } = {};
+        const closed: string[] = [];
+        const server = { send: () => undefined, close: async () => { closed.push('server'); }, onClose: (h: any) => { on.serverClose = h; } };
+        wsHandler!({
+            url: () => 'ws://127.0.0.1:4317/ws',
+            connectToServer: () => server,
+            onMessage: (h: any) => { on.message = h; },
+            onClose: (h: any) => { on.pageClose = h; },
+            close: async () => { closed.push('page'); },
+        });
+        const lateSocketError = 'live updates: the server did not answer the subscription';
+        //  Before a frame of it was dropped, its errors are the page's.
+        expect(guard.drops(lateSocketError)).toBe('');
+        on.message!(JSON.stringify({ type: 'subscribe', topic: 'customers' }));
+        expect(guard.aborted().map(a => a.kind)).toEqual(['ws']);
+        //  3 s on (the 1,500 ms window long gone), the socket still open: its own error is the block's…
+        t += 3000;
+        expect(guard.drops(lateSocketError)).toBe('socket-window');
+        expect(guard.drops('Could not reach ws://127.0.0.1:4317/ws')).toBe('socket-window');
+        //  …and an error that is not about it stays the page's.
+        expect(guard.drops('TypeError: Cannot read properties of null (reading \'textContent\')')).toBe('');
+        //  The page closes it: the close reaches the server, and its errors are held 3 s more.
+        on.pageClose!(1000, 'done');
+        await new Promise(r => setImmediate(r));
+        expect(closed).toEqual(['server']);
+        t += 2900;
+        expect(guard.drops(lateSocketError)).toBe('socket-window');
+        t += 200;
+        expect(guard.drops(lateSocketError)).toBe('');
+    });
 });
 
 describe('the delete words (W5, W8)', () => {

@@ -72,18 +72,51 @@ const NOTES = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title
   });
 </script></body></html>`;
 
-const notesApi = (notes: any[], keeps: boolean): Handler => (req, body, res) => {
+/*
+ * The third review of 2026-11-15 (findings 3, 4): an empty list proves a loss only when the id the POST
+ * answered, asked, is 404 — or, with no id, when the page read that list non-empty before. This server
+ * answers its 201 with the note's id and knows no note it did not keep.
+ */
+const notesApi = (notes: any[], keeps: boolean, answersId = true): Handler => (req, body, res) => {
+    //  A note asked by its id: answered when kept, the app's own JSON 404 when not.
+    const one = String(req.url).match(/^\/api\/notes\/(\d+)$/);
+    if (one) { const n = notes.find(x => String(x.id) === one[1]); return n ? json(res, n) : json(res, { error: 'not found' }, 404); }
+    if (String(req.url).startsWith('/api/notes/')) return json(res, { error: 'not found' }, 404);
     if (req.url !== '/api/notes') return false;
-    if (req.method === 'POST') { if (keeps) notes.push({ title: String(JSON.parse(body || '{}').title || '') }); return json(res, { ok: true }, 201); }
+    if (req.method === 'POST') {
+        const note = { id: notes.length + 1, title: String(JSON.parse(body || '{}').title || '') };
+        if (keeps) notes.push(note);
+        return json(res, answersId ? note : { ok: true }, 201);
+    }
     return json(res, notes);
 };
 
-test('a 201 whose collection, asked again, is an empty list is lost (the review, finding 1)', async () => {
-    const notes: any[] = [];
+/*
+ * The fourth review of 2026-11-15 (S2): a by-id 404 proves the loss only when the same route answers a
+ * record its list holds — an app with no such route, or one hiding what it holds, proves nothing. So the
+ * list here holds the owner's note, the route answers it, and says «not found» of the QA's own.
+ */
+test('a 201 whose collection, asked again, holds another note and not this one — its id 404 from the route that answers the other — is lost (the review, finding 1)', async () => {
+    const notes: any[] = [{ id: 1, title: 'Seed note' }];
     const { codes, findings } = await walk(NOTES, notesApi(notes, false));
-    expect(notes.length).toBe(0);
+    expect(notes.length).toBe(1);
     expect(codes).toContain('form_persistence_unproven');
-    expect(findings.find(f => f.code === 'form_persistence_unproven')!.en).toMatch(/the collection it was written to returned an empty list/);
+    expect(findings.find(f => f.code === 'form_persistence_unproven')!.en).toMatch(/returned other records under the same field and not this one/);
+});
+
+test('…but the same 201 on an empty list, whose by-id route can answer no record at all, is not measured (the fourth review, S2)', async () => {
+    const notes: any[] = [];
+    const { codes } = await walk(NOTES, notesApi(notes, false));
+    expect(notes.length).toBe(0);
+    expect(codes).not.toContain('form_persistence_unproven');
+});
+
+test('…but a 201 that names no id, on a list that showed this visitor nothing before, is not measured: the list may be another visitor\'s (the third review, finding 4)', async () => {
+    const notes: any[] = [];
+    const { codes, result } = await walk(NOTES, notesApi(notes, false, false));
+    expect(notes.length).toBe(0);
+    expect(codes).not.toContain('form_persistence_unproven');
+    expect(Number(result.metrics.formsPersistenceUnmeasured || 0)).toBeGreaterThanOrEqual(1);
 });
 
 test('…and the same server keeping it is proven kept', async () => {
@@ -124,9 +157,10 @@ const redirectApi = (bookings: any[], keeps: boolean): Handler => (req, body, re
 };
 
 test('a POST answered 303 that keeps nothing is asked of its collection, and lost (finding 1)', async () => {
-    const bookings: any[] = [];
+    //  The list showed this visitor a booking before the submit: it would show his (the third review, finding 4).
+    const bookings: any[] = [{ name: 'Seed guest' }];
     const { codes } = await walk(REDIRECTED, redirectApi(bookings, false));
-    expect(bookings.length).toBe(0);
+    expect(bookings.length).toBe(1);
     expect(codes).toContain('form_persistence_unproven');
 });
 
@@ -148,7 +182,9 @@ const CHOICES = `<!doctype html><html lang="en"><head><meta charset="utf-8"><tit
   <button>Book</button>
 </form>
 <p id="msg" role="status"></p>
+<h2>Bookings</h2><ul id="booked"></ul>
 <script>
+  fetch('/api/bookings').then(function (r) { return r.json(); }).then(function (list) { document.getElementById('booked').innerHTML = list.map(function (b) { return '<li>' + b.service + ' at ' + b.slot + '</li>'; }).join(''); });
   document.getElementById('f').addEventListener('submit', function (e) {
     e.preventDefault();
     var form = this, msg = document.getElementById('msg');
@@ -164,10 +200,11 @@ const choicesApi = (bookings: any[], keeps: boolean): Handler => (req, body, res
     return json(res, bookings);
 };
 
-test('a form of choices whose 201 never shows and whose collection is empty is lost — never silently «not measured» (finding 1)', async () => {
-    const bookings: any[] = [];
+test('a form of choices whose 201 never shows and whose collection lacks it is lost — never silently «not measured» (finding 1)', async () => {
+    //  The list the page read showed a booking before the submit (the third review, finding 4).
+    const bookings: any[] = [{ service: 'colour', slot: '15:00' }];
     const { codes, findings } = await walk(CHOICES, choicesApi(bookings, false));
-    expect(bookings.length).toBe(0);
+    expect(bookings.length).toBe(1);
     expect(codes).toContain('form_persistence_unproven');
     //  No text of the QA's to name: told as no new record, never as «what the QA typed ("")».
     expect(findings.find(f => f.code === 'form_persistence_unproven')!.en).not.toMatch(/\(""\)/);
@@ -230,11 +267,15 @@ function reviews(listsAll: boolean): string {
 }
 
 const reviewsApi = (all: any[], keeps: boolean, listsAll: boolean): Handler => (req, body, res) => {
+    //  A review asked by its id: answered when it is shown, 404 when not kept or held (the third review, finding 3).
+    const one = String(req.url).match(/^\/api\/reviews\/(\d+)$/);
+    if (one) { const r = all.find(x => String(x.id) === one[1]); return r && (listsAll || r.status === 'approved') ? json(res, r) : json(res, { error: 'not found' }, 404); }
     if (req.url !== '/api/reviews') return false;
     if (req.method === 'POST') {
         const r = { id: all.length + 1, ...JSON.parse(body || '{}'), status: 'pending' };
         if (keeps) all.push(r);
-        return json(res, { id: r.id, status: 'pending' }, 201);
+        //  A site that lists every review answers the new one's id alone; a moderated one says it is pending.
+        return json(res, listsAll ? { id: r.id } : { id: r.id, status: 'pending' }, 201);
     }
     return json(res, listsAll ? all : all.filter(r => r.status === 'approved'));
 };
@@ -247,11 +288,13 @@ test('a review kept as pending, on a site that lists only approved reviews, is n
     expect(codes).toContain('form_persistence_unmeasured');
 });
 
-test('…and a server that lists every review and kept none of the QA\'s is still refused', async () => {
+test('…and a server that lists every review and kept none of the QA\'s: a review\'s by-id 404 proves nothing (the fifth review, S5) — not measured, told', async () => {
     const all = [{ id: 1, name: 'Sara', text: 'Lovely stay', status: 'approved' }, { id: 2, name: 'Omar', text: 'Quiet room', status: 'pending' }];
     const { codes } = await walk(reviews(true), reviewsApi(all, false, true));
     expect(all.length).toBe(2);
-    expect(codes).toContain('form_persistence_unproven');
+    //  A moderated site answers its held reviews' by-id 404 while the approved ones answer 200: the same proof proves no loss.
+    expect(codes).not.toContain('form_persistence_unproven');
+    expect(codes).toContain('form_persistence_unmeasured');
 });
 
 test('a 404 the QA\'s own question got (the record a POST named, asked by its id) is never the product\'s failed request (the replay of P189)', () => {

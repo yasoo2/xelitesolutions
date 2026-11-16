@@ -74,23 +74,121 @@ export function writeTrigger(text: string, relPath: string): boolean {
 }
 
 /**
- * Whether a request could be one asksPdf says yes to — a superset by plain
- * substrings (no regex), so a request with none of them never pays a scan child.
- * Every word asksPdf reads as a PDF or a print word holds one of these.
+ * Whether a request could be one asksPdf says yes to — a superset of the rules'
+ * words, matched as WORDS on Joe's main thread, by loops over the letters (no
+ * regex), so a request with none of them never pays a scan child.
+ *
+ * WHOLE WORDS (review 3 of r40, finding 8). The first gate held bare substrings:
+ * «طب» is inside «تطبيق», «دي» inside «جديد», "cop" inside "scope" and "copy", so
+ * almost every Arabic request and many English ones started a scan child. Now each
+ * hint is the rules' own word with the rules' own edges:
+ *   • "pdf"/"pdfs" with no Latin letter or digit on either side (PDF_TOKEN);
+ *   • «بي دي اف» / «پي دي اف» with at most whitespace between the parts (PDF_TOKEN);
+ *   • "print" / "reprint" with PRINT_WORD's endings and Latin edges ("printer",
+ *     "blueprint", "fingerprint" are not one);
+ *   • an Arabic, Persian or Urdu word that is — after one of و ف ب ل — a print stem of
+ *     PRINT_WORD (اطبع، يطبع، طباعه، مطبوع، طبع، انطبع، چاپ، پرنٹ …) with only PRINT_WORD's
+ *     endings after it («طبعاً», "of course", is not one);
+ *   • "copy"/"copies" after "hard", "paper" or "printed", and «نسخه ورقيه» (PAPER_COPY).
+ * The test runs every sentence of the rules' tables that asksPdf asks for through it.
  */
-const ASKS_PDF_HINTS = ['pdf', 'print', 'طب', 'دي', 'ڈي', 'چاپ', 'پرنٹ', 'ورقي', 'paper', 'cop'];
-export function mayAskPdf(request: string): boolean {
-    //  The rules' own folding (foldAr), by a loop over the letters: marks, tatweel and joiners out, ى/ی → ي, ک → ك.
+const PRINT_STEMS = ['اطبع', 'يطبع', 'تطبع', 'نطبع', 'بطبع', 'طباعه', 'للطباعه', 'بالطباعه', 'مطبوع', 'مطبوعه', 'مطبوعات', 'طبع', 'للطبع', 'ينطبع', 'تنطبع', 'تتطبع', 'يتطبع', 'اتطبع', 'انطبع', 'چاپ', 'پرنٹ'];
+const PRINT_PREFIX = 'وفبل';
+/** What PRINT_WORD lets follow a stem inside the word: one of these, then one of PRINT_TAILS. */
+const PRINT_ENDINGS = ['', 'ه', 'ها', 'هم', 'وه', 'وها', 'ي', 'ين', 'وا', 'ون'];
+const PRINT_TAILS = ['', 'لي', 'لك', 'لنا', 'له', 'لها'];
+const printRest = (rest: string) => PRINT_ENDINGS.some(e => PRINT_TAILS.some(t => e + t === rest));
+/** What PRINT_WORD lets follow "print" in Latin letters. */
+const PRINT_LATIN_ENDINGS = ['', 'able', 'ing', 'ed', 's', 'out', 'outs'];
+const ARABIC_PDF = ['بيدياف', 'پيدياف', 'پيديايف', 'پيڈياف', 'پيڈيايف'];
+const isLatinLetter = (c: string | undefined) => !!c && c >= 'a' && c <= 'z';
+const isLatinOrDigit = (c: string | undefined) => !!c && ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'));
+const isWordChar = (c: string) => /\p{L}|\p{N}|\p{M}/u.test(c);
+const SPACE = ' \t\n\r\u00a0\u2000\u2001\u2002\u2003\u2009\u200a\u202f\u3000';
+const PAPER_WORDS = ['hard', 'paper', 'printed'];
+
+/** The rules' foldAr, by a loop over the letters: marks, tatweel and joiners out; أ إ آ → ا, ى ی → ي, ک → ك, ة ۀ ہ → ه; lower case. */
+function foldRequest(request: string): string {
     let t = '';
-    for (const c of String(request || '').slice(0, SCAN_REQUEST_CHARS).normalize('NFKC').toLowerCase()) {
+    for (const c of String(request || '').slice(0, SCAN_REQUEST_CHARS).normalize('NFKC')) {
         const n = c.codePointAt(0) || 0;
         if ((n >= 0x064B && n <= 0x065F) || n === 0x0670 || n === 0x0640 || n === 0x200C || n === 0x200D) continue;
-        t += c === 'ى' || c === 'ی' ? 'ي' : c === 'ک' ? 'ك' : c;
+        t += c === 'أ' || c === 'إ' || c === 'آ' ? 'ا' : c === 'ى' || c === 'ی' ? 'ي' : c === 'ک' ? 'ك' : c === 'ة' || c === 'ۀ' || c === 'ہ' ? 'ه' : c;
     }
-    return ASKS_PDF_HINTS.some(h => t.includes(h));
+    return t.toLowerCase();
+}
+
+/** Every place `word` occurs in `t` with no Latin letter (or digit, when `digits`) right before it. */
+function latinAt(t: string, word: string, digits: boolean, after: (end: number) => boolean): boolean {
+    const edge = digits ? isLatinOrDigit : isLatinLetter;
+    for (let i = t.indexOf(word); i >= 0; i = t.indexOf(word, i + 1)) {
+        if (edge(t[i - 1])) continue;
+        if (after(i + word.length)) return true;
+    }
+    return false;
+}
+
+export function mayAskPdf(request: string): boolean {
+    const t = foldRequest(request);
+    //  "pdf" / "pdfs" as a token (an Arabic letter beside it is an edge, as in PDF_TOKEN).
+    if (latinAt(t, 'pdf', true, end => !isLatinOrDigit(t[end]) || (t[end] === 's' && !isLatinOrDigit(t[end + 1])))) return true;
+    //  "print", "reprint", "printable", "printout" … with no Latin letter before it and none
+    //  after its ending ("printer", "blueprint" and "fingerprint" are not print words).
+    for (let i = t.indexOf('print'); i >= 0; i = t.indexOf('print', i + 1)) {
+        const from = t.slice(Math.max(0, i - 2), i) === 're' ? i - 2 : i;
+        if (isLatinLetter(t[from - 1])) continue;
+        let end = i + 5;
+        while (isLatinLetter(t[end])) end++;
+        if (PRINT_LATIN_ENDINGS.includes(t.slice(i + 5, end)) && t[end] !== '(') return true;
+    }
+    //  «بي دي اف» with whitespace squeezed out.
+    let squeezed = '';
+    for (const c of t) if (!SPACE.includes(c)) squeezed += c;
+    if (ARABIC_PDF.some(w => squeezed.includes(w))) return true;
+    //  The words, one by one: the print stems, and the paper-copy pairs.
+    const words: string[] = [];
+    let word = '';
+    for (const c of t) {
+        if (isWordChar(c)) word += c;
+        else { if (word) words.push(word); word = ''; }
+    }
+    if (word) words.push(word);
+    for (let k = 0; k < words.length; k++) {
+        const w = words[k];
+        const bare = PRINT_PREFIX.includes(w[0]) ? w.slice(1) : '';
+        if (PRINT_STEMS.some(stem => (w.startsWith(stem) && printRest(w.slice(stem.length))) || (!!bare && bare.startsWith(stem) && printRest(bare.slice(stem.length))))) return true;
+        if (k === 0) continue;
+        const prev = words[k - 1];
+        if (w.startsWith('ورقيه') && prev.endsWith('نسخه')) return true;
+        if (w.startsWith('cop') && PAPER_WORDS.some(p => prev.endsWith(p))) return true;
+    }
+    return false;
 }
 
 /* ───────────── the call ───────────── */
+
+/**
+ * ONE CANCEL HANDLER PER CALL, REMOVED WHEN THE CALL SETTLES (review 3 of r40, 11).
+ *
+ * The child runner ties a child to a cancel promise with `cancel.then(kill)`. Handing it
+ * the run's own long-lived `cancelled` promise added one closure to it for every scan or
+ * proof child, kept until the run ended. With a signal, the call gets its own promise,
+ * resolved by one 'abort' listener that `done()` removes; the run's promise is never
+ * touched. Only a caller with no signal falls back to its `cancelled` promise.
+ */
+export function callCancel(signal?: AbortSignal, cancelled?: Promise<void>): { cancel?: Promise<void>; done: () => void } {
+    if (!signal) return { ...(cancelled ? { cancel: cancelled } : {}), done: () => { /* nothing was attached */ } };
+    let onAbort: (() => void) | null = null;
+    const own = new Promise<void>(resolve => {
+        if (signal.aborted) { resolve(); return; }
+        onAbort = () => resolve();
+        signal.addEventListener('abort', onAbort, { once: true });
+    });
+    return {
+        cancel: cancelled ? Promise.race([own, cancelled]) : own,
+        done: () => { if (onAbort) signal.removeEventListener('abort', onAbort); onAbort = null; },
+    };
+}
 
 /**
  * One call of the scan child for these items; a line for every item, in order.
@@ -110,6 +208,7 @@ export async function scanText(items: ScanItem[], opts: { deadlineAt: number; si
             ? { kind: 'pages', paths: (it.paths || []).slice(0, 5).map(String), request: String(it.request || '').slice(0, SCAN_REQUEST_CHARS), language: String(it.language || '') }
             : { kind: 'file', path: String(it.path), rel: String(it.rel || '') });
     let dir = '';
+    const stop = callCancel(opts.signal, opts.signal ? undefined : opts.cancelled);
     try {
         dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'joe-scan-'));
         const results = path.join(dir, 'results.jsonl');
@@ -122,7 +221,7 @@ export async function scanText(items: ScanItem[], opts: { deadlineAt: number; si
             await fs.promises.writeFile(jobFile, JSON.stringify({ rules, results, first, items: jobItems, itemMs: opts.itemMs || SCAN_ITEM_MS }));
             const handle = executionEngine.runArgvStreaming(process.execPath, ['--max-old-space-size=256', script, jobFile], {
                 cwd: dir, timeout: Math.max(1000, opts.deadlineAt - Date.now()), env: { NODE_OPTIONS: '', NODE_NO_WARNINGS: '1' },
-                ...(opts.cancelled ? { cancel: opts.cancelled } : {}),
+                ...(stop.cancel ? { cancel: stop.cancel } : {}),
             });
             children++;
             const done: { ok: boolean; exitCode: number | null } = await handle.done;
@@ -147,6 +246,7 @@ export async function scanText(items: ScanItem[], opts: { deadlineAt: number; si
         }
     } catch { /* every item without a line is said so below */ }
     finally {
+        stop.done();
         if (dir) await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => { /* best effort */ });
     }
     return items.map((_, i) => got.get(i) || { i, failed: 'no time left', ms: 0 });

@@ -41,17 +41,25 @@ export function appKitTarget(root: string): string {
 
 /**
  * Place the kit; returns the kit's folder relative to the project ('' when Joe has no
- * kit) and the files written. A file already there with other bytes is left as it is.
+ * kit, or when `signal` aborted) and the files written. A file already there with other
+ * bytes is left as it is.
+ *
+ * A run that ends while the kit is copied gets nothing written after it ends (review 4
+ * of r40, S5): every source is read and every target resolved first, the abort is
+ * checked before each folder made and each file written, and an abort part way takes
+ * back what this call wrote (its own files and the folders it made, nothing else) — as does
+ * a write that fails part way, whose error is then thrown (review 5, M5).
  */
-export async function placeAppKit(root: string): Promise<{ dir: string; written: string[]; kept: string[] }> {
+export async function placeAppKit(root: string, signal?: AbortSignal): Promise<{ dir: string; written: string[]; kept: string[] }> {
+    const none = { dir: '', written: [] as string[], kept: [] as string[] };
     const source = appKitSource();
-    if (!source) return { dir: '', written: [], kept: [] };
+    if (!source || signal?.aborted) return none;
     const dir = appKitTarget(root);
     const plan: Array<{ rel: string; from: string }> = [
         ...KIT_FILES.map(f => ({ rel: `${dir}/${f}`, from: path.join(source.kitDir, f) })),
         ...Object.entries(KIT_FONTS).map(([to, from]) => ({ rel: `${dir}/fonts/${to}`, from: path.join(source.fontsDir, from) })),
     ];
-    const written: string[] = [];
+    const writes: Array<{ rel: string; abs: string; bytes: Buffer }> = [];
     const kept: string[] = [];
     for (const step of plan) {
         const target = await resolveInProject(root, step.rel, 'write');
@@ -62,9 +70,42 @@ export async function placeAppKit(root: string): Promise<{ dir: string; written:
             if (!now || !now.equals(bytes)) kept.push(step.rel);
             continue;
         }
-        await fs.promises.mkdir(path.dirname(target.abs), { recursive: true });
-        await fs.promises.writeFile(target.abs, bytes);
-        written.push(step.rel);
+        writes.push({ rel: step.rel, abs: target.abs, bytes });
     }
+    const written: string[] = [];
+    const wroteAbs: string[] = [];
+    const madeDirs: string[] = [];
+    const takeBack = async () => {
+        for (const f of wroteAbs.reverse()) await fs.promises.rm(f, { force: true }).catch(() => { /* already gone */ });
+        //  Deepest first; a folder that holds anything else is left (rmdir refuses it).
+        for (const d of [...new Set(madeDirs)].sort((a, b) => b.length - a.length)) await fs.promises.rmdir(d).catch(() => { /* not empty, or gone */ });
+        return none;
+    };
+    /*
+     * …and a write that fails part way (EACCES, ENOSPC) takes back what this call wrote too (the fifth review
+     * of 2026-11-15, M5): a half kit with no brief was left in the app, and the error then said nothing.
+     */
+    let writing = '';
+    try {
+        for (const w of writes) {
+            if (signal?.aborted) return takeBack();
+            const parent = path.dirname(w.abs);
+            //  The folders this write makes (mkdir's own answer may carry a long-path prefix on Windows).
+            for (let d = parent; d !== path.dirname(d) && !(await fs.promises.stat(d).then(() => true, () => false)); d = path.dirname(d)) madeDirs.push(d);
+            await fs.promises.mkdir(parent, { recursive: true });
+            if (signal?.aborted) return takeBack();
+            writing = w.abs;
+            await fs.promises.writeFile(w.abs, w.bytes);
+            writing = '';
+            wroteAbs.push(w.abs);
+            written.push(w.rel);
+        }
+    } catch (error) {
+        //  The file cut part way was not there before (planned only then): it goes too.
+        if (writing) wroteAbs.push(writing);
+        await takeBack();
+        throw error;
+    }
+    if (signal?.aborted) return takeBack();
     return { dir, written, kept };
 }

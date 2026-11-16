@@ -35,7 +35,7 @@ import { saysWord, words, normalise } from '../../../core/language/arabic';
 import { foldChars, normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 import { isArabicReply } from '../../../shared/reply-language';
 import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
-import { byNameOrder, isJsonStore, isLockfile, jsonStoresWrittenBy, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
+import { byNameOrder, isJoeAppKit, isJsonStore, isLockfile, jsonStoresWrittenBy, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -786,8 +786,11 @@ const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
  */
 async function listFiles(dir: string): Promise<string[]> {
     return listProjectFiles(dir, {
-        skipDirectory: name => BUILD_OUTPUT_DIRS.has(name),
-        keepFile: (_rel, name) => EDITABLE.test(name),
+        // Joe's print kit (print.css, JOE-KIT.json, its fonts) is Joe's file, not
+        // his source: a wording edit such as «rename Cairo» never rewrites it
+        // (review 3 of r40, finding 6).
+        skipDirectory: (name, rel) => BUILD_OUTPUT_DIRS.has(name) || isJoeAppKit(rel),
+        keepFile: (rel, name) => EDITABLE.test(name) && !isJoeAppKit(rel),
     });
 }
 

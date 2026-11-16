@@ -779,6 +779,16 @@ const PLATFORM_AR = /^(?:منص(?:ة|ه|ات)|سوق|أسواق|اسواق)$/u;
 const STORE_AR = /^(?:متجر|متاجر)$/u;
 const CHANNEL_AR = /^(?:ال)?(?:إلكتروني|الكتروني|إلكترونية|الكترونية|أونلاين|اونلاين|رقمي|رقمية|جديد|جديدة|صغير|صغيرة)$/u;
 const STRUCTURE_AR = /^(?:ال)?(?:متعدد|متعددة|ثنائي|ثنائية)$/u;
+/**
+ * The Arabic twins of PRESENTS_EN and BUILDS_EN (review 3 of r40, 11): «صفحة هبوط لمنصة خصومات»
+ * kept «خصومات» and asked for coupons, while «a landing page for a discount platform» asks
+ * nothing. A platform head that a landing page, a website or a profile is only FOR is the
+ * business, and its kind is its trade; the kind is kept only when the request builds the
+ * platform (a system, an app, a dashboard, a back end). An Arabic adjective follows its
+ * noun, so up to two words may stand between the page and «لـ».
+ */
+const PRESENTS_AR = /(?<![\p{L}\p{M}])(?:صفح(?:ة|ه)(?:\s+(?:هبوط|ويب|تعريفي(?:ة|ه)|رئيسي(?:ة|ه)|ترويجي(?:ة|ه)|واحد(?:ة|ه)))?|موقع(?:\s+(?:تعريفي|ويب|إلكتروني|الكتروني|بسيط))?|لاندنج\s*بيج|لاندينج\s*بيج|بروشور|بورتفوليو|ملف\s+تعريفي)(?:\s+[\p{L}\p{M}ـ]+){0,2}\s*$/u;
+const BUILDS_AR = /(?<![\p{L}\p{M}])(?:و|ب|ل)?(?:ال)?(?:نظام|أنظمة|انظمة|تطبيق|تطبيقات|برنامج|برمجية|منص(?:ة|ه)|سوق|لوح(?:ة|ه)\s+(?:تحكم|إدارة|ادارة)|داشبورد|باك\s*[اإ]ند|خادم|سيرفر|قاعد(?:ة|ه)\s+بيانات|بواب(?:ة|ه)|متجر\s+(?:إلكتروني|الكتروني))(?![\p{L}\p{M}])/u;
 
 /** A business name blanked; on a platform the request builds, only the head and the words that say it is online. */
 function blankBusinessEn(match: string, lead: string, mods: string, head: string, more: string, before: string): string {
@@ -800,6 +810,10 @@ function withoutBusinessNames(raw: string): string {
         const lead = m[1];
         const definite = lead === 'لل' || /ال$/u.test(lead);
         const platform = PLATFORM_AR.test(m[0].slice(lead.length));
+        //  A platform a page only presents is the business: its kind is blanked as a store's is (as the English rule).
+        const clause = source.slice(Math.max(0, m.index! - 200), m.index!).split(/[.!?؟\n;]/).pop() || '';
+        const presentsOnly = (PRESENTS_AR.test(clause) || PRESENTS_EN.test(clause)) && !BUILDS_AR.test(clause) && !BUILDS_EN.test(clause);
+        const platformBuilt = platform && !presentsOnly;
         //  A store's kind is its trade («لمتجر خصومات»), blanked as its name; how the site is built («متعدد البائعين») is kept.
         const store = STORE_AR.test(m[0].slice(lead.length));
         let end = m.index! + m[0].length;
@@ -808,7 +822,7 @@ function withoutBusinessNames(raw: string): string {
             const next = /^(\s+)([\p{L}\p{M}ـ]+)/u.exec(text.slice(end));
             if (!next || (definite ? !/^ال/u.test(next[2]) : AR_NAME_ENDS.test(next[2]))) break;
             if ((platform || store) && STRUCTURE_AR.test(next[2])) break;
-            if (platform && !CHANNEL_AR.test(next[2])) break;
+            if (platformBuilt && !CHANNEL_AR.test(next[2])) break;
             end += next[0].length;
         }
         cuts.push([m.index!, end]);
