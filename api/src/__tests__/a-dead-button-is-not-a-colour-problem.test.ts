@@ -409,7 +409,7 @@ describe('the road is wired into the loop that measures', () => {
     it('⛔ behaviour is offered the model BEFORE colour', () => {
         //  Order is the claim: a critical dead control must not wait behind a
         //  CSS round that provably cannot touch it.
-        const behaviourAt = REACT.indexOf('const behaviourLeft = handlerRepairable(');
+        const behaviourAt = REACT.indexOf('const behaviourLeft = modelRepairable(');
         const cssAt = REACT.indexOf('const got = await askForCss(');
         expect(behaviourAt).toBeGreaterThan(0);
         expect(cssAt).toBeGreaterThan(0);
@@ -472,7 +472,7 @@ describe('a dead control is asked before a colour is', () => {
 
     it('⛔ POSITIVE — a behaviour defect stops the deterministic early return', () => {
         //  The one line that made the road reachable.
-        expect(REPAIR).toContain('const severeFirst = handlerRepairable(lastAudit?.findings || []).length > 0;');
+        expect(REPAIR).toContain('const severeFirst = modelRepairable(lastAudit).behaviour.length > 0;');
         expect(REPAIR).toContain('if (known.changed.length && !severeFirst) return known.changed;');
     });
 

@@ -15,7 +15,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { detectStart } from '../modules/tools/definitions/ProjectRunTool';
+import { adoptionAllowed, detectStart } from '../modules/tools/definitions/ProjectRunTool';
 import { canRetireSupersededLiveServer } from '../modules/tools/definitions/ReactProjectTool';
 
 const RUNTOOL = fs.readFileSync(
@@ -119,8 +119,18 @@ describe('readiness does not adopt a stranger\'s server', () => {
 
     it('an unconfirmed server yields an explicit verification failure, never a dead URL', () => {
         const at = RUNTOOL.indexOf('if (!livePort) {');
-        const block = RUNTOOL.slice(at, at + 2600);
         expect(at).toBeGreaterThan(-1);
+        //  The whole `if (!livePort)` body, not a fixed window: 75e32c750 put a
+        //  verified-static-bundle fallback in front of the failure return, and
+        //  a 2600-character slice no longer reached it.
+        const open = RUNTOOL.indexOf('{', at);
+        let close = open;
+        for (let depth = 0, i = open; i < RUNTOOL.length; i += 1) {
+            if (RUNTOOL[i] === '{') depth += 1;
+            else if (RUNTOOL[i] === '}') { depth -= 1; if (depth === 0) { close = i; break; } }
+        }
+        const block = RUNTOOL.slice(at, close + 1);
+        expect(close).toBeGreaterThan(open);
         expect(block).not.toMatch(/url: `http:\/\/localhost:\$\{port\}\//);
         expect(block).toContain('ok: false');
         expect(block).toContain('verificationFailed: true');
@@ -177,8 +187,12 @@ describe('the system that passed the test is the system he gets', () => {
 describe('an already-running system is adopted, not raced', () => {
     it('project_run probes the remembered address before starting anything', () => {
         expect(RUNTOOL).toContain('const live = activeProj?.live;');
-        expect(RUNTOOL).toMatch(/if \(!input\?\.cwd && !input\?\.command && liveUrl && canAdoptRecordedLive\(live, cwd\) && await answersHttp\(liveUrl\)\)/);
+        //  The input gate is adoptionAllowed() since 3be37291d (see below).
+        expect(RUNTOOL).toMatch(/if \(adoptionAllowed\(input\) && liveUrl && canAdoptRecordedLive\(live, cwd\) && await answersHttp\(liveUrl\)\)/);
         expect(RUNTOOL).toMatch(/adopted: true, kind: 'already-running'/);
+        //  …and before anything is started.
+        expect(RUNTOOL.indexOf('if (adoptionAllowed(input) && liveUrl'))
+            .toBeLessThan(RUNTOOL.indexOf('const managed = ExecutionGateway.startManaged(launcher'));
     });
 
     /**
@@ -186,12 +200,26 @@ describe('an already-running system is adopted, not raced', () => {
      * project — and the remembered address outlives the process that wrote it.
      */
     it('adoption needs a real HTTP answer, not just an open port', () => {
-        expect(RUNTOOL).toMatch(/async function answersHttp\(url: string, timeoutMs = 2500\): Promise<boolean>/);
-        expect(RUNTOOL).toContain('return res.status < 500;');
+        //  The 2500 ms bound is a named export since 3be37291d (delivery probes
+        //  reuse it), and c219da214 asks through http.get instead of fetch.
+        expect(RUNTOOL).toMatch(/export const HTTP_ANSWER_TIMEOUT_MS = 2500;/);
+        expect(RUNTOOL).toMatch(/async function answersHttp\(url: string, timeoutMs = HTTP_ANSWER_TIMEOUT_MS\): Promise<boolean>/);
+        expect(RUNTOOL).toContain('finish(Number(res.statusCode || 0) < 500);');
     });
 
     it('an explicit cwd or command still starts fresh — adoption is the default only', () => {
-        expect(RUNTOOL).toContain('!input?.cwd && !input?.command && liveUrl');
+        //  Asked of the function, not its text. An explicit command, or a
+        //  restart (3be37291d: after a repair the old process holds the old
+        //  code), always starts fresh. An explicit cwd no longer does
+        //  (3917fe1d7): it is the pipeline's own handoff, and adoption still
+        //  needs the recorded server to belong to exactly that cwd
+        //  (canAdoptRecordedLive) — refusing it started a second server.
+        expect(adoptionAllowed({})).toBe(true);
+        expect(adoptionAllowed(undefined)).toBe(true);
+        expect(adoptionAllowed({ command: 'npm start' })).toBe(false);
+        expect(adoptionAllowed({ cwd: '/some/project', command: 'node server.js' })).toBe(false);
+        expect(adoptionAllowed({ restart: true })).toBe(false);
+        expect(adoptionAllowed({ cwd: '/some/project' })).toBe(true);
     });
 });
 

@@ -27,7 +27,9 @@ describe('execution environment isolation', () => {
     it('uses the same sanitizer after all environment merges and in every spawn route', () => {
         expect(engineSource).toContain('function isolatedExecutionEnv');
         expect(engineSource).toContain('/^npm_config_(prefix|cache)$/i');
-        expect(engineSource.match(/env: isolatedExecutionEnv\((?:options|rest)\.env\)/g)?.length).toBeGreaterThanOrEqual(5);
+        //  Each route also hands over its options, which say whether the child is Joe's own
+        //  infrastructure (the-users-code-never-sees-joes-secrets.test.ts).
+        expect(engineSource.match(/env: isolatedExecutionEnv\((?:options|rest)\.env, (?:options|rest)\)/g)?.length).toBeGreaterThanOrEqual(5);
         expect(engineSource).toContain('function terminalSessionEnv');
         expect(engineSource).toContain('env: { ...terminalSessionEnv(options.env, options.sessionId), TERM:');
     });

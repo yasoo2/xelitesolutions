@@ -30,7 +30,7 @@ async function runGitWithEnv(operation: string, args: string[], env: any, cwd: s
     }
     const finalArgs = [op, ...args.map(a => String(a ?? ''))];
     // authenticated network ops on a weak machine need room
-    const res = await executionEngine.runArgv('git', finalArgs, { cwd, env, timeout: 600000 });
+    const res = await executionEngine.runArgv('git', finalArgs, { cwd, env, timeout: 600000, joeInfrastructure: true });
     if (res.ok) return { stdout: res.output || '', stderr: res.error || '' };
     throw new Error(String(res.error || res.output || `git exited with code ${res.exitCode}`).trim() || 'git_failed');
 }

@@ -31,7 +31,7 @@ import { isArabicReply } from '../../shared/reply-language';
 /** Strip the runtime-injected blocks; the gate judges the USER's words only. */
 function userWords(goal: string): string {
     return String(goal || '')
-        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '')
+        .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '')
         .trim();
 }
 

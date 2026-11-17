@@ -1,0 +1,4 @@
+{
+ "truth": "BROKEN: on a phone the bottom tab bar (shown only ≤600px) labels its tabs #c9c9c9 on white — 1.6:1, the words are not there",
+ "targets": []
+}

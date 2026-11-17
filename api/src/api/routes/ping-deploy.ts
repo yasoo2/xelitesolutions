@@ -30,7 +30,9 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
             env: { 
                 ...process.env, 
                 PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/root/.nvm/versions/node/v20/bin'
-            }
+            },
+            //  Joe deploying Joe: the pull, the build and the restart need Joe's own environment.
+            joeInfrastructure: true,
         });
         if (result.success && result.data?.ok !== false) {
             return result.data?.output || '';
@@ -136,7 +138,8 @@ async function performUpdate(targetCommit: string) {
                 cwd: API_PATH,
                 env: { ...process.env, NODE_ENV: 'production' },
                 detached: true,
-                stdio: 'ignore'
+                stdio: 'ignore',
+                joeInfrastructure: true,
             });
         });
 

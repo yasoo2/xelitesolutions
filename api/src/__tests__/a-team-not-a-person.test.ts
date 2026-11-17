@@ -18,7 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import {
     ROLES, ROLE_KEYS, OWNER_COLUMN, roleSpec, canWrite, ownRowsOnly, canManageUsers,
-    isRole, describeRoles, DEFAULT_NEW_ROLE,
+    isRole, describeRoles, DEFAULT_NEW_ROLE, rolesForRequest,
 } from '../core/design/roles';
 import { fileAppStoreJs, fileAccountsJsx, fileAccountsCss, fileTablesAdminJsx, fileAppShellJsx } from '../modules/tools/definitions/react-app-templates';
 import { blueprintFor } from '../core/design/app-blueprints';
@@ -98,8 +98,16 @@ describe('the generated server decides nothing twice', () => {
 
     it('the roles are COMPILED from one definition, not retyped', () => {
         const a = API();
-        expect(a).toMatch(/export const ROLES = \$\{JSON\.stringify\(ROLES\.map/);
-        expect(a).toMatch(/import \{ ROLES, describeRoles \} from '\.\.\/\.\.\/\.\.\/core\/design\/roles';/);
+        //  0e2ff0962: the generated server speaks the role NAMES the request
+        //  used («admin and staff roles»), so auth.js compiles `roles` — the
+        //  list rolesForRequest derives from the one ROLES definition, ROLES
+        //  itself by default. The permission lattice is never retyped.
+        expect(a).toMatch(/function fileAuthJs\(roles: RoleSpec\[\] = ROLES\): string \{/);
+        expect(a).toMatch(/export const ROLES = \$\{JSON\.stringify\(roles\.map/);
+        expect(a).toMatch(/import \{ ROLES, describeRoles, rolesForRequest, type RoleSpec \} from '\.\.\/\.\.\/\.\.\/core\/design\/roles';/);
+        const lattice = (r: any) => ({ key: r.key, write: r.write, ownRowsOnly: r.ownRowsOnly, manageUsers: r.manageUsers });
+        expect(rolesForRequest('a clinic system with admin and staff roles').map(lattice)).toEqual(ROLES.map(lattice));
+        expect(rolesForRequest('a clinic system').map(lattice)).toEqual(ROLES.map(lattice));
     });
 
     it('a viewer is refused once, for every table there is', () => {
@@ -179,8 +187,9 @@ describe('the accounts routes, and the ways they can be abused', () => {
     it('and the build message tells the owner the roles exist at all', () => {
         const src = a();
         expect(src).toContain('👥 فريقك — النظام لم يعد لشخص واحد:');
-        expect(src).toMatch(/\$\{describeRoles\(true\)\}/);
-        expect(src).toMatch(/\$\{describeRoles\(false\)\}/);
+        //  It describes the roles this request was built with (0e2ff0962).
+        expect(src).toMatch(/👥 فريقك — النظام لم يعد لشخص واحد:\n\$\{describeRoles\(true, roleSpecs\)\}/);
+        expect(src).toMatch(/Team — three roles, accounts made from inside the system:\n\$\{describeRoles\(false, roleSpecs\)\}/);
         expect(src).toContain('not_your_row');
     });
 });

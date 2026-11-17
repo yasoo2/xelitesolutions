@@ -32,7 +32,7 @@ export function findAdb(env: NodeJS.ProcessEnv = process.env, exists: (f: string
 const NO_ADB = 'adb (Google\'s Android platform-tools) is not installed on this computer, so Joe cannot reach a phone yet. Tell the owner: install «Android SDK Platform-Tools» from developer.android.com (or let Joe download it with his OK), then turn on USB debugging or Wireless debugging on the phone and allow this computer when the phone asks.';
 
 const gatewayAdb = (adb: string): AdbRunner => async (args, opts) => {
-    const r: any = await ExecutionGateway.execute(adb, args, { timeout: opts?.timeoutMs ?? 30_000, windowsHide: true, shell: false });
+    const r: any = await ExecutionGateway.execute(adb, args, { timeout: opts?.timeoutMs ?? 30_000, windowsHide: true, shell: false, joeInfrastructure: true });
     const data = r?.data || {};
     return {
         code: typeof data.exitCode === 'number' ? data.exitCode : (r?.success ? 0 : null),

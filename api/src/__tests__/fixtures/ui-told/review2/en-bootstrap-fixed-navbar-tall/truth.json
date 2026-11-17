@@ -1,0 +1,4 @@
+{
+ "truth": "BROKEN: the fixed-top navbar (a <nav>, no <header>) stacks 8 links at 390 — ≈47% of the phone screen stays covered while reading; the page has a <header> only inside an article card",
+ "targets": []
+}

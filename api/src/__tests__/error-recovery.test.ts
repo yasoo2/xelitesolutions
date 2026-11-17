@@ -18,10 +18,12 @@ import fs from 'fs';
 import path from 'path';
 import { compactHistoryForPrompt } from '../core/orchestrator/history-compact';
 
-const orchSrc = fs.readFileSync(
-    path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
-const planSrc = fs.readFileSync(
-    path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
+//  Read as the repository stores them (LF): a Windows checkout writes CRLF
+//  into the working tree, and a prompt's «\n\nGoal:» is the same prompt either way.
+const readSource = (...parts: string[]) => fs.readFileSync(
+    path.join(__dirname, '..', ...parts), 'utf-8').replace(/\r\n/g, '\n');
+const orchSrc = readSource('orchestration', 'AgentOrchestrator.ts');
+const planSrc = readSource('core', 'orchestrator', 'PlanningEngine.ts');
 
 describe('1. the recovery goal carries the error text', () => {
     test('attemptRecovery builds the goal from task AND error', () => {
@@ -64,8 +66,7 @@ describe('2. recovery goals bypass every fast-path', () => {
      *  have one text and both prompts carry it; this reads both prompts.
      */
     test('the dynamic planner gets recovery-specific rules: diagnose before retry', () => {
-        const adaptive = fs.readFileSync(
-            path.join(__dirname, '..', 'core', 'orchestrator', 'adaptive-dag-planner.ts'), 'utf-8');
+        const adaptive = readSource('core', 'orchestrator', 'adaptive-dag-planner.ts');
         const { FAILURE_RECOVERY_RULES } = require('../core/orchestrator/adaptive-dag-planner');
         expect(FAILURE_RECOVERY_RULES).toMatch(/FAILURE-RECOVERY plan/);
         expect(FAILURE_RECOVERY_RULES).toMatch(/NEVER just re-run the failed step unchanged/);

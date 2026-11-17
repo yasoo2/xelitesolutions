@@ -49,7 +49,7 @@ function documentationPathFromRequest(request: string): string {
 }
 
 async function git(cwd: string, args: string[], timeout = 120000): Promise<string> {
-    const result = await executionEngine.runArgv('git', args, { cwd, timeout });
+    const result = await executionEngine.runArgv('git', args, { cwd, timeout, joeInfrastructure: true });
     if (!result.ok) throw new Error(String(result.error || result.output || `git_failed:${args[0]}`));
     return String(result.output || result.error || '').trim();
 }
@@ -108,7 +108,7 @@ export class GitLocalWorkflowTool extends BaseTool {
                 return { ok: false, error: 'imported_repository_not_clean', output: { directory: dir, status: startingStatus }, logs } as any;
             }
 
-            const exists = await executionEngine.runArgv('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: dir, timeout: 30000 });
+            const exists = await executionEngine.runArgv('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: dir, timeout: 30000, joeInfrastructure: true });
             if (exists.ok) await git(dir, ['switch', branch]);
             else await git(dir, ['switch', '-c', branch]);
             logs.push(`branch=${branch}`);

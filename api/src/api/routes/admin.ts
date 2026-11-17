@@ -459,7 +459,7 @@ router.post('/system/backup', async (req, res) => {
     try {
         const backupScript = path.join(process.cwd(), 'scripts', 'backup.sh');
         const result = await executionFirewall.runAsSystem(async () => {
-            return await ExecutionGateway.execute('bash', [backupScript], { cwd: process.cwd() });
+            return await ExecutionGateway.execute('bash', [backupScript], { cwd: process.cwd(), joeInfrastructure: true });
         });
         
         if (result.data?.ok) {

@@ -319,7 +319,9 @@ describe('QA evidence persistence: measured URL and geometry', () => {
             children: [{ sel: 'header button', x: 370, y: 30, w: 64, h: 40 }] };
         const header = { sel: 'header', w: 390, h: 180, rows: 3, offscreenControls: 1 };
         const page = {
-            url: jest.fn(async () => 'https://example.test/calculator'),
+            //  Playwright's shape: page.url() is a string. The async mock was the only shape under which
+            //  `.catch` on it worked, which is how a dead inspection stayed green (design v3 §1).
+            url: jest.fn(() => 'https://example.test/calculator'),
             setViewportSize: jest.fn(async (size: { width: number; height: number }) => { viewport = size; }),
             waitForTimeout: jest.fn(async () => {}),
             evaluate: jest.fn(async (fn: Function) => {

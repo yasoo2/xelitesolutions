@@ -49,7 +49,9 @@ describe('a silent fallback is announced where he reads', () => {
         //  The acceptance block is what he actually reads. A notice anywhere
         //  else is a notice for someone reading logs, which is not him.
         expect(REACT).toContain('const standDownNotice = authoringStoodDown');
-        expect(REACT).toMatch(/const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\(acceptance, isAr\)\}/);
+        //  The ledger handed to `acceptanceBlock` may be the gate's verdict
+        //  (76f66a5d3), but the notice still leads the block he reads.
+        expect(REACT).toMatch(/const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\(\s*acceptanceBlocked \? \{ \.\.\.acceptance, accepted: false \} : acceptance, isAr\)\}/);
     });
 
     it('⛔ POSITIVE — in both languages, and it names what to DO', () => {
@@ -78,6 +80,8 @@ describe('a silent fallback is announced where he reads', () => {
         //  This repair is about telling him, not about spending the quota
         //  anyway. The branch still stands down, and still says why.
         expect(REACT).toContain('interface authoring stood down — the model providers are rationing');
-        expect(REACT).toMatch(/if \(!appBp && sections\.length && providersAreRationing\) \{/);
+        //  An external-API build authors no sections at all (46e6d5d1f), so
+        //  it is excluded from both branches alike.
+        expect(REACT).toMatch(/if \(!appBp && !externalIntegration && sections\.length && providersAreRationing\) \{/);
     });
 });

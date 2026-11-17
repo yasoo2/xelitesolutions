@@ -86,8 +86,12 @@ describe('a missing interpreter is a skipped check, never a manufactured failure
         // Repointed: the pipeline now forwards the project root a caller may
         // supply, so the literal call text changed. The guarantee is unchanged —
         // discovery is still the first thing that runs.
+        // Repointed again (3d0b0be64): an explicit «آخر مشروع» continuation may
+        // now discover in the persisted project area, but a path the caller
+        // supplies is still the first choice and is still what discovery reads.
         expect(pipeline).toContain("executeTool('engineering_discovery',");
-        expect(pipeline).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
+        expect(pipeline).toContain('let discoveryPath = projectPath || persistedUserRoot;');
+        expect(pipeline).toContain('discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }');
         // 044: requestFidelityBlocked يشمل hasRequestFidelityEvidenceUnavailable ويُغذّي verificationFailed
         expect(pipeline).toContain('const requestFidelityMismatch = hasRequestFidelityMismatch(pipeline?.results)');
         expect(pipeline).toContain('const requestFidelityEvidenceUnavailable = hasRequestFidelityEvidenceUnavailable(pipeline?.results)');

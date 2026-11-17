@@ -22,11 +22,12 @@
  * answer is «not built», because overstating is the failure being fixed here.
  */
 import { clausesBeyondTheColumns, columnsAnywhereInHisRequest, statedRules } from '../design/app-blueprints';
-import { asksAsWords } from '../design/arabic-words';
+import { asksAsWords, standsAsWords } from '../design/arabic-words';
 import { intentProbe } from '../orchestrator/promptNormalizer';
 import { requestedRecords } from './request-coverage';
 import fs from 'fs';
 import path from 'path';
+import { isJoeAppKitDir } from '../../shared/utils/project-tree';
 
 export interface Capability {
     id: string;
@@ -547,8 +548,17 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'shipping', ar: 'الشحن', en: 'shipping',
-        ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|التوصيل/i,
-        evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
+        /*
+         * Arabic asks as English does: «الشحن» by its own name, or what a delivery SYSTEM does —
+         * its options, addresses, fees, zones, tracking, statuses, management. The eleventh live
+         * check, 2026-11-11 (L182, a flower shop's chatbot «يسمح بحجز أو إلغاء التوصيلات»): the bare
+         * «التوصيل» matched «التوصيلات», deliveries booked as records, and «artifact coverage 0% —
+         * missing: shipping» refused a bot that books and cancels them — its English twin («book or
+         * cancel deliveries») asks for no shipping at all.
+         */
+        ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|(?:خدمة|خدمات|خيارات|عنوان|عناوين|رسوم|تكلفة|تكاليف|مناطق|إدارة|نظام|طرق|طريقة|تتبع|حالة|حالات)\s+(?:الشحن|التوصيل)|توصيل\s+(?:الطلبات|الطرود|المنتجات|الشحنات)|تتبع\s+(?:الشحنة|الشحنات|التوصيل|التوصيلات|الطرود)/i,
+        //  A served shipments or deliveries API is shipping's evidence, as /api/orders is the orders' (P476).
+        evidence: /"key":"shipments"|\/api\/shipping|\/api\/(?:[\w:-]+\/)*(?:shipments?|deliveries)\b|tracking_?number|\bshipment_/i,
         records: ['shipments', 'shipment', 'deliveries'],
     },
     {
@@ -559,7 +569,7 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'loyalty', ar: 'برنامج الولاء', en: 'loyalty program',
-        ask: /\bloyalty\b|\brewards?\b|\bpoints\b|الولاء|نقاط المكافآت/i,
+        ask: /\bloyalty\b|\brewards?\b|\bpoints\b|الولاء|(?:برنامج|برامج|نقاط|بطاقة|بطاقات)\s+ولاء|نقاط المكافآت/i,
         evidence: /\bloyalty\b|reward_?points|\/api\/loyalty/i,
     },
     {
@@ -703,22 +713,200 @@ const SHIPPING_SYSTEM = /\bshipping\s+(?:options?|address(?:es)?|service|managem
 /** The shipping system named by its own name («Shipping», «الشحن»), not deliveries or shipments as records. */
 const SHIPPING_NAMED = /\bshipping\b|(?<!\p{L})(?:ال)?شحن(?!\p{L})/iu;
 
-function capabilityIsRequested(capability: Capability, text: string): boolean {
-    //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
-    if (!asksAsWords(capability.ask, text)) return false;
-    if (capability.id === 'coupons') return !(DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text));
-    //  …but «Shipping» named as a feature is asked for, beside «Analytics» or not (his platform request).
-    if (capability.id === 'shipping') return !(REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text) && !SHIPPING_NAMED.test(text));
-    if (capability.id !== 'accounts') return true;
-    if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return false;
-    return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
+/*
+ * THE BUSINESS IT IS FOR IS NOT A FEATURE TO BUILD.
+ *
+ * The 500-prompt exam on Claude, 2026-11-12/13. «Build a complete full-stack
+ * system for a freelance marketplace: … management of gigs, proposals,
+ * reviews» (P199) and «an interactive single-page report for a freelance
+ * marketplace that loads sample proposals data» (P399) were refused «missing:
+ * multi-vendor marketplace»: the word «marketplace» named WHO the system is
+ * for, and the audit wanted vendor_id in a report of proposals. A capability
+ * is asked for where its word is a thing to build; the business named after
+ * «for a …» or «لـ…» («لـشركة شحن», «لـمتجر عطور») is the client, and the
+ * words of its name ask for nothing.
+ *
+ * The business is told by its head noun: a kind of organisation or venue
+ * (a company, a shop, a marketplace, a clinic, a warehouse …). That is a
+ * closed class of the language, not a list of domains: «an API for a shopping
+ * cart» ends on «cart», which is no organisation, so the cart is still asked.
+ * In Arabic the name is the head after «لـ/ل/لل» and the one word that
+ * completes it («لـشركة شحن», «لـمتجر إلكتروني»); after a definite head only a
+ * definite adjective belongs to it, so «أضف للمتجر سلة تسوق» still asks a cart.
+ */
+const ORG_EN = String.raw`(?:compan(?:y|ies)|business(?:es)?|firms?|agenc(?:y|ies)|shops?|stores?|boutiques?|marketplaces?|markets?|platforms?|startups?|brands?|restaurants?|caf[eé]s?|baker(?:y|ies)|clinics?|hospitals?|pharmac(?:y|ies)|schools?|academ(?:y|ies)|warehouses?|hotels?|gyms?|salons?|garages?|studios?|offices?|cent(?:er|re)s?|chains?|retailers?|wholesalers?|distributors?|carriers?|couriers?|services?|providers?|organi[sz]ations?|charit(?:y|ies)|clubs?|practices?|labs?|laborator(?:y|ies))`;
+const ORG_AR = '(?:(?:شرك|مؤسس|منص|عياد|صيدلي|مدرس|أكاديمي|اكاديمي|مغسل|ورش|وكال|جمعي|منظم|مكتب)(?:ة|ه|ات)|مكتب|متجر|متاجر|محل|محلات|سوق|أسواق|مطعم|مقه[ىي]|مخبز|مستشف[ىي]|مستودع|مخزن|فندق|نادي|صالون|معرض|مركز|مصنع|استوديو)';
+const BUSINESS_AR = new RegExp(`(?<![\\p{L}\\p{M}])(لـ\\s*(?:ال)?|لل|ل)${ORG_AR}(?![\\p{L}\\p{M}])`, 'gu');
+/** Words that end an Arabic business name instead of completing it. */
+const AR_NAME_ENDS = /^(?:و|ف|مع|في|فيه|فيها|على|من|عن|إلى|الى|حيث|به|بها|له|لها|التي|الذي|الذين|يعرض|تعرض|يحتوي|تحتوي|لديه|لديها|ذات|ذو)/u;
+
+/*
+ * ⛔ A PLATFORM'S OWN WORDS ARE WHAT IT IS BUILT WITH.
+ *
+ * The r40 review, 2026-11-15: «an e-commerce website for a multi-vendor
+ * marketplace», «the backend for an analytics platform with charts», «a REST
+ * API for a loyalty rewards platform», «لسوق متعدد البائعين», «لمنصة تحليلات»
+ * were read as the business they are for, and multi-vendor, analytics and
+ * loyalty were never asked: a delivery without them passed. A company, a clinic,
+ * a bakery is WHO it is for, and its trade asks for nothing («an HR app for a
+ * shipping company»). A platform, a marketplace, a store is the very thing
+ * being built: the head noun is blanked, and the words that say what kind of
+ * platform it is (multi-vendor, analytics, loyalty, «متعدد البائعين»,
+ * «تحليلات») are still asked. The words that only say it is online («online»,
+ * «e-commerce», «إلكتروني») restate the venue and ask nothing: «a landing page
+ * for an online store» asks no catalogue. A service or a provider is a
+ * business («an HR app for a shipping service»), never a platform.
+ *
+ * …but a store's or a shop's kind is its trade, and the trade is the business. The
+ * second review of 2026-11-15: «a landing page for a discount store», «لمتجر خصومات»,
+ * «a subscription box shop», «a mobile app store», «a website for a ticket marketplace»
+ * and «a search platform startup» asked coupons, subscriptions, a mobile app, support
+ * and search. The kind is kept only before a platform or a marketplace that the request
+ * builds — never one a landing page or a website is only for, and never one that is the
+ * name of a startup or a company («a search platform startup»). What says how the site
+ * itself is built (multi-vendor, multilingual, «متعدد البائعين») is kept on any head.
+ */
+const PLATFORM_EN = /^(?:platforms?|marketplaces?)$/iu;
+const STORE_EN = /^(?:markets?|stores?|shops?|boutiques?)$/iu;
+const CHANNEL_EN = /^(?:online|e-?commerce|digital|web|internet|virtual|new|own|small|local|little|big|large)$/iu;
+/** The words that say how the site itself is built, kept before any store or platform head. */
+const STRUCTURE_EN = /^(?:multi-?vendors?|multi-?sellers?|multi-?merchants?|multi-?lingual|bilingual|trilingual|multi-?language|multi-?currency|multi-?tenant)$/iu;
+const BUSINESS_EN_PARTS = new RegExp(String.raw`\b(for\s+(?:(?:a|an|the|my|our|his|her|their|your)\s+)?)((?:[\p{L}'’-]+\s+){0,3}?)(${ORG_EN})((?:\s+${ORG_EN})*)\b`, 'giu');
+/** What only presents a business (a landing page, a website for it); a request that builds a system names it. */
+const PRESENTS_EN = /\b(?:landing\s+page|web\s*site|site|home\s*page|web\s*page|page|brochure|portfolio)\s*$/iu;
+const BUILDS_EN = /\b(?:full[- ]?stack|e-?commerce|system|apps?|application|back-?end|api|rest|portal|dashboard|crm|erp|saas|platform|marketplace|server|database)\b/iu;
+const PLATFORM_AR = /^(?:منص(?:ة|ه|ات)|سوق|أسواق|اسواق)$/u;
+const STORE_AR = /^(?:متجر|متاجر)$/u;
+const CHANNEL_AR = /^(?:ال)?(?:إلكتروني|الكتروني|إلكترونية|الكترونية|أونلاين|اونلاين|رقمي|رقمية|جديد|جديدة|صغير|صغيرة)$/u;
+const STRUCTURE_AR = /^(?:ال)?(?:متعدد|متعددة|ثنائي|ثنائية)$/u;
+/**
+ * The Arabic twins of PRESENTS_EN and BUILDS_EN (review 3 of r40, 11): «صفحة هبوط لمنصة خصومات»
+ * kept «خصومات» and asked for coupons, while «a landing page for a discount platform» asks
+ * nothing. A platform head that a landing page, a website or a profile is only FOR is the
+ * business, and its kind is its trade; the kind is kept only when the request builds the
+ * platform (a system, an app, a dashboard, a back end). An Arabic adjective follows its
+ * noun, so up to two words may stand between the page and «لـ».
+ */
+const PRESENTS_AR = /(?<![\p{L}\p{M}])(?:صفح(?:ة|ه)(?:\s+(?:هبوط|ويب|تعريفي(?:ة|ه)|رئيسي(?:ة|ه)|ترويجي(?:ة|ه)|واحد(?:ة|ه)))?|موقع(?:\s+(?:تعريفي|ويب|إلكتروني|الكتروني|بسيط))?|لاندنج\s*بيج|لاندينج\s*بيج|بروشور|بورتفوليو|ملف\s+تعريفي)(?:\s+[\p{L}\p{M}ـ]+){0,2}\s*$/u;
+const BUILDS_AR = /(?<![\p{L}\p{M}])(?:و|ب|ل)?(?:ال)?(?:نظام|أنظمة|انظمة|تطبيق|تطبيقات|برنامج|برمجية|منص(?:ة|ه)|سوق|لوح(?:ة|ه)\s+(?:تحكم|إدارة|ادارة)|داشبورد|باك\s*[اإ]ند|خادم|سيرفر|قاعد(?:ة|ه)\s+بيانات|بواب(?:ة|ه)|متجر\s+(?:إلكتروني|الكتروني))(?![\p{L}\p{M}])/u;
+
+/** A business name blanked; on a platform the request builds, only the head and the words that say it is online. */
+function blankBusinessEn(match: string, lead: string, mods: string, head: string, more: string, before: string): string {
+    //  «a search platform startup»: the head is the last organisation word, and a startup is a business.
+    const last = more ? more.trim().split(/\s+/).pop() || head : head;
+    const clause = before.split(/[.!?؟\n;]/).pop() || '';
+    const builds = PLATFORM_EN.test(last) && !more && !(PRESENTS_EN.test(clause) && !BUILDS_EN.test(clause));
+    if (!builds && !STORE_EN.test(last) && !PLATFORM_EN.test(last)) return ' '.repeat(match.length);
+    const kept = mods.replace(/[\p{L}'’-]+/gu, w => (builds ? !CHANNEL_EN.test(w) : STRUCTURE_EN.test(w)) ? w : ' '.repeat(w.length));
+    return ' '.repeat(lead.length) + kept + ' '.repeat(head.length + more.length);
 }
 
-/** Which capabilities the request actually names. */
+/** The request with the business it is for blanked out: what is left asks for things to build. */
+function withoutBusinessNames(raw: string): string {
+    const source = String(raw || '');
+    const text = source.replace(BUSINESS_EN_PARTS, (m, lead, mods, head, more, at) => blankBusinessEn(m, lead, mods, head, more || '', source.slice(Math.max(0, Number(at) - 200), Number(at))));
+    const cuts: Array<[number, number]> = [];
+    for (const m of text.matchAll(BUSINESS_AR)) {
+        const lead = m[1];
+        const definite = lead === 'لل' || /ال$/u.test(lead);
+        const platform = PLATFORM_AR.test(m[0].slice(lead.length));
+        //  A platform a page only presents is the business: its kind is blanked as a store's is (as the English rule).
+        const clause = source.slice(Math.max(0, m.index! - 200), m.index!).split(/[.!?؟\n;]/).pop() || '';
+        const presentsOnly = (PRESENTS_AR.test(clause) || PRESENTS_EN.test(clause)) && !BUILDS_AR.test(clause) && !BUILDS_EN.test(clause);
+        const platformBuilt = platform && !presentsOnly;
+        //  A store's kind is its trade («لمتجر خصومات»), blanked as its name; how the site is built («متعدد البائعين») is kept.
+        const store = STORE_AR.test(m[0].slice(lead.length));
+        let end = m.index! + m[0].length;
+        //  The word that completes the name: «لـشركة شحن», «للشركة الناشئة»; of a platform, only «إلكتروني».
+        for (let k = 0; k < (definite ? 2 : 1); k++) {
+            const next = /^(\s+)([\p{L}\p{M}ـ]+)/u.exec(text.slice(end));
+            if (!next || (definite ? !/^ال/u.test(next[2]) : AR_NAME_ENDS.test(next[2]))) break;
+            if ((platform || store) && STRUCTURE_AR.test(next[2])) break;
+            if (platformBuilt && !CHANNEL_AR.test(next[2])) break;
+            end += next[0].length;
+        }
+        cuts.push([m.index!, end]);
+    }
+    let out = text;
+    for (const [a, b] of cuts.reverse()) out = out.slice(0, a) + ' '.repeat(b - a) + out.slice(b);
+    return out;
+}
+
+/*
+ * A NOUN HE MANAGES AS RECORDS IS THE RECORDS INSTRUMENT'S, NOT A SYSTEM.
+ *
+ * P476 (2026-11-12): «يسمح للمستخدم بحجز أو إلغاء الشحنات من خلال المحادثة» —
+ * a warehouse's chatbot that books and cancels shipments. «الشحنات» carries
+ * «الشحن», and the bot that served GET and POST /api/shipments was refused
+ * «artifact coverage 0% — missing: shipping» for 72 minutes. L182 met the same
+ * fault with «التوصيلات». Shipments booked or cancelled are records: the word
+ * governed by a verb that books, cancels, edits or deletes rows is measured by
+ * the records instrument (asRecords), never judged here as a shipping system.
+ * Adding is not among the verbs: «أضف سلة تسوق», «add a cart» ask a feature.
+ */
+const RECORD_VERB_EN = /\b(?:book|cancel|edit|delete|remove|update|reschedule|record|log|archive)(?:s|ed|ing|led|ling)?\s+(?:(?:the|their|his|her|my|your|our|its|new|existing|own|upcoming|any)\s+){0,2}$/iu;
+const RECORD_VERB_AR = /(?:^|[\s،,؛(])[وف]?(?:ب|ل|لل)?(?:حجز|إلغاء|الغاء|تعديل|حذف|أرشفة|يحجز|يلغي|تحجز|تلغي|يعدل|يعدّل|يحذف|تحذف|احجز|ألغ[يِ]?|الغ[ي]?)\s+$/u;
+
+function wordBounds(text: string, start: number, end: number): [number, number] {
+    let a = start, b = end;
+    while (a > 0 && /[\p{L}\p{N}\p{M}ـ]/u.test(text[a - 1])) a--;
+    while (b < text.length && /[\p{L}\p{N}\p{M}ـ]/u.test(text[b])) b++;
+    return [a, b];
+}
+
+/** The request with this capability's words that are managed records blanked out, and whether any was. */
+function withoutManagedRecords(capability: Capability, raw: string): { rest: string; managed: boolean } {
+    if (!capability.records?.length || capability.ask.constructor !== RegExp) return { rest: raw, managed: false };
+    const g = new RegExp(capability.ask.source, capability.ask.flags.replace(/[gy]/gu, '') + 'g');
+    const cuts: Array<[number, number]> = [];
+    for (let m = g.exec(raw); m; m = g.exec(raw)) {
+        const start = m.index, end = m.index + m[0].length;
+        if (end === start) { g.lastIndex++; continue; }
+        if (!standsAsWords(raw, start, end)) { g.lastIndex = start + 1; continue; }
+        const [a, b] = wordBounds(raw, start, end);
+        const before = raw.slice(Math.max(0, a - 80), a);
+        if (RECORD_VERB_EN.test(before) || RECORD_VERB_AR.test(before)) cuts.push([a, b]);
+    }
+    let rest = raw;
+    for (const [a, b] of cuts.reverse()) rest = rest.slice(0, a) + ' '.repeat(b - a) + rest.slice(b);
+    return { rest, managed: cuts.length > 0 };
+}
+
+/** A named capability that is not asked for after all: a field, a report's data, a form without its system. */
+function notAskedAfterAll(capability: Capability, text: string): boolean {
+    if (capability.id === 'coupons') return DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text);
+    //  …but «Shipping» named as a feature is asked for, beside «Analytics» or not (his platform request).
+    if (capability.id === 'shipping') return REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text) && !SHIPPING_NAMED.test(text);
+    if (capability.id !== 'accounts') return false;
+    if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return true;
+    return /\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
+}
+
+/**
+ * How the request names a capability: asked for as a thing to build; named as
+ * records it manages (judged by the records instrument); named only as the
+ * business it is for; or not named at all (null).
+ */
+export type CapabilityReading = 'asked' | 'records' | 'business' | null;
+
+export function capabilityReading(capability: Capability, request: string): CapabilityReading {
+    const raw = String(request || '');
+    const text = intentProbe(raw);
+    //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
+    if (!asksAsWords(capability.ask, text)) return null;
+    if (notAskedAfterAll(capability, text)) return null;
+    const { rest, managed } = withoutManagedRecords(capability, withoutBusinessNames(raw));
+    if (asksAsWords(capability.ask, intentProbe(rest))) return 'asked';
+    return managed ? 'records' : 'business';
+}
+
+/** Which capabilities the request actually names — as things to build or as records it manages. */
 export function requestedCapabilities(request: string): Capability[] {
-    const text = intentProbe(String(request || ''));
-    if (!text.trim()) return [];
-    return CAPABILITIES.filter(c => capabilityIsRequested(c, text));
+    if (!String(request || '').trim()) return [];
+    return CAPABILITIES.filter(c => {
+        const reading = capabilityReading(c, request);
+        return reading === 'asked' || reading === 'records';
+    });
 }
 
 const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest|py)$/i;
@@ -771,7 +959,7 @@ export function readProjectSource(dirs: string[], options: ProjectSourceReadOpti
             if (out.length > maxScanBytes) return;
             if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || (e.name === 'public' && (bundled || codeOnly)) || (codeOnly && e.name === 'build')) continue;
             const full = path.join(dir, e.name);
-            if (e.isDirectory()) { visit(full, depth + 1); continue; }
+            if (e.isDirectory()) { if (!isJoeAppKitDir(full)) visit(full, depth + 1); continue; }
             if (!extension.test(e.name) || NOT_EVIDENCE.test(e.name) || VENDORED.test(e.name)) continue;
             const normalized = full.toLowerCase();
             if (normalized.includes('/__tests__/') || normalized.includes('/tests/') || /(?:^|[._-])(test|spec)(?:[._-]|$)/i.test(e.name)) continue;
@@ -918,7 +1106,7 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
             .map(value => foldForCompare(value)),
     );
     const unchecked = clausesBeyondTheColumns(request)
-        .filter(clause => !CAPABILITIES.some(c => capabilityIsRequested(c, intentProbe(clause))))
+        .filter(clause => !CAPABILITIES.some(c => capabilityReading(c, clause) !== null))
         .filter(clause => {
             const c = foldForCompare(clause);
             if (explicitPageNames.has(c)) return false;
@@ -935,7 +1123,7 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
     //  the orders record and passed it. The keyword wanted a cart. A record he
     //  manages is the records instrument's to judge.
     const recordWords = recordWordsOf(request);
-    const asRecords = requested.filter(c => (c.records || []).some(w => recordWords.has(w)));
+    const asRecords = requested.filter(c => (c.records || []).some(w => recordWords.has(w)) || capabilityReading(c, request) === 'records');
     const judged = requested.filter(c => !asRecords.includes(c));
     const src = readProjectSource(projectDirs);
     const ctx: ScopeEvidenceContext = { serviceOnly: !deliveredTreeHasInterface(projectDirs) };

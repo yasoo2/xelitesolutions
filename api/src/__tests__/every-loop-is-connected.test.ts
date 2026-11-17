@@ -113,14 +113,29 @@ describe('renaming the site never needed a model', () => {
     it('it needs BOTH a site word and a name word — «غيّر اسم المنتج» is not this', () => {
         expect(EDIT).toMatch(/const siteWord = \/\(الموقع\|موقعي\|التطبيق/);
         expect(EDIT).toMatch(/const nameWord = /);
-        expect(EDIT).toMatch(/if \(siteWord && nameWord && val && val\.length <= 60/);
+        //  32db36924 added a third condition in front — the verb's own
+        //  object must be the site (brandRenameIntent) — and kept both words.
+        expect(EDIT).toMatch(/if \(brandRenameIntent && siteWord && nameWord && val && val\.length <= 60/);
     });
 
     it('and it only runs when nothing else already handled the request', () => {
         // The row-level editor above owns «غيّر سعر/اسم <صف>»; this path is
         // the rowless case its own comment hands over.
+        //
+        // Since 32db36924 that is no longer decided by an empty `touched`
+        // list — the brand path now composes with colour and section edits in
+        // one request — but by the request itself: brandRenameIntent demands
+        // the site as the object of the verb, so a row rename never reaches
+        // this path. The pattern is taken from the source and asked directly.
         const at = EDIT.indexOf('THE COMMONEST EDIT OF ALL');
-        expect(EDIT.slice(at, at + 1400)).toContain('if (!touched.length) {');
+        const block = EDIT.slice(at, at + 2600);
+        expect(block).toMatch(/if \(brandRenameIntent && /);
+        const src = (block.match(/const brandRenameIntent = \/(.+)\/iu\.test\(request\);/) || [])[1];
+        expect(src).toBeTruthy();
+        const brandRenameIntent = new RegExp(String(src), 'iu');
+        expect(brandRenameIntent.test('غيّر اسم الموقع إلى «دار الرفق»')).toBe(true);
+        expect(brandRenameIntent.test('غيّر اسم المنتج «قهوة» إلى «شاي»')).toBe(false);
+        expect(brandRenameIntent.test('غيّر سعر القهوة إلى ٥')).toBe(false);
     });
 
     it('the brand is rewritten in content.js, through the same syntax gate as every other edit', () => {
@@ -136,7 +151,9 @@ describe('renaming the site never needed a model', () => {
      */
     it('and in the tab title too, so the rename is not half done', () => {
         expect(EDIT).toMatch(/const htmlAbs = path\.join\(dir, 'index\.html'\);/);
-        expect(EDIT).toMatch(/<title>\$\{String\(inner\)\.split\(oldBrand\)\.join\(val\)\}<\/title>/);
+        //  Since 32db36924 the old name is replaced across index.html, not
+        //  only inside <title> — the tab title is still part of what changes.
+        expect(EDIT).toMatch(/const swapped = html\.split\(oldBrand\)\.join\(val\);/);
         // Only when the old name is actually known — never a blind overwrite.
         expect(EDIT).toMatch(/if \(oldBrand && fs\.existsSync\(htmlAbs\)\)/);
     });

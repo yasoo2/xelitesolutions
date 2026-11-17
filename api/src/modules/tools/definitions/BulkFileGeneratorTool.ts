@@ -2,6 +2,7 @@ import { ToolDefinition, ToolExecutionResult } from '../types';
 import fs from 'fs';
 import path from 'path';
 import { workspaceService } from '../../services/WorkspaceService';
+import { isWithinRoot } from '../path-containment';
 
 export const BulkFileGeneratorTool: ToolDefinition = {
     name: 'bulk_file_generator',
@@ -47,10 +48,13 @@ export const BulkFileGeneratorTool: ToolDefinition = {
         const errors: string[] = [];
         const logs: string[] = [];
 
-        // Workspace containment: validate cwd is within workspace boundary
+        // Workspace containment: validate cwd is within workspace boundary.
+        // The one shared reader (path-containment.ts): it resolves and, on
+        // Windows, ignores case — an inline startsWith refused a correctly
+        // placed path whose drive letter or folder differed only in case.
         const workspaceRoot = path.resolve(workspaceService.getActiveRoot(context?.workspaceId) || '');
         const resolvedCwd = path.resolve(cwd);
-        if (!resolvedCwd.startsWith(workspaceRoot + path.sep) && resolvedCwd !== workspaceRoot) {
+        if (!isWithinRoot(resolvedCwd, workspaceRoot)) {
             return {
                 ok: false,
                 error: `cwd '${cwd}' escapes workspace boundary. Must be within workspace root: ${workspaceRoot}`,
@@ -74,7 +78,7 @@ export const BulkFileGeneratorTool: ToolDefinition = {
 
                     // Workspace containment: validate targetPath is within workspace boundary
                     const resolvedTargetPath = path.resolve(targetPath);
-                    if (!resolvedTargetPath.startsWith(workspaceRoot + path.sep) && resolvedTargetPath !== workspaceRoot) {
+                    if (!isWithinRoot(resolvedTargetPath, workspaceRoot)) {
                         errors.push(`Path '${file.path}' escapes workspace boundary`);
                         logs.push(`[BulkGen] SECURITY: Path '${file.path}' rejected - outside workspace boundary`);
                         continue;

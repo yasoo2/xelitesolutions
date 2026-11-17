@@ -51,8 +51,10 @@ import { emptyTestRun, judgeTestRun } from './test-run-evidence';
 import { pythonExecutable } from './python-executable';
 import { isRealScript } from './placeholder-script';
 import { pythonTestCommand } from './python-test-runner';
-import { isMachineStateDirectory } from '../../shared/utils/project-tree';
+import { isJoeAppKitDir, isMachineStateDirectory } from '../../shared/utils/project-tree';
 import { closeOf, loopRoutes, routeTablesIn, topLevelParts, type RouteTable } from './loop-routes';
+import { unverifiedRecordText } from './delivery-verdict';
+import type { QaWindows } from './qa-windows';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -118,7 +120,10 @@ const PER_USER_CAPABILITY = (clause: string) => `per-user record isolation — �
  * teachers and tests») is a table of exams, and «a quiz app that tests kids» is
  * a verb — neither asks for automated tests.
  */
-const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
+//  «with server tests» (L232, 2026-11-11) asks for tests as «with API tests» does: where they run is a qualifier too —
+//  as a noun only: «the server tests each answer», «whose UI tests your speed», «a browser testing dashboard» ask
+//  for none (the fifth review).
+const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\b(?:server|back-?end|front-?end|ui|browser|database|db|http|route)\s+(?:tests|specs?)\b(?!\s+(?:each|every|your|the|a|an|whether|if|how|its|their|his|her|our|my|that|this|them|it|what|which|who)\b)|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
 //  The Arabic twins of «test suite», «the tests fail», «make the suite pass», «CI is red»
 //  (the Codex exam in Arabic, C04, 2026-11-08: «مجموعة الاختبارات في المجلد tests/ تفشل.
 //  اجعل المجموعة كلها تنجح» was read as asking for no tests, so «all tests pass» was judged
@@ -394,7 +399,7 @@ async function sourceFiles(root: string, includePublic: boolean): Promise<string
                 for (const entry of entries) {
                     const full = path.join(dir, entry.name);
                     if (entry.isDirectory()) {
-                        if (entry.name.startsWith('.') || isMachineStateDirectory(entry.name) || BUILD_OUTPUT.has(entry.name)) continue;
+                        if (entry.name.startsWith('.') || isMachineStateDirectory(entry.name) || BUILD_OUTPUT.has(entry.name) || isJoeAppKitDir(full)) continue;
                         // A build-free site keeps its pages in public/; a bundled one's public/ is copied output.
                         if (entry.name === 'public' && !includePublic) continue;
                         next.push(full);
@@ -661,6 +666,87 @@ function harvestRegistrarCalls(text: string, file: string, routes: HarvestedRout
 }
 
 /**
+ * A ROUTE TABLE WRITTEN OUT, ENTRY BY ENTRY.
+ *
+ * The eleventh live check, 2026-11-11 (L232, a laundry service «with a Node server that stores
+ * orders, items, pickups in a real database»): the server was `node:http` with its routes in a
+ * table — `['GET', /^\/api\/orders$/, handler]`, `['PATCH', /^\/api\/orders\/(\d+)$/, …]` — and a
+ * dispatcher matching `req.method` and the path against it. «No delivered part registers server
+ * routes» refused it, and the builder rewrote a working server in Express to be read.
+ *
+ * In a file that reads the request, an array entry or an object naming an HTTP method and a path
+ * (a string, or a pattern whose groups are parameters) registers that route. Where the table is
+ * dispatched decides the served path, so the route is never `known`: the live probe can prove it
+ * served, never refute it.
+ */
+/*
+ * A pattern is read whole: a character class may hold a slash (`[^/]+`), and the third review
+ * (2026-11-11) found `/^\/api\/files\/([^/]+)$/` cut at it. A method may be written in lower case.
+ *
+ * …and a path may be written without its first slash, segment by segment as its dispatcher
+ * compares them. The thirteenth live check, 2026-11-11 (L232, the laundry again): `['GET',
+ * 'api/orders', …]` matched against `pathname.split('/').filter(Boolean)` — read as no route at
+ * all, «items (not served)» refused it four times, and the builder added an `/api/products` alias
+ * the request never asked for, to be read.
+ */
+const TABLE_ENTRY = /\[\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:(['"`])(\/[^'"`\n]*|[A-Za-z_:][\w:.\-]*(?:\/[^'"`\s]*)?)\3|\/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\n\\[])+)\/[a-z]*)\s*,/giu;
+const OBJECT_ENTRY = /\{\s*method\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:path|url|route|pattern)\s*:\s*(?:(['"`])(\/[^'"`\n]*|[A-Za-z_:][\w:.\-]*(?:\/[^'"`\s]*)?)\3|\/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\n\\[])+)\/[a-z]*)/giu;
+//  What a path without its first slash may not be: another method (an allowed-methods list), a media type.
+const NOT_A_RELATIVE_PATH = /^(?:GET|POST|PUT|PATCH|DELETE|ALL|HEAD|OPTIONS)$|^(?:text|application|image|audio|video|font|multipart)\//iu;
+//  A service worker's table caches what the browser fetches; it serves nothing — unless the same file
+//  is the server too (one that sends its worker's source as a string): it listens (the fourth review).
+const SERVICE_WORKER = /\baddEventListener\s*\(\s*(['"])fetch\1|\bself\s*\.\s*onfetch\s*=/u;
+const LISTENS = /\b(?:createServer|listen)\s*\(|\bexpress\s*\(\s*\)|\bnew\s+(?:Koa|Hono)\b|\bfastify\s*\(/u;
+
+/**
+ * The path a route pattern serves: its parameters (`(\d+)`, `(?<id>[^/]+)`) are `:id`, its
+ * optional parts (`(?:\/)?`, `(?:\/(\d+))?`) are left out, its escapes read as what they escape.
+ */
+export function regexRoutePath(pattern: string): string {
+    let p = String(pattern || '').replace(/^\^/u, '').replace(/\$$/u, '');
+    p = p.replace(/\[(?:\\.|[^\]\\])*\]/gu, 'X');                       //  a character class is one character of a parameter
+    //  A trailing slash captured as an optional group (`(\/)?`) is no parameter (the fourth review).
+    p = p.replace(/\((?:\\\/|\/)\)[?*]?/gu, '');
+    for (let guard = 0; guard < 8 && /\([^()]*\)/u.test(p); guard++) {
+        p = p.replace(/\(\?:[^()]*\)[?*]/gu, '')                          //  an optional part is left out
+            .replace(/\(\?:([^()|]*)(?:\|[^()]*)?\)/gu, '$1')               //  a plain group is its first alternative
+            .replace(/\((?!\?:)[^()]*\)[+*?]?/gu, ':id');                   //  a captured part is a parameter
+    }
+    p = p.replace(/\\([/.\-_~])/gu, '$1').replace(/\/\?$/u, '').replace(/\?$/u, '');
+    return p.split('/').map(segment => segment === ':id' || !PATTERN_PART.test(segment) ? segment : ':id').join('/');
+}
+
+function harvestRouteTable(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text) || (SERVICE_WORKER.test(text) && !LISTENS.test(text))) return;
+    for (const re of [TABLE_ENTRY, OBJECT_ENTRY]) {
+        for (const m of text.matchAll(re)) {
+            const written = m[4] !== undefined;
+            let raw = written ? String(m[4]) : String(m[5] || '');
+            if (written && !raw.startsWith('/')) {
+                if (NOT_A_RELATIVE_PATH.test(raw)) continue;
+                /*
+                 * A bare word with no slash is a route only beside a method written as a method
+                 * (`['GET', 'orders', …]`): `['all', 'active', 'done']` is a filter list, `['get',
+                 * 'list', …]` a list of verbs (the fourth review, 2026-11-11).
+                 */
+                if (!raw.includes('/') && (!/^(?:GET|POST|PUT|PATCH|DELETE|ALL)$/u.test(String(m[2])) || /^[A-Z][A-Z_]*$/u.test(raw))) continue;
+                raw = `/${raw}`;
+            }
+            if (!written && !/^\^?(?:\\)?\//u.test(raw)) {
+                if (!/^\^[A-Za-z]/u.test(raw)) continue;
+                raw = `^\\/${raw.slice(1)}`;
+            }
+            const routePath = (written ? patternPath(raw) : regexRoutePath(raw)).replace(/\/+$/u, '');
+            const segments = routePath.split('/').filter(Boolean);
+            if (!segments.length || segments.some(s => s.includes('.') && s !== ':id')) continue;
+            const method = String(m[2]).toLowerCase();
+            if (routes.some(r => r.file === file && r.path === routePath && r.method === method)) continue;
+            routes.push({ path: routePath, method, file, dynamic: false, known: false });
+        }
+    }
+}
+
+/**
  * A SERVER THAT ROUTES BY THE PATH'S OWN SEGMENTS.
  *
  * The 500 exam, 2026-11-06, P070: a travel agency on `http.createServer`
@@ -680,8 +766,93 @@ function harvestRegistrarCalls(text: string, file: string, routes: HarvestedRout
  * `known`: the live probe proves it served, never refutes it.
  */
 const SPLIT_PATH = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.split\(\s*(['"])\/\2\s*\)(\s*\.\s*filter\(\s*Boolean\s*\))?/gu;
+/**
+ * The same split taken apart at once: `const [, resource, rawId] = url.pathname.split('/').filter(Boolean)`.
+ * qa-live19, 2026-11-12, L236 (an electronics store): the store on `http.createServer` did exactly
+ * this, then `handlers[resource]` with `handlers = { products, orders, warranties }` — no split was
+ * kept in a variable, so nothing was read, and «products, orders, warranties (not served)» refused a
+ * server that answered every one of them, four times.
+ */
+const SPLIT_PATH_APART = /\b(?:const|let|var)\s*\[([^\]]*)\]\s*=\s*[^;\n]*?\.split\(\s*(['"])\/\2\s*\)(\s*\.\s*filter\(\s*Boolean\s*\))?/gu;
 const PATH_PREFIX = /\.startsWith\(\s*(['"])(\/[A-Za-z0-9_\-/]*?)\/?\1\s*\)/gu;
 const SEGMENT_NAME = /^[A-Za-z][\w-]*$/u;
+
+/**
+ * Where a regular-expression literal that opens at `at` (a «/» where an expression begins) ends,
+ * or -1 when the «/» divides. A quote or a brace inside `/^[a-z']+$/` is the pattern's, not code
+ * (the fifth review, 2026-11-11: `{ products: { check: /^[a-z']+$/ }, orders: … }` read no key).
+ */
+function regexLiteralEnd(text: string, at: number): number {
+    let p = at - 1;
+    while (p >= 0 && /\s/u.test(text[p])) p--;
+    const before = p >= 0 ? text[p] : '';
+    const word = /([A-Za-z_$][\w$]*)$/u.exec(text.slice(Math.max(0, p - 12), p + 1));
+    if (!(before === '' || /[(,=:[!&|?{};+\-*%<>~^]/u.test(before) || (word && /^(?:return|typeof|case|in|of|void|delete|throw)$/u.test(word[1])))) return -1;
+    let inClass = false;
+    for (let i = at + 1; i < text.length && i < at + 2000; i++) {
+        const ch = text[i];
+        if (ch === '\\') { i++; continue; }
+        if (ch === '\n') return -1;
+        if (inClass) { if (ch === ']') inClass = false; continue; }
+        if (ch === '[') { inClass = true; continue; }
+        if (ch === '/') return i;
+    }
+    return -1;
+}
+
+/** From the brace at `open` to the one that closes it (strings, comments and patterns skipped), or '' when it never closes. */
+function balancedFrom(text: string, open: number): string {
+    const pairs: Record<string, string> = { '{': '}', '[': ']', '(': ')' };
+    const stack: string[] = [];
+    for (let i = open; i < text.length && i < open + 200_000; i++) {
+        const ch = text[i];
+        if (ch === '"' || ch === "'" || ch === '`') {
+            for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === '\\') i++;
+            continue;
+        }
+        if (ch === '/' && text[i + 1] === '/') { i = text.indexOf('\n', i); if (i < 0) return ''; continue; }
+        if (ch === '/' && text[i + 1] === '*') { i = text.indexOf('*/', i + 2); if (i < 0) return ''; i++; continue; }
+        if (ch === '/') { const end = regexLiteralEnd(text, i); if (end > i) { i = end; continue; } }
+        if (pairs[ch]) stack.push(pairs[ch]);
+        else if (ch === '}' || ch === ']' || ch === ')') {
+            if (stack.pop() !== ch) return '';
+            if (!stack.length) return text.slice(open, i + 1);
+        }
+    }
+    return '';
+}
+
+/** The keys an object literal (`{ products: …, 'orders': …, warranties }`) names at its own top level. */
+function objectLiteralKeys(literal: string): string[] {
+    const keys: string[] = [];
+    let depth = 0;
+    let expectKey = false;
+    for (let i = 0; i < literal.length; i++) {
+        const ch = literal[i];
+        if (ch === '"' || ch === "'" || ch === '`') {
+            const start = i;
+            for (i++; i < literal.length && literal[i] !== ch; i++) if (literal[i] === '\\') i++;
+            if (depth === 1 && expectKey && /^\s*:/u.test(literal.slice(i + 1))) keys.push(literal.slice(start + 1, i));
+            expectKey = false;
+            continue;
+        }
+        if (ch === '/') { const end = regexLiteralEnd(literal, i); if (end > i) { i = end; expectKey = false; continue; } }
+        if (ch === '{' || ch === '[' || ch === '(') { depth++; if (depth === 1) expectKey = true; continue; }
+        if (ch === '}' || ch === ']' || ch === ')') { depth--; continue; }
+        if (depth === 1 && ch === ',') { expectKey = true; continue; }
+        if (depth === 1 && expectKey && /[A-Za-z_$]/u.test(ch)) {
+            const word = /^[A-Za-z_$][\w$-]*/u.exec(literal.slice(i));
+            const name = word ? word[0] : '';
+            const rest = literal.slice(i + name.length);
+            if (name && /^\s*[:,}(]/u.test(rest)) keys.push(name);
+            i += Math.max(0, name.length - 1);
+            expectKey = false;
+            continue;
+        }
+        if (depth === 1 && !/\s/u.test(ch)) expectKey = false;
+    }
+    return keys;
+}
 
 function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRoute[]): void {
     if (!READS_REQUEST.test(text)) return;
@@ -696,24 +867,73 @@ function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRou
         if (routes.some(r => r.file === file && r.path === routePath)) return;
         routes.push({ path: routePath, method: 'all', file, dynamic: false, known: false });
     };
+    const named = (list: string, shift: number, into: Map<string, number>) =>
+        list.split(',').forEach((name, i) => { const v = name.trim(); if (/^[A-Za-z_$][\w$]*$/u.test(v)) into.set(v, i - shift); });
+    //  A split kept in a variable (`parts`), and a split taken apart at once (no variable to index).
+    const splits: Array<{ parts: string; shift: number; segmentVars: Map<string, number> }> = [];
     for (const split of text.matchAll(SPLIT_PATH)) {
-        const parts = split[1];
         //  Without .filter(Boolean), the leading slash leaves an empty first part.
-        const shift = split[3] ? 0 : 1;
+        splits.push({ parts: split[1], shift: split[3] ? 0 : 1, segmentVars: new Map() });
+    }
+    for (const split of text.matchAll(SPLIT_PATH_APART)) {
         const segmentVars = new Map<string, number>();
-        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]`, 'gu'))) {
-            segmentVars.set(m[1], Number(m[2]) - shift);
+        named(split[1], split[3] ? 0 : 1, segmentVars);
+        if (segmentVars.size) splits.push({ parts: '', shift: split[3] ? 0 : 1, segmentVars });
+    }
+    for (const { parts, shift, segmentVars } of splits) {
+        if (parts) {
+            for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]`, 'gu'))) {
+                segmentVars.set(m[1], Number(m[2]) - shift);
+            }
+            for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s*\\[([^\\]]*)\\]\\s*=\\s*${esc(parts)}\\b`, 'gu'))) named(m[1], shift, segmentVars);
+            //  parts[1] === 'summary'
+            for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
+                add(Number(m[1]) - shift, m[3]);
+            }
         }
-        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s*\\[([^\\]]*)\\]\\s*=\\s*${esc(parts)}\\b`, 'gu'))) {
-            m[1].split(',').forEach((name, i) => { const v = name.trim(); if (/^[A-Za-z_$][\w$]*$/u.test(v)) segmentVars.set(v, i - shift); });
-        }
-        //  parts[1] === 'summary'
-        for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
-            add(Number(m[1]) - shift, m[3]);
+        /*
+         * ⛔ A SEGMENT LOOKED UP IN A TABLE OF HANDLERS SERVES EVERY KEY OF THE TABLE.
+         *
+         * The fourteenth live check, 2026-11-11 (L236, an electronics store): `const [, resource,
+         * rawId] = parts`, then `const c = collections[resource]` with `collections = { products:
+         * {…}, orders: {…}, warranties: {…} }` — read as no route at all, «orders, warranties (not
+         * served)» refused it four times. So do `v === 'orders'`, `case 'orders':` in a `switch (v)`,
+         * `v in TABLE` and `Object.hasOwn(TABLE, v)`.
+         */
+        for (const [v, index] of segmentVars) {
+            if (index < 0) continue;
+            /*
+             * …unless a list gates the segment first (`if (!COLLECTIONS.includes(coll)) return 404`):
+             * then the list decides (below), and `data[coll]` is its data, `coll === 'travelers'` a
+             * validator's branch — never routes (P070 holds a collection its list does not serve).
+             */
+            if (new RegExp(`\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'u').test(text)) continue;
+            for (const m of text.matchAll(new RegExp(`\\b${esc(v)}\\s*===?\\s*(['"])([^'"]+)\\1|(['"])([^'"]+)\\3\\s*===?\\s*${esc(v)}\\b`, 'gu'))) add(index, String(m[2] ?? m[4]));
+            for (const sw of text.matchAll(new RegExp(`\\bswitch\\s*\\(\\s*${esc(v)}\\s*\\)\\s*\\{`, 'gu'))) {
+                const body = balancedFrom(text, (sw.index || 0) + sw[0].length - 1);
+                for (const c of body.matchAll(/\bcase\s*(['"])([^'"]+)\1\s*:/gu)) add(index, c[2]);
+            }
+            const tables = new Set<string>();
+            for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*(?:\\?\\.)?\\[\\s*${esc(v)}\\s*\\]`, 'gu'))) tables.add(m[1]);
+            for (const m of text.matchAll(new RegExp(`\\b${esc(v)}\\s+in\\s+([A-Za-z_$][\\w$]*)\\b|\\bObject\\s*\\.\\s*(?:hasOwn|prototype\\s*\\.\\s*hasOwnProperty\\s*\\.\\s*call)\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*${esc(v)}\\s*\\)|\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*hasOwnProperty\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) tables.add(String(m[1] || m[2] || m[3]));
+            for (const table of tables) {
+                if (parts && (table === esc(parts) || table === parts)) continue;
+                const decl = new RegExp(`\\b(?:const|let|var)\\s+${esc(table)}\\s*=\\s*\\{`, 'u').exec(text);
+                if (!decl) continue;
+                const keys = objectLiteralKeys(balancedFrom(text, (decl.index || 0) + decl[0].length - 1));
+                if (keys.length && keys.length <= 40 && keys.every(k => SEGMENT_NAME.test(k))) keys.forEach(k => add(index, k));
+            }
         }
         //  LIST.includes(v), with LIST a literal list of names.
         for (const [v, index] of segmentVars) {
             if (index < 0) continue;
+            //  …or the keys of a table of handlers: `Object.keys(collections).includes(resource)` (the fifth review).
+            for (const m of text.matchAll(new RegExp(`\\bObject\\s*\\.\\s*keys\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*\\)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
+                const decl = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\{`, 'u').exec(text);
+                if (!decl) continue;
+                const keys = objectLiteralKeys(balancedFrom(text, (decl.index || 0) + decl[0].length - 1));
+                if (keys.length && keys.length <= 40 && keys.every(k => SEGMENT_NAME.test(k))) keys.forEach(k => add(index, k));
+            }
             for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
                 const list = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\[([^\\]]*)\\]`, 'u').exec(text);
                 if (!list) continue;
@@ -760,6 +980,7 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
     }
     harvestComparedPaths(text, file, routes);
     harvestRegistrarCalls(text, file, routes);
+    harvestRouteTable(text, file, routes);
     harvestSegmentDispatch(text, file, routes);
     // Python: an application's decorator path is the served path; a router's or
     // blueprint's joins its own prefix, and may be mounted under another.
@@ -847,7 +1068,14 @@ function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<
              * were not read, and the CRM was refused seven times, 155 minutes,
              * «جهات الاتصال (serving not measured)». A two-item pair of a name
              * and his word, in either order, binds the name to his record.
+             *
+             * His word, never a Latin name beside another: P149's
+             * `['services', 'offers', 'reviews']` bound «offers» to «الخدمات»
+             * through its English name, and P078's `['prayers', 'lessons', …]`
+             * bound «prayers» to «الدروس» (the 500 exam, 2026-11-12/13). A list
+             * of names is a list, not a name and its label.
              */
+            if (!/[؀-ۿ]/u.test(label)) continue;
             const lab = escapeRe(label);
             const pairAfter = new RegExp(`\\[\\s*(["'\`])([A-Za-z][\\w-]{1,40})\\1\\s*,\\s*["'\`]${lab}["'\`]\\s*[\\],]`, 'gu');
             for (const m of text.matchAll(pairAfter)) bind(record.key, m[2]);
@@ -970,7 +1198,10 @@ const RECORD_ALSO: Record<string, string[]> = {
 
 /** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, the names a build also gives it, and keys bound to his label. */
 export function identifiersFor(record: RequestedRecord, labelKeys: string[] = [], all: RequestedRecord[] = []): string[] {
-    const named = [record.key, latinEnglish(record), hisWordsFor(record), ...labelKeys].flatMap(forms);
+    //  A key that is only a transliteration («mwaqyt_slaas») comes after the names the source binds his
+    //  label to: the probe asks a bounded number of names, and P078's «prayers» was the ninth.
+    const ownNames = [record.key, latinEnglish(record), hisWordsFor(record)];
+    const named = (labelKeys.length && transliteratedOnly(record) ? [...labelKeys, ...ownNames] : [...ownNames, ...labelKeys]).flatMap(forms);
     const taken = new Set(takenIdentifiers(record, all));
     const words = hisNamingWords(record).flatMap(forms).filter(id => !taken.has(id.toLowerCase()));
     //  …never a name another of his records owns («grades» and «marks» listed apart stay apart).
@@ -992,6 +1223,9 @@ export function transliteratedOnly(record: RequestedRecord, labelKeys: string[] 
 
 export type ProbeResult = 'served' | 'absent' | 'inconclusive';
 
+/** The pause before a GET that got no answer is asked once more (a server restarting between two runs). */
+export const PROBE_RETRY_PAUSE_MS = 1000;
+
 const routeLike = (status: number, contentType: string) =>
     ((status >= 200 && status < 300) || status === 401 || status === 403 || status === 405) && !/text\/html/iu.test(contentType);
 
@@ -1012,12 +1246,35 @@ export interface ProbePath { path: string; refutable: boolean }
  *   - A record with no registered route is probed under the prefixes the
  *     tree's own routes use; «absent» only from such a prefix. With no
  *     routes at all the probe can prove a record, never refute it.
+ *
+ * ⛔ AN UNANSWERED QUESTION IS NOT AN ANSWER.
+ *
+ * The 500 exam, 2026-11-12 (P078, a mosque dashboard): every record was
+ * served by `/api/:kind` behind a table of kinds, and each section also had a
+ * page route `/prayers` that sends index.html. The probe asked `/prayers`, got
+ * the page, called the route «registered but does not answer» and never asked
+ * `/api/prayers` — three served records «not served», seven refusals in 40
+ * minutes, the verdict flipping as the server restarted between runs.
+ *   - A registered path that answers with a page is a page: it neither serves
+ *     the record nor refutes it, and the record is then asked for under the
+ *     prefixes the tree's routes use, as a record with no route is.
+ *   - A GET that gets no answer (a timeout, a refused connection while the
+ *     server restarts) is asked once more after a short pause. Still silent,
+ *     it proves nothing: a record any of whose questions went unanswered is
+ *     «inconclusive» — not measured — never «absent».
  */
 export async function probeServedResources(
     baseUrl: string,
     prefixes: string[],
     records: Array<{ key: string; ids: string[]; paths?: ProbePath[] }>,
-    opts: { signal?: AbortSignal; timeoutMs: number; details?: Record<string, string[]> },
+    opts: {
+        signal?: AbortSignal; timeoutMs: number; details?: Record<string, string[]>;
+        /**
+         * The verification's windows (design v13.3 §5b step 4): each GET this probe sends is one, so a change the
+         * server makes while answering is never told as «unexplained». It runs the same on every path (§6: GET only).
+         */
+        windows?: QaWindows;
+    },
 ): Promise<Record<string, ProbeResult>> {
     const base = String(baseUrl || '').replace(/\/+$/u, '');
     const result: Record<string, ProbeResult> = Object.fromEntries(records.map(r => [r.key, 'inconclusive' as ProbeResult]));
@@ -1027,7 +1284,11 @@ export async function probeServedResources(
     const note = (key: string, line: string) => { if (opts.details) (opts.details[key] ||= []).push(line); };
     // node:http, not fetch: the same transport in the API process and in tests,
     // no automatic redirect following, and a hard per-answer bound.
-    const get = (url: string): Promise<{ status: number; type: string; location: string } | null> => new Promise(resolve => {
+    //  …each one inside one of the verification's windows when it keeps them (§5b step 4); as before otherwise.
+    const getOnce = (url: string): Promise<{ status: number; type: string; location: string } | null> => (opts.windows
+        ? opts.windows.around(`coverage GET ${url}`, () => sendGet(url))
+        : sendGet(url));
+    const sendGet = (url: string): Promise<{ status: number; type: string; location: string } | null> => new Promise(resolve => {
         if (opts.signal?.aborted) return resolve(null);
         let settled = false;
         const finish = (value: { status: number; type: string; location: string } | null) => {
@@ -1057,30 +1318,49 @@ export async function probeServedResources(
         opts.signal?.addEventListener('abort', onAbort, { once: true });
         req.end();
     });
+    //  A GET with no answer is asked once more after a pause; a server that
+    //  stayed silent twice in a row is gone, and is not asked again — what is
+    //  left is not measured (a dead server must not hold the delivery minutes).
+    let silentInARow = 0;
+    const get = async (url: string): Promise<{ status: number; type: string; location: string } | null> => {
+        if (silentInARow >= 2 || opts.signal?.aborted) return null;
+        let answer = await getOnce(url);
+        if (!answer && !opts.signal?.aborted) {
+            await new Promise(resolve => setTimeout(resolve, PROBE_RETRY_PAUSE_MS));
+            answer = await getOnce(url);
+        }
+        silentInARow = answer ? 0 : silentInARow + 1;
+        return answer;
+    };
     const nonce = `__joe_absent_${Date.now().toString(36)}`;
-    const controls = new Map<string, boolean>();
-    /** Does this parent answer an absent path as absent (true), or is it a catch-all / silent (false)? */
-    const conclusiveParent = async (parent: string): Promise<boolean> => {
+    const controls = new Map<string, 'yes' | 'no' | 'silent'>();
+    /** Does this parent answer an absent path as absent ('yes'), is it a catch-all ('no'), or did it not answer ('silent')? */
+    const parentControl = async (parent: string): Promise<'yes' | 'no' | 'silent'> => {
         if (!controls.has(parent)) {
             const control = await get(`${base}${parent}${nonce}`);
-            controls.set(parent, !!control && !routeLike(control.status, control.type));
+            controls.set(parent, !control ? 'silent' : routeLike(control.status, control.type) ? 'no' : 'yes');
         }
-        return controls.get(parent) === true;
+        return controls.get(parent)!;
     };
-    const answers = async (pathname: string): Promise<boolean> => {
+    const conclusiveParent = async (parent: string): Promise<boolean> => (await parentControl(parent)) === 'yes';
+    /** route: it serves; page: an HTML page answered; other: it answered, and serves nothing; silent: no answer. */
+    type Answer = 'route' | 'page' | 'other' | 'silent';
+    const classify = (answer: { status: number; type: string } | null): Answer =>
+        !answer ? 'silent' : routeLike(answer.status, answer.type) ? 'route'
+            : answer.status >= 200 && answer.status < 300 && /text\/html/iu.test(answer.type) ? 'page' : 'other';
+    const answers = async (pathname: string): Promise<Answer> => {
         const first = await get(`${base}${pathname}`);
-        if (!first) return false;
-        if (routeLike(first.status, first.type)) return true;
+        const kind = classify(first);
+        if (kind !== 'other' || !first) return kind;
         if (first.status >= 300 && first.status < 400 && first.location) {
             let next = '';
             try { next = new URL(first.location, `${base}${pathname}`).pathname; } catch { next = ''; }
-            if (next === `${pathname}/` || `${next}/` === pathname) {
-                const second = await get(`${base}${next}`);
-                return !!second && routeLike(second.status, second.type);
-            }
+            if (next === `${pathname}/` || `${next}/` === pathname) return classify(await get(`${base}${next}`));
         }
-        return false;
+        return 'other';
     };
+    const silent = new Set<string>();
+    const silence = (key: string, line: string) => { if (!silent.has(key)) note(key, line); silent.add(key); };
     const parentOf = (pathname: string) => {
         const segments = pathname.split('/').filter(Boolean);
         return `${joinPath(...segments.slice(0, -1))}/`.replace(/^\/\/$/u, '/');
@@ -1094,42 +1374,76 @@ export async function probeServedResources(
     for (const record of records) {
         if (opts.signal?.aborted) break;
         const paths = (record.paths || []).filter(p => p.path && !isParamSegment(p.path.split('/').filter(Boolean).pop() || ''));
+        //  A registered path that answered with a page, registered on the application ('refutable').
+        let pageAt = '';
         if (paths.length) {
             let refuted = false;
             for (const candidate of paths) {
                 const pathname = joinPath(candidate.path);
-                if (await answers(pathname) || await answers(`${pathname}/`)) {
+                const bare = await answers(pathname);
+                const kind = bare === 'route' ? bare : (await answers(`${pathname}/`) === 'route' ? 'route' : bare);
+                if (kind === 'route') {
                     result[record.key] = 'served';
                     note(record.key, `probe: GET ${pathname} answered`);
                     break;
+                }
+                if (kind === 'silent') {
+                    silence(record.key, `probe: GET ${pathname} got no answer, asked twice — not measured`);
+                    continue;
+                }
+                if (kind === 'page') {
+                    note(record.key, `probe: GET ${pathname} answers with a page, not with records`);
+                    if (candidate.refutable && !pageAt) pageAt = pathname;
+                    continue;
                 }
                 if (candidate.refutable && await conclusiveParent(parentOf(pathname))) {
                     refuted = true;
                     note(record.key, `probe: GET ${pathname} is registered but does not answer`);
                 }
             }
-            if (result[record.key] !== 'served' && refuted) result[record.key] = 'absent';
-            continue;
+            if (result[record.key] === 'served' || silent.has(record.key)) continue;
+            if (!pageAt) {
+                if (refuted) result[record.key] = 'absent';
+                continue;
+            }
+            //  Its route is a page: its records are asked for where the tree's routes serve them.
+            if (refuted) result[record.key] = 'absent';
         }
+        const tried: string[] = [];
         for (const prefix of used.length ? used : ['/api/', '/']) {
-            if (!(await conclusiveParent(prefix))) continue;
+            const control = await parentControl(prefix);
+            if (control === 'silent') silence(record.key, `probe: GET under ${prefix} got no answer, asked twice — not measured`);
+            if (control !== 'yes') continue;
             for (const id of record.ids.slice(0, 8)) {
-                if (await answers(`${prefix}${id}`)) {
+                const kind = await answers(`${prefix}${id}`);
+                if (kind === 'route') {
                     result[record.key] = 'served';
                     servedUnder.add(prefix);
                     note(record.key, `probe: GET ${prefix}${id} answered`);
                     break;
                 }
+                if (kind === 'silent') silence(record.key, `probe: GET ${prefix}${id} got no answer, asked twice — not measured`);
             }
             if (result[record.key] === 'served') break;
-            unprovenUnder.set(record.key, [...(unprovenUnder.get(record.key) || []), prefix]);
+            tried.push(prefix);
         }
+        if (result[record.key] === 'served') continue;
+        if (silent.has(record.key)) { result[record.key] = 'inconclusive'; continue; }
+        if (pageAt) {
+            //  Only a page answers at its registered route, and nothing under the prefixes the tree's routes use.
+            if (tried.some(prefix => used.includes(prefix))) {
+                result[record.key] = 'absent';
+                note(record.key, `probe: nothing answers under ${tried.join(', ')}`);
+            }
+            continue;
+        }
+        if (tried.length) unprovenUnder.set(record.key, tried);
     }
     // A prefix the tree's routes use, or where another of his records answered,
     // is where his records live: nothing answering there is absent. Elsewhere a
     // silence proves nothing.
     for (const [key, prefixesTried] of unprovenUnder) {
-        if (result[key] === 'served') continue;
+        if (result[key] === 'served' || silent.has(key)) continue;
         const proving = prefixesTried.filter(prefix => used.includes(prefix) || servedUnder.has(prefix));
         if (proving.length) {
             result[key] = 'absent';
@@ -1366,7 +1680,10 @@ async function runRequestedTestsNow(root: string, runTool: (tool: string, input:
             const empty = judged.passed ? null : judged.ranNothing ?? emptyTestRun(printed);
             // A failure's own words are at the END of what the runner printed (the
             // assertion, «FAILED (failures=1)»): keep the end, not the first lines.
-            const said = String(run?.output?.stderr || run?.error || 'the tests did not pass').trim();
+            //  unittest prints them to stderr, pytest to stdout: what either printed, its end kept. The
+            //  analysis of 2026-11-11: with pytest installed, a failing test was told only as «command_failed».
+            const streams = [String(run?.output?.stderr ?? ''), String(run?.output?.stdout ?? '')].map(s => s.trim()).filter(Boolean);
+            const said = (streams.find(s => /\bFAIL(?:ED|URES?)?\b|Error\b|\bassert/u.test(s)) || streams[0] || String(run?.error || '') || 'the tests did not pass').trim();
             const error = judged.passed ? undefined
                 : empty ? `the test command ran no tests (${empty.runner}: ${empty.evidence})`
                     : said.length > 400 ? `…${said.slice(-399)}` : said;
@@ -1397,6 +1714,10 @@ export interface RecordCoverage {
     tested: boolean | null;
     present: boolean | null;
     evidence: string[];
+    /** Not measured, its only Latin name a transliteration: the routes no named record claims that the project's tests call. */
+    routes?: string[];
+    /** Not measured: how the builder makes it measurable. */
+    how?: string;
 }
 
 export interface RequestCoverageReport {
@@ -1513,6 +1834,143 @@ export function probePathsFor(evidence: CoverageEvidence, ids: string[], taken: 
     return out.filter(p => { const k = `${p.path}|${p.refutable}`; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
+/** A path segment that names no record: the API's own prefix, a version, health, sign-in. */
+const NOT_A_RESOURCE_SEGMENT = /^(?:api|rest|v\d+|health|healthz|status|ping|auth|login|logout|register|signup|signin|me|session|sessions|token|refresh|search|stats|summary)$/iu;
+
+/** The segment a route names its records by: its last fixed segment that is not the API's own word, or '' when a parameter stands there. */
+function resourceSegment(routePath: string): string {
+    const segments = String(routePath || '').split('/').filter(Boolean);
+    for (let i = segments.length - 1; i >= 0; i--) {
+        if (isParamSegment(segments[i])) continue;
+        if (NOT_A_RESOURCE_SEGMENT.test(segments[i])) continue;
+        return segments[i];
+    }
+    return '';
+}
+
+/**
+ * ⛔ A ROUTE THAT NAMES ITS RECORD BY A PARAMETER COULD SERVE ANY OF THEM.
+ *
+ * P078 (the 500 exam, 2026-11-12): `/api/:kind` behind a table of kinds
+ * serves every record; no fixed path names one. Its silence is no proof that
+ * a record is not served — the live probe decides, or the record is «not
+ * measured». The record's place is a parameter when every fixed segment
+ * before it is the API's own word (`/api/:kind`, `/v1/:resource`).
+ */
+function recordByParameter(route: HarvestedRoute): boolean {
+    if (route.dynamic || !['get', 'all', 'route', 'api_route'].includes(route.method)) return false;
+    const segments = route.path.split('/').filter(Boolean);
+    const first = segments.findIndex(isParamSegment);
+    return first >= 0 && segments.slice(0, first).every(s => NOT_A_RESOURCE_SEGMENT.test(s));
+}
+
+/**
+ * The routes that could be a record's when its only Latin name is a
+ * transliteration: registered by the delivered server, named for none of his
+ * records, and called by the project's own tests (`/api/blood-units` for
+ * «وحدات الدم», P139). Shown as «METHOD path», a GET first.
+ */
+function unclaimedTestedRoutes(evidence: CoverageEvidence, records: RequestedRecord[], liveTests: string): Array<{ shown: string; resource: string }> {
+    const claimed = new Set(records.flatMap(r => identifiersFor(r, evidence.labelKeys[r.key] || [], records)).map(id => id.toLowerCase()));
+    const byResource = new Map<string, HarvestedRoute[]>();
+    for (const route of evidence.routes) {
+        if (route.dynamic || route.method === 'use') continue;
+        const resource = resourceSegment(route.path);
+        if (!resource || claimed.has(resource.toLowerCase())) continue;
+        if (!new RegExp(`/${escapeRe(resource)}(?![A-Za-z0-9_-])`, 'iu').test(liveTests)) continue;
+        byResource.set(resource, [...(byResource.get(resource) || []), route]);
+    }
+    return Array.from(byResource.entries()).map(([resource, routes]) => {
+        const shown = routes.find(r => ['get', 'all', 'route', 'api_route'].includes(r.method)) || routes[0];
+        return { shown: `${shown.method.toUpperCase()} ${shown.path}`, resource };
+    });
+}
+
+/*
+ * ⛔ A ROUTE VOUCHES ONLY FOR THE RECORD IT IS BOUND TO.
+ *
+ * The r40 review, 2026-11-15: every transliterated record was handed the same
+ * list of unclaimed tested routes, never bound to it, so with two such records
+ * and two unrelated routes (`/api/settings`, `/api/blood-units`) a record that
+ * was not built at all («العروض») passed once the judge's met text held its
+ * words. A route is that record's only where the delivery itself ties the two:
+ * his word written beside the route's name — on the same line, near it (a test
+ * «POST /api/blood-units ينشئ وحدة دم … في وحدات الدم», an index «العروض:
+ * '/api/showtimes'», a page row «/api/services/:id/offers … عروض الخدمة») or in
+ * the handler a route registration opens (P139's «notFound('وحدة الدم')»). A
+ * route bound to two of his records vouches for neither.
+ */
+/** The stem of an Arabic word: without its clitics, its article and a plural or feminine ending. */
+function arabicStem(word: string): string {
+    let w = String(word || '').replace(/[ً-ْـ]/gu, '');
+    w = w.replace(/^[وف](?=ال|لل|بال|كال)/u, '').replace(/^(?:بال|كال|فال|وال|لل|ال)/u, '');
+    if (w.length > 3) w = w.replace(/(?:ات|ون|ين|ية|ة|ه)$/u, '');
+    return w;
+}
+const ARABIC_WORD = /[ء-يً-ْـ]+/gu;
+/** The words a binding must find: each word of his label that names something (two letters or more, never a joining word). */
+function bindingStems(record: RequestedRecord): string[] {
+    const his = String(record.ar || record.item || '');
+    return Array.from(new Set((his.match(ARABIC_WORD) || []).map(arabicStem).filter(s => s.length >= 2 && !/^(?:في|من|على|عن|مع|او|أو|ثم)$/u.test(s))));
+}
+/** A line that registers a route: a method called with a path («app.get('/api/x'», «@app.get("/x"»), never «store.get(id)». */
+const ROUTE_REGISTRATION = /\.\s*(?:get|post|put|patch|delete|all|route|api_route)\s*\(\s*[rf]?['"`]\//u;
+
+/**
+ * Whether the delivery's own text writes his word beside this route's resource name. Each match reads
+ * only a window around it (ROUTE_WINDOW): the second review of 2026-11-15 — on a minified bundle of one
+ * line (a megabyte, a build-free site's vendor file) every match scanned the whole line for its start,
+ * its end and a registration, quadratic in the line.
+ */
+const ROUTE_WINDOW = 400;
+export function routeBoundTo(resource: string, record: RequestedRecord, texts: string[]): boolean {
+    const stems = bindingStems(record);
+    if (!stems.length || !resource) return false;
+    const token = new RegExp(`(?<![A-Za-z0-9_-])${escapeRe(resource)}(?![A-Za-z0-9_-])`, 'giu');
+    const holds = (span: string) => {
+        const found = new Set((span.match(ARABIC_WORD) || []).map(arabicStem));
+        return stems.every(s => found.has(s));
+    };
+    for (const text of texts) {
+        for (const m of String(text || '').matchAll(token)) {
+            const at = m.index ?? 0;
+            const from0 = Math.max(0, at - ROUTE_WINDOW);
+            const back = text.slice(from0, at).lastIndexOf('\n');
+            const lineStart = back < 0 ? from0 : from0 + back + 1;
+            const ahead = text.slice(at, at + m[0].length + ROUTE_WINDOW).indexOf('\n');
+            const lineEnd = ahead < 0 ? Math.min(text.length, at + m[0].length + ROUTE_WINDOW) : at + ahead;
+            //  Beside it on its own line (a minified bundle's one line is never read as a whole).
+            if (holds(text.slice(Math.max(lineStart, at - 120), Math.min(lineEnd, at + m[0].length + 120)))) return true;
+            //  In the handler its registration opens: the few lines up to the next registration — on a line that ends within the window.
+            if (ahead < 0 && lineEnd < text.length) continue;
+            if (!ROUTE_REGISTRATION.test(text.slice(lineStart, lineEnd))) continue;
+            const handler: string[] = [];
+            let from = lineEnd + 1;
+            for (let k = 0; k < 4 && from < text.length; k++) {
+                const end = text.indexOf('\n', from) < 0 ? text.length : text.indexOf('\n', from);
+                const line = text.slice(from, end);
+                if (ROUTE_REGISTRATION.test(line)) break;
+                handler.push(line.slice(0, 240));
+                from = end + 1;
+            }
+            if (holds(handler.join('\n'))) return true;
+        }
+    }
+    return false;
+}
+
+/** For each record whose only Latin name is a transliteration, the unclaimed tested routes bound to it and to no other of them. */
+function boundTestedRoutes(candidates: Array<{ shown: string; resource: string }>, records: RequestedRecord[], evidence: CoverageEvidence, liveTests: string): Map<string, string[]> {
+    const texts = [evidence.sourceText, liveTests];
+    const bound = new Map<string, string[]>();
+    for (const candidate of candidates) {
+        const owners = records.filter(record => routeBoundTo(candidate.resource, record, texts));
+        if (owners.length !== 1) continue;
+        bound.set(owners[0].key, [...(bound.get(owners[0].key) || []), candidate.shown].slice(0, 4));
+    }
+    return bound;
+}
+
 export function judgeRequestCoverage(input: {
     records: RequestedRecords;
     evidence: CoverageEvidence;
@@ -1529,6 +1987,11 @@ export function judgeRequestCoverage(input: {
     // call, the database): it could serve any record, so its silence proves
     // nothing — the live probe decides, or the record is «not measured» (P157).
     const unreadRoute = evidence.routes.find(route => route.dynamic && ['get', 'all', 'route', 'use'].includes(route.method));
+    const byParameter = evidence.routes.find(recordByParameter);
+    //  A route no named record claims stands for the one record whose name is a transliteration it is bound to, never for two (routeBoundTo).
+    const transliterated = records.entities.filter(record => transliteratedOnly(record, evidence.labelKeys[record.key] || []));
+    const testedRoutes = unclaimedTestedRoutes(evidence, records.entities, liveTests);
+    const boundRoutes = boundTestedRoutes(testedRoutes, transliterated, evidence, liveTests);
     const out: RecordCoverage[] = records.entities.map(record => {
         const labelKeys = evidence.labelKeys[record.key] || [];
         const ids = identifiersFor(record, labelKeys, records.entities);
@@ -1553,8 +2016,9 @@ export function judgeRequestCoverage(input: {
                 // write-only or nested route is what the GET probe cannot see.
                 served = readable.length ? false : unseen.length ? true : mounts.length ? null : false;
             } else {
-                served = (readable.length || unseen.length) ? true : (mounts.length || unreadRoute) ? null : evidence.routes.length ? false : null;
+                served = (readable.length || unseen.length) ? true : (mounts.length || unreadRoute || byParameter) ? null : evidence.routes.length ? false : null;
                 if (served === null && !mounts.length && unreadRoute) why.push(`route ${unreadRoute.method.toUpperCase()} ${unreadRoute.path} (${path.basename(unreadRoute.file)}) — its path is built at run time`);
+                else if (served === null && !mounts.length && byParameter) why.push(`route ${byParameter.method.toUpperCase()} ${byParameter.path} (${path.basename(byParameter.file)}) — a parameter names its record, so only the live server can tell`);
             }
             if (served === false && onlyTransliterated && !readable.length) served = null;
             if (served === null) why.push(onlyTransliterated ? 'its only Latin name is a transliteration — not measured' : 'the source and the probe could not tell — not measured');
@@ -1579,7 +2043,21 @@ export function judgeRequestCoverage(input: {
             if (tested === null) why.push(run?.noRunner ? 'no runner for this project\'s tests — tests not measured' : 'its tests were not run — not measured');
             if (tested === false && onlyTransliterated && !mentioned) tested = null;
         }
-        return { key: record.key, ar: record.ar, en: record.en, item: record.item, served, tested, present, evidence: why };
+        //  Not measured, and why it could not be — in words the builder can act on (P139).
+        const notMeasured = (servedApplies && served === null) || (!servedApplies && present === null) || (records.testsRequested && tested === null);
+        let routes: string[] | undefined;
+        let how: string | undefined;
+        if (notMeasured && onlyTransliterated) {
+            routes = servedApplies ? (boundRoutes.get(record.key) || []) : [];
+            const his = record.ar || record.item;
+            const name = (routes.length === 1 ? resourceSegment(routes[0].split(' ').pop() || '') : '') || 'its-route-name';
+            how = servedApplies
+                ? `his word has no English name to match a route by: bind it to its route's name in the source ({ key: '${name}', ar: '${his}' }), or serve it under a route the project's passing tests call, with a requirement holding «${his}» judged met`
+                : `his word has no English name to look for: write «${his}» in the page, or bind it to its name in the source ({ key: '${name}', ar: '${his}' })`;
+        } else if (notMeasured && servedApplies && served === null && (input.probeDetails?.[record.key] || []).some(line => /got no answer/u.test(line))) {
+            how = 'the live server did not answer the probe, asked twice — it is measured again on the next run';
+        }
+        return { key: record.key, ar: record.ar, en: record.en, item: record.item, served, tested, present, evidence: why, ...(routes ? { routes } : {}), ...(how ? { how } : {}) };
     });
     const serverFiles = evidence.serverFiles || [];
     const patternResources = Array.from(new Set(evidence.routes
@@ -1625,11 +2103,15 @@ export function coverageError(report: RequestCoverageReport): string {
 
 /** What could not be measured, named: records the probe could not see, and stated rules no instrument measures yet. */
 export function coverageUnverified(report: RequestCoverageReport): string[] {
-    const records = (report.unverified || []).map(record => {
-        const label = record.ar && record.ar !== record.key ? `${record.key} — ${record.ar}` : record.key;
-        const what = [record.served === null && report.servedApplies ? 'serving not measured' : '', record.present === null && !report.servedApplies ? 'presence not measured' : '', record.tested === null && report.testsRequested ? 'tests not measured' : ''].filter(Boolean).join(', ');
-        return `${label} (${what || 'not measured'})`;
-    });
+    const records = (report.unverified || []).map(record => unverifiedRecordText({
+        label: record.ar && record.ar !== record.key ? `${record.key} — ${record.ar}` : record.key,
+        words: record.ar || record.key,
+        serving: record.served === null && !!report.servedApplies,
+        presence: record.present === null && !report.servedApplies,
+        tests: record.tested === null && !!report.testsRequested,
+        routes: record.routes || [],
+        how: record.how,
+    }));
     return [...records, ...(report.capabilities || []).map(c => `${c} (not measured)`)];
 }
 

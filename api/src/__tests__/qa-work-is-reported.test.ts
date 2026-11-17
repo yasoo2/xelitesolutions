@@ -52,7 +52,14 @@ describe('the self-QA reaches the user in whatever language he asked in', () => 
     it('does not let an optional theme probe cancel the behavioural audit', () => {
         const audit = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
         expect(audit).toContain('theme toggle probe:');
-        expect(audit).toContain("await page.click('.theme-toggle,[aria-label=\"Toggle dark mode\"],[aria-label=\"تبديل الوضع الليلي\"]', { timeout: 2_500 });");
+        // Repointed (c219da214): the toggle is clicked inside the page, visible
+        // ones only, and a toggle gone before the probe is recorded as a probe
+        // error rather than thrown into the walk.
+        const probeAt = audit.indexOf("const selector = '.theme-toggle,[aria-label=\"Toggle dark mode\"],[aria-label=\"تبديل الوضع الليلي\"]';");
+        expect(probeAt).toBeGreaterThan(0);
+        const probe = audit.slice(probeAt, audit.indexOf('theme toggle probe:', probeAt));
+        expect(probe).toContain("if (!clicked) throw new Error('visible theme toggle disappeared before the probe');");
+        expect(probe).toContain('} catch (error: any) {');
     });
 
     it('the section is built once, not per branch', () => {

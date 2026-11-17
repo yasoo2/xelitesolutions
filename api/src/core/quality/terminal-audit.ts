@@ -32,6 +32,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { isRunnerSummaryLine, judgeTestRun } from './test-run-evidence';
+import { isJoeAppKit } from '../../shared/utils/project-tree';
 
 export interface TerminalCheck {
     /** A stable name a report can point at: `deps_installed`, `health_answers`. */
@@ -172,7 +173,7 @@ export async function run(
     try {
         child = executionEngine.runArgvStreaming(file, args, {
             cwd,
-            env: { ...process.env, NODE_NO_WARNINGS: '1', CI: '1' },
+            env: { NODE_NO_WARNINGS: '1', CI: '1' },
             // The engine's own absolute timer and cancellation: silence resets,
             // these do not.
             ...(bounds.ceilingMs && bounds.ceilingMs > 0 ? { timeout: bounds.ceilingMs } : {}),
@@ -479,14 +480,21 @@ export async function auditInTerminal(
             const index = path.join(distDir, 'index.html');
             if (!fs.existsSync(index)) return { ok: false, detail: 'no dist/index.html — nothing was bundled' };
             let bytes = 0, files = 0;
-            const walk = (d: string) => {
+            // Joe's print kit (fonts, print.css, JOE-KIT.json — about 185 KB) is
+            // copied into dist/ by the bundler from public/vendor/joe-kit. It is
+            // Joe's file, not this application, so it never counts toward the
+            // «real bundle»: an empty shell with the kit beside it is still empty
+            // (review 3 of r40, finding 6).
+            const walk = (d: string, rel: string) => {
                 for (const e of fs.readdirSync(d, { withFileTypes: true })) {
                     const p = path.join(d, e.name);
-                    if (e.isDirectory()) walk(p);
+                    const r = rel ? `${rel}/${e.name}` : e.name;
+                    if (isJoeAppKit(r)) continue;
+                    if (e.isDirectory()) walk(p, r);
                     else { files++; bytes += fs.statSync(p).size; }
                 }
             };
-            try { walk(distDir); } catch { /* a partial dist still answers below */ }
+            try { walk(distDir, ''); } catch { /* a partial dist still answers below */ }
             say(`    ${files} file(s), ${(bytes / 1024).toFixed(0)} KB`);
             // An index.html with no script tag is a shell that renders nothing.
             const html = fs.readFileSync(index, 'utf-8');

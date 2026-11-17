@@ -58,7 +58,8 @@ describe('generated-project npm quarantine boundary', () => {
             expect(fs.readFileSync(path.join(project, 'node_modules', 'esbuild', 'install-proof.txt'), 'utf8')).toBe('rebuilt');
             await expect(verify()).resolves.toBe(true);
         } finally {
-            fs.rmSync(root, { recursive: true, force: true });
+            //  Windows keeps the folder busy for a moment after the last npm child exits (EPERM): retry.
+            fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
         }
     });
 });

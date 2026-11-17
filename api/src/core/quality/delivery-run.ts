@@ -32,6 +32,8 @@ import { servedByStaticFallback } from './builder-proofs';
 import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
 import { interactiveMissing, measureInteractions, reconcileScope } from './interaction-probe';
 import type { SignInAccount } from './sign-in';
+import type { QaPath } from './qa-target';
+import type { QaWindows } from './qa-windows';
 import { CAPABILITIES, deliveredTreeHasInterface } from './scope-audit';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
@@ -66,6 +68,16 @@ export interface DeliveryRunInput {
     log?: (line: string) => void;
     /** The account the builder seeded, for checks that must pass the product's sign-in (sign-in.ts). */
     signIn?: SignInAccount;
+    /*
+     * Design v13.3 §6, set by the loop owner (verify.ts) once it has chosen the way Joe's checks treat the owner's
+     * data, and read when each probe runs — so they may be set after deliveryRun() is built. None set: as today.
+     */
+    /** The verification's QA path: on 'no-write' the probes that save data in the live app are skipped, and told. */
+    qaPath?: QaPath;
+    /** The probe fence (§4.4): a probe that opens its own Chromium on a change run reaches only the walked origin. */
+    browserProxy?: { server: string; bypass: string };
+    /** The verification's windows (§5b step 4): the project's own tests and the probes run inside one. */
+    qaWindows?: QaWindows;
 }
 
 /** The facts the last measurement established, for the caller's report. */
@@ -75,6 +87,8 @@ export interface DeliveryRunState {
     scopeAudit?: ScopeGateOutcome['scopeAudit'];
     /** Undefined until records were measured, and when the request names none. */
     requestCoverage?: RequestCoverageReport;
+    /** The probes not run because they save data in the owner's live app (path 3, design v13.3 §6): told, never failed. */
+    skippedProbes?: Array<'isolation' | 'builderProofs'>;
 }
 
 export interface DeliveryRun {
@@ -94,6 +108,13 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
     const pipeline: typeof import('../../modules/tools/definitions/ProjectPipelineTool') = require('../../modules/tools/definitions/ProjectPipelineTool');
     const { applyLiveRunOutcome, inspectProjectQualityContract, applyScopeAuditOutcome } = pipeline;
     const state: DeliveryRunState = { liveUrl: '' };
+    /** Inside one of the verification's windows when it keeps them (2T), else as it is. */
+    const inWindow = <T>(what: string, work: () => Promise<T>): Promise<T> => input.qaWindows ? input.qaWindows.around(what, work) : work();
+    /** What a probe that opens its own browser is given on a change run: the fence, and the path (none on a new build). */
+    const probeFence = () => ({
+        ...(input.browserProxy ? { browserProxy: input.browserProxy } : {}),
+        ...(input.qaPath ? { qaPath: input.qaPath } : {}),
+    });
 
     /**
      * The records the request named, measured on the delivered tree and the
@@ -135,13 +156,13 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
                 // project_run's own bound for one HTTP answer — no new constant.
                 // eslint-disable-next-line @typescript-eslint/no-var-requires
                 const { HTTP_ANSWER_TIMEOUT_MS } = require('../../modules/tools/definitions/ProjectRunTool');
-                probe = await probeServedResources(base, evidence.prefixes,
+                probe = await inWindow('served resources', () => probeServedResources(base, evidence.prefixes,
                     records.entities.map(record => {
                         const ids = identifiersFor(record, evidence.labelKeys[record.key] || [], records.entities);
                         // The exact path each record's own route registers — never a guessed prefix.
                         return { key: record.key, ids, paths: probePathsFor(evidence, ids, takenIdentifiers(record, records.entities)) };
                     }),
-                    { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500, details: probeDetails });
+                    { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500, details: probeDetails }));
             } finally {
                 bound.dispose();
             }
@@ -155,7 +176,13 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
             testsRun = requestedTestRuns.get(fingerprint);
             if (!testsRun) {
                 say(pick(isAr, '▶️ أشغّل الاختبارات التي طلبتها لأثبت أنها تنجح…', '▶️ Running the tests you asked for, to prove they pass…'));
-                testsRun = await runRequestedTests(testsRoot, input.runTool);
+                const opened = Date.now();
+                try {
+                    testsRun = await runRequestedTests(testsRoot, input.runTool);
+                } finally {
+                    //  The tests he asked for run inside one of the verification's windows (2T, §5b step 4).
+                    input.qaWindows?.add({ start: opened, end: Date.now(), long: false, what: 'requested tests' });
+                }
                 requestedTestRuns.set(fingerprint, testsRun);
             }
             requireInstrument('tests');
@@ -178,13 +205,21 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
         //  with what the server answered.
         let isolationError = '';
         const isolationRules = (requestCoverage.capabilities || []).filter(c => c.startsWith('per-user record isolation'));
-        if (isolationRules.length && base) {
+        //  Path 3 (design v13.3 §6): it registers two users and creates a record on the owner's live app, never
+        //  deleted — so it is not run. Told; the rule stays «not measured», never passed and never failed.
+        const noWrite = input.qaPath === 'no-write';
+        if (isolationRules.length && base && noWrite) {
+            state.skippedProbes = Array.from(new Set([...(state.skippedProbes || []), 'isolation' as const]));
+            input.log?.('[pipeline] per-user isolation not measured: the probe saves data in the owner\'s live app, and this check writes nothing there');
+        }
+        if (isolationRules.length && base && !noWrite) {
             const declared = readIsolationDeclaration(deliveredRoots, requestedRecordWords(productRequest));
             if (declared.declaration) {
                 say(pick(isAr, '▶️ أتحقّق أن كل مستخدم يرى سجلاته فقط: أدخل بحسابين وأنشئ سجلاً بالأول…', '▶️ Checking that each user sees only their own records: signing in as two accounts and creating a record as the first…'));
                 const bound = bindRunCancellation(input.cancellation, input.signal);
                 try {
-                    requestCoverage.isolation = await measureIsolation(base, declared.declaration, { signal: bound.signal });
+                    const declaration = declared.declaration;
+                    requestCoverage.isolation = await inWindow('isolation probe', () => measureIsolation(base, declaration, { signal: bound.signal }));
                 } finally {
                     bound.dispose();
                 }
@@ -235,7 +270,7 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
         let run = ownTestRuns.get(fingerprint);
         if (!run) {
             say(pick(isAr, '▶️ أشغّل اختبارات المشروع نفسه لأثبت أنها تنجح…', '▶️ Running the project\'s own tests, to prove they pass…'));
-            run = await runRequestedTests(testsRoot, input.runTool);
+            run = await inWindow('own tests', () => runRequestedTests(testsRoot, input.runTool));
             ownTestRuns.set(fingerprint, run);
         }
         if (run.noRunner) return;
@@ -306,7 +341,9 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
             say(pick(isAr, `▶️ لم أجد ${unseen.map(arabicCapability).join(' و')} في الكود، فأجرّبها على الصفحة الحية كما يفعل المستخدم…`, `▶️ The source did not show ${unseen.join(' and ')}, so I am trying it on the live page the way a user would…`));
             const bound = bindRunCancellation(input.cancellation, input.signal);
             try {
-                const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal, signIn: input.signIn });
+                const liveUrl = live.liveUrl;
+                const opts = { signal: bound.signal, signIn: input.signIn, ...probeFence() } as Parameters<typeof measureInteractions>[2];
+                const measured = await inWindow('interaction probe', () => measureInteractions(liveUrl, unseen, opts));
                 scoped = reconcileScope(scoped, measured);
                 for (const r of measured.results) input.log?.(`[pipeline] interaction ${r.capability} ${r.ok ? 'shown' : 'not shown'}: ${r.detail}`);
             } finally {

@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: the open confirmation dialog is 520px wide and fixed: at 390 its «Confirm» button is off the screen",
+ "targets": [
+  {
+   "sel": ".dlg .ok",
+   "at": 390
+  }
+ ]
+}

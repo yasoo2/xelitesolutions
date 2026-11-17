@@ -115,8 +115,9 @@ describe('and the repair itself is honest', () => {
 
     it('never claims a gain it did not measure and rolls back a non-gain', () => {
         const src = TOOL();
-        expect(src).toMatch(/const finalMeasurement = loop\.final \|\| before/);
-        expect(src).toMatch(/const gained = !finalMeasurement\.skipped && finalMeasurement\.score > before\.score/);
+        //  Both sides read the same way (review r40-2, A4): what refuses, scored alone.
+        expect(src).toMatch(/const finalMeasurement = loop\.final \|\| firstReading/);
+        expect(src).toMatch(/const gained = !finalMeasurement\.skipped && finalMeasurement\.score > firstReading\.score/);
         expect(src).toMatch(/rollback,/);
         expect(src).toMatch(/stoppedBecause: loop\.stoppedBecause/);
     });
@@ -153,10 +154,15 @@ describe('and the repair itself is honest', () => {
         expect(audit).toBeGreaterThan(wait);
     });
 
-    it('blocks honestly when anything remains instead of downgrading it', () => {
+    it('blocks honestly when anything that refuses remains instead of downgrading it', () => {
+        //  «Anything» is what refuses — the one rule verify.ts uses (browser-mend.ts refuses). Since design v3
+        //  (2026-11-15) the inspector's lines and minor taste are told: listed with the repair as told, never
+        //  dropped, and never «not accepted» on their own.
         const src = TOOL();
-        expect(src).toMatch(/ok: remaining\.length === 0/);
+        expect(src).toMatch(/const refusing = remaining\.filter\(refuses\);/);
+        expect(src).toMatch(/ok: refusing\.length === 0/);
         expect(src).toMatch(/لم أقبل الإصلاح/);
-        expect(src).toMatch(/verificationFailed: remaining\.length > 0/);
+        expect(src).toMatch(/verificationFailed: refusing\.length > 0/);
+        expect(src).toMatch(/for \(const f of told\) lines\.push/);
     });
 });

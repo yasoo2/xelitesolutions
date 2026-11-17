@@ -35,7 +35,7 @@ import { saysWord, words, normalise } from '../../../core/language/arabic';
 import { foldChars, normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 import { isArabicReply } from '../../../shared/reply-language';
 import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
-import { byNameOrder, isJsonStore, isLockfile, jsonStoresWrittenBy, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
+import { byNameOrder, isJoeAppKit, isJsonStore, isLockfile, jsonStoresWrittenBy, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -606,7 +606,15 @@ export default function CostCalculator({ services = [] }) {
 
 export function isNamedRowTextEditRequest(request: string): boolean {
     const text = String(request || '');
-    const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text);
+    /*
+     * «خلّي / اجعل / set / make» ARE EDIT VERBS TOO — EDIT_CLAUSE_WORD above
+     * already reads them so — and «خلي سعر الإصدار الفاخر = 99 دولار» changed
+     * nothing («لم أجد ما يطابق الطلب») because this reader did not. They also
+     * make NEW things («اجعل حاسبة تعرض السعر», "make a calculator that shows
+     * the price"), so they count only when the field is their own object.
+     */
+    const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text)
+        || /(?<![ء-ي])(?:اجعل|خلّ?ي|خلّ?)\s+(?:ال)?(?:سعر|أسعار|وصف|اسم)(?![ء-ي])|\b(?:set|make)\s+(?:the\s+)?(?:prices?|description|name)\b/iu.test(text);
     const namedField = /(?<![ء-ي])(?:سعر|السعر|بسعر|أسعار|الأسعار|وصف|الوصف|اسم|الاسم)(?![ء-ي])|\b(?:prices?|description|rename)\b/i.test(text);
     return mutation && namedField;
 }
@@ -778,8 +786,11 @@ const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
  */
 async function listFiles(dir: string): Promise<string[]> {
     return listProjectFiles(dir, {
-        skipDirectory: name => BUILD_OUTPUT_DIRS.has(name),
-        keepFile: (_rel, name) => EDITABLE.test(name),
+        // Joe's print kit (print.css, JOE-KIT.json, its fonts) is Joe's file, not
+        // his source: a wording edit such as «rename Cairo» never rewrites it
+        // (review 3 of r40, finding 6).
+        skipDirectory: (name, rel) => BUILD_OUTPUT_DIRS.has(name) || isJoeAppKit(rel),
+        keepFile: (rel, name) => EDITABLE.test(name) && !isJoeAppKit(rel),
     });
 }
 
@@ -846,7 +857,7 @@ export class ProjectEditTool extends BaseTool {
         // why «قم باضافه هذه الصوره» reached for an archive instead.
         const rawRequest = String(input?.request || '');
         const request = rawRequest.trim()
-            .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
+            .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -1118,7 +1129,8 @@ export class ProjectEditTool extends BaseTool {
                 if (!engineChanged && bugReport && buildVerified === true && !input?.skipAudit) {
                     try {
                         const { auditBuiltApp, formatAudit } = require('../../../core/quality/app-audit');
-                        const a = await auditBuiltApp(path.join(dir, 'dist'));
+                        //  The door reads the folder (design v13.3 §2): a change the owner already has runs private.
+                        const a = await auditBuiltApp(path.join(dir, 'dist'), { projectRoot: dir });
                         if (a && !a.skipped) auditNote = '\n' + formatAudit(a, isAr);
                         logs.push(`bug report: audited the built app — ${a?.skipped ? `skipped (${a.skipped})` : `${a?.score}/100`}`);
                     } catch (e: any) { logs.push(`bug-report audit failed: ${String(e?.message || e).slice(0, 80)}`); }
@@ -2235,11 +2247,23 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 const auditSid = String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID;
                 try { broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any); } catch { /* UI optional */ }
                 try { await require('../../browser/wsHub').waitForPanelWatcher(auditSid, 15_000); } catch { /* audit reports visibility honestly */ }
+                /**
+                 * WHERE THE CHECK MAY WRITE (design v13.3 §2, §2.3, §8). No serveUrl here: the audit serves
+                 * dist/ itself, so a folder the owner already has is walked private and one Joe never
+                 * delivered runs as today. The owner's own panel id is the stream target (never the shared
+                 * constant), and one pin holds the first audit and every round of the loop to one way of checking.
+                 */
+                const streamTo = String(context?.browserSessionId || '').trim();
+                const { anchorPinOnFirstAudit, auditNotComparable } = require('../../../core/quality/improve-loop');
+                const qaPin: Record<string, unknown> = {};
+                const qaOptions = { projectRoot: dir, qaPin, ...(streamTo ? { streamTo } : {}) };
                 audit = await auditBuiltApp(path.join(dir, 'dist'), {
                     timeoutMs: 180_000,
                     watchSessionId: auditSid,
                     requireVisibleBrowser: true,
+                    ...qaOptions,
                 });
+                anchorPinOnFirstAudit(qaPin, audit);
                 logs.push(`self-QA after edit: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit?.score}/100`}`);
 
                 // A project continuation used to stop at the first browser
@@ -2248,14 +2272,15 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 // evidence-driven loop here: repair source, rebuild, remeasure,
                 // and roll back any round that does not improve the result.
                 const { worthRepairing, collectSources } = require('../../../core/quality/self-repair');
-                if (!audit?.skipped && worthRepairing(audit?.findings || [])) {
+                //  Only what refuses opens a repair and reaches it: the inspector's lines are told (design v3 §2.3).
+                const { refuses } = require('../../../core/engine/browser-mend');
+                if (!audit?.skipped && worthRepairing((audit?.findings || []).filter(refuses))) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr
                         ? 'أصلح عيوب الجودة التي قاسها المتصفح، ثم أعيد الاختبار نفسه.'
                         : 'Repairing the browser-measured quality findings, then rerunning the same audit.');
                     const { improveUntilItStops, repairRound, improveSummary } = require('../../../core/quality/improve-loop');
                     const { snapshotProject, restoreVersion } = require('../../../core/project/versions');
                     const beforeRepair = collectSources(dir) as Record<string, string>;
-                    const measuredAudits: any[] = [audit];
                     const rebuild = async (): Promise<boolean> => {
                         const { executionEngine } = require('../../../kernel/ExecutionEngine');
                         const { withoutViteConfigForBuild, portableViteBuildArgs } = require('./ReactProjectTool');
@@ -2265,46 +2290,46 @@ This is a correct answer, not a failure. Changing something the user did not ask
                             }).done).ok,
                         );
                     };
-                    const firstMeasurement = {
-                        score: Number(audit.score || 0),
-                        findingIds: (audit.findings || []).map((f: any) => String(f.id)),
-                        findings: (audit.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
-                    };
+                    //  The loop is handed, and keeps or rolls back a round on, what refuses alone (review r40-2, A2):
+                    //  a told line never opens a round, never feeds one, never decides one (browser-mend.ts).
+                    const { refusingMeasurement } = require('../../../core/engine/browser-mend');
+                    const firstMeasurement = refusingMeasurement(audit);
+                    /** Each reading the loop was handed, with the audit it was read from. */
+                    const readings = new Map<any, any>();
                     improvement = await improveUntilItStops(firstMeasurement, {
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
+                        language: isAr ? 'ar' : 'en',
                         say: (line: string) => logs.push(line),
                         snapshot: (label: string) => String(snapshotProject(dir, label)?.id || ''),
                         rollback: async (id: string) => {
                             const restored = restoreVersion(dir, id);
                             return !!restored?.ok && await rebuild();
                         },
+                        //  A round handed no finding writes nothing: never ui-repair's untargeted blanket.
                         repair: async (round: number, _ids: string[], findings: any[]) =>
-                            (await repairRound(dir, round, { isArabic: isAr, findings })).changed,
+                            findings.length ? (await repairRound(dir, round, { isArabic: isAr, findings })).changed : [],
                         rebuild,
                         measure: async () => {
                             const measured = await auditBuiltApp(path.join(dir, 'dist'), {
                                 timeoutMs: 180_000,
                                 watchSessionId: auditSid,
                                 requireVisibleBrowser: true,
+                                ...qaOptions,
                             });
                             if (measured?.skipped) return { score: 0, findingIds: [], skipped: true };
-                            measuredAudits.push(measured);
-                            return {
-                                score: Number(measured.score || 0),
-                                findingIds: (measured.findings || []).map((f: any) => String(f.id)),
-                                findings: (measured.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
-                            };
+                            //  Checked another way than the loop's first audit (§2.3): rolled back through `skipped`.
+                            const notComparable = auditNotComparable(measured, qaPin);
+                            if (notComparable) return { score: 0, findingIds: [], skipped: true, notComparable };
+                            const reading = refusingMeasurement(measured);
+                            readings.set(reading, measured);
+                            return reading;
                         },
                     });
                     // `final` remains the last KEPT measurement after a
-                    // rollback. Select the full audit with that same score and
-                    // finding set, never the rejected measurement that caused
-                    // the rollback.
-                    const finalIds = [...(improvement.final?.findingIds || [])].map(String).sort().join('|');
-                    const matchingAudit = measuredAudits.slice().reverse().find((candidate: any) =>
-                        Number(candidate?.score || 0) === Number(improvement.final?.score || 0)
-                        && [...(candidate?.findings || [])].map((f: any) => String(f.id)).sort().join('|') === finalIds,
-                    );
+                    // rollback. Select the full audit that reading was taken
+                    // from, never the rejected measurement that caused the
+                    // rollback (the first reading keeps the first audit).
+                    const matchingAudit = readings.get(improvement.final);
                     if (matchingAudit) audit = matchingAudit;
                     notes.push(improveSummary(improvement, isAr));
 

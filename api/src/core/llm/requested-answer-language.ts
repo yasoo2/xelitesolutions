@@ -289,7 +289,7 @@ export function answerRequestText(question: string): string {
     // by the language resolver; a quoted header is user text, not a boundary.
     const visible = q.replace(/```[\s\S]*?```|`[^`]*`|"[^"]*"|'[^']*'|“[^”]*”|‘[^’]*’|«[^»]*»/g,
         match => ' '.repeat(match.length));
-    const boundary = visible.search(/\n+\[ATTACHED FILES — the user attached \d+ file\(s\) to this message\.[^\n]*\]/u);
+    const boundary = visible.search(/(?<!\n)\n+\[ATTACHED FILES — the user attached \d+ file\(s\) to this message\.[^\n]*\]/u);
     return boundary < 0 ? q : q.slice(0, boundary);
 }
 

@@ -212,7 +212,7 @@ describe('explicit canonical-local selection (pure helper)', () => {
     expect(trimmed.kind).toBe('eligible-local');
     expect(trimmed.eligible).toBe(true);
     expect(trimmed.model).toBe('qwen2.5:1.5b');
-    for (const model of ['qwen 2.5', 'qwen\t2.5', 'qwen\n2.5', 'qwen2.5']) {
+    for (const model of ['qwen 2.5', 'qwen\t2.5', 'qwen\n2.5', 'qwen\u001f2.5']) {
       const decision = classifyExplicitLocalSelection({
         provider: 'local',
         model,

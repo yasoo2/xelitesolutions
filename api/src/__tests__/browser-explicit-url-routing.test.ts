@@ -22,7 +22,9 @@ describe('explicit URL browser routing', () => {
     test('a request to summarize page content is not swallowed by the title-only open path', async () => {
         const p = await plan('افتح https://example.com ثم لخّص محتوى الصفحة.');
 
-        expect(p.steps[0].tool).toBe('browser_readability');
+        //  The tool that opens the page and summarises it — the capability
+        //  router's own table sends «لخّص محتوى الصفحة» there (ef5de8e74).
+        expect(p.steps[0].tool).toBe('browser_summarize');
         expect(p.steps[0].input).toMatchObject({ url: 'https://example.com' });
     });
 

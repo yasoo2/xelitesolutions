@@ -75,19 +75,29 @@ describe('the export button is guarded on what the export reads', () => {
      *  in. The anchor is the semantic expression itself — it survives any
      *  reformatting of the JSX around it — and it is checked in both
      *  directions so a rename cannot leave the file passing by accident.
+     *
+     *  The records engine ships as three modules (#90): RecordsApp.jsx is a
+     *  thin wrapper, the state lives in app/records-controller.js, and the
+     *  export button is rendered by RecordsView.jsx — so the guard is read
+     *  where the button is, and the negative covers all three.
      */
     const records = () => {
-        const src = files['src/components/RecordsApp.jsx'];
+        const src = files['src/components/RecordsView.jsx'];
         expect(typeof src).toBe('string');
         return src;
     };
+    const wholeEngine = () => ['src/components/RecordsApp.jsx', 'src/app/records-controller.js', 'src/components/RecordsView.jsx']
+        .map(file => {
+            expect(typeof files[file]).toBe('string');
+            return files[file];
+        }).join('\n');
 
     it('reads visible.length, which is what leaves with him', () => {
         expect(records()).toContain('disabled={!visible.length}');
     });
 
     it('no longer reads rows.length, which is what let the empty file out', () => {
-        expect(records()).not.toContain('disabled={!rows.length}');
+        expect(wholeEngine()).not.toContain('disabled={!rows.length}');
     });
 
     //  POSITIVE — and `visible` really is the value handed to the export, so

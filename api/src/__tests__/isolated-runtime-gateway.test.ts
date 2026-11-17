@@ -77,6 +77,9 @@ describe('real ToolService isolated runtime boundaries', () => {
         mock('../modules/tools/terminal/TerminalState', { terminals: {}, registerTerminal: deny('terminal'), removeTerminal: deny('terminal') });
         mock('../modules/terminal/terminal-kernel', { terminalKernel: {} });
         mock('../core/session/attended-run', {
+            // ToolService binds the run's cancellation to its resources; without
+            // the real function every call ended in «bindRunCancellation is not a function».
+            bindRunCancellation: jest.requireActual('../core/session/attended-run').bindRunCancellation,
             registerRun: () => ({ cancelled: false, whenCancelled: new Promise(() => {}), cancel() { this.cancelled = true; } }),
             releaseHandle: jest.fn(), attendRun: ({ work }: any) => work(),
         });

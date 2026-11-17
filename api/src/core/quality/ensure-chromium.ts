@@ -77,6 +77,8 @@ export async function ensureChromium(opts: {
             cwd: process.cwd(),
             timeout: opts.timeoutMs ?? 300_000,
             env: { NO_COLOR: '1' },
+            //  Joe's own browser, installed where Joe's settings say.
+            joeInfrastructure: true,
             onLine: (l: string) => { out += l + '\n'; say(`  ${String(l).slice(0, 160)}`); },
         });
         const r = await h.done;

@@ -143,7 +143,8 @@ describe('a plan states its own dependencies', () => {
         expect(tools).toContain('react_project');
         expect(tools).not.toContain('file_edit');
         expect(clean.blocker).toBeUndefined();
-        expect(clean.notes.join(' ')).toContain('file_edit يحتاج الحقل الإلزامي');
+        //  The file it edits may be named by filename or by path; naming neither is the defect.
+        expect(clean.notes.join(' ')).toContain('file_edit يحتاج واحداً من filename أو path');
     });
 
     test('a malformed file edit remains rejected when it is the only implementation task', () => {
@@ -154,7 +155,7 @@ describe('a plan states its own dependencies', () => {
 
         expect(clean.phases[0].tasks).toEqual([]);
         expect(clean.blocker?.code).toBe('tool_contract_invalid');
-        expect(clean.notes.join(' ')).toContain('file_edit يحتاج الحقل الإلزامي');
+        expect(clean.notes.join(' ')).toContain('file_edit يحتاج واحداً من filename أو path');
     });
 
     test('a complete filename-based file edit counts as implementation evidence', () => {

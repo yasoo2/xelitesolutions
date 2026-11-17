@@ -81,8 +81,16 @@ describe('a bracket after a column names its answers', () => {
     it('a single value in brackets is a note, not a list of options', () => {
         //  One answer is not a choice. Turning «(متوفر)» into a select with a
         //  single option would be inventing a constraint he did not state.
+        //  Since 75e32c750 every status column («الحالة») is a select with
+        //  its own default stages, so the note is measured against the same
+        //  column written without it: the bracket must change nothing.
         const f = field('جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر)', 'الحالة');
-        expect(f?.options).toBeUndefined();
+        const bare = field('جدول المنتجات فيه اسم الصنف والسعر والحالة', 'الحالة');
+        expect(f).toBeDefined();
+        expect(bare).toBeDefined();
+        expect(f.options).not.toEqual(['متوفر']);
+        expect(f.options).toEqual(bare.options);
+        expect(f.type).toBe(bare.type);
     });
 });
 

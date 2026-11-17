@@ -31,7 +31,8 @@ describe('one definition of a dead control', () => {
         const B = read('core', 'quality', 'behaviour-audit.ts');
         expect(B).toMatch(/export async function probeControls/);
         expect(B).toMatch(/export function judgeBehaviour/);
-        expect(B).toMatch(/const probe = await probeControls\(page\)/);
+        //  The same road, with or without the no-write walk's options (design v13.3 §5.3).
+        expect(B).toMatch(/const probe = await probeControls\(page[,)]/);
     });
 
     it('the probe shims __name — without it every evaluate throws in the page', () => {

@@ -202,7 +202,10 @@ describe('and it stands down entirely when the providers are rationing', () => {
 describe('the stand-down knows what it is protecting', () => {
     it('POSITIVE — with the local brain leading, the section author does not stand down', () => {
         expect(SRC).toMatch(/const localBrainLeads = [^;]*LOCAL_BRAIN_FIRST/);
-        expect(SRC).toMatch(/providersAreRationing = insideATest \|\| \(!localBrainLeads/);
+        //  A selected model that already failed earlier in this build also
+        //  stands the author down (154e231dc); only the QUOTA check — the
+        //  mesh cooldown — is the one a local brain skips.
+        expect(SRC).toMatch(/providersAreRationing = insideATest \|\| modelUnavailableDuringBuild \|\| \(!localBrainLeads && \(\(\) => \{[\s\S]{0,200}isProviderCoolingDown/);
     });
 
     it('POSITIVE — and neither do the copy and catalogue authors', () => {

@@ -42,7 +42,8 @@ describe('either instrument can open a repair round', () => {
         //  Order is the entire defect. A reading taken after the decision
         //  cannot inform the decision, however carefully it is then used.
         const reader = REACT.indexOf('const terminalVerdict = async () =>');
-        const door = REACT.indexOf('worthRepairing(audit.findings)');
+        //  the door asks about what refuses (design v3 §2.3), and is still after the reader
+        const door = REACT.indexOf('worthRepairing(audit.findings.filter(refuses))');
         expect({ readerExists: reader > 0, beforeTheDoor: reader > 0 && reader < door })
             .toEqual({ readerExists: true, beforeTheDoor: true });
     });
@@ -50,7 +51,7 @@ describe('either instrument can open a repair round', () => {
     it('⛔ POSITIVE — a terminal failure alone opens the round', () => {
         //  With no browser finding at all. This is the shape that could not
         //  trigger a repair before: clean interface, broken API.
-        expect(REACT).toMatch(/worthRepairing\(audit\.findings\) \|\| sourceBehaviourFindings\.length > 0 \|\| terminalFoundSomething/);
+        expect(REACT).toMatch(/worthRepairing\(audit\.findings\.filter\(refuses\)\) \|\| sourceBehaviourFindings\.length > 0 \|\| terminalFoundSomething/);
     });
 
     it('⛔ NEGATIVE — the failures are read through failingIds, not an invented field', () => {

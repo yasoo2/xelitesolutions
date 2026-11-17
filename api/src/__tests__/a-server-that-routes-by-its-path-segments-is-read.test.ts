@@ -126,3 +126,89 @@ describe('P070: a travel agency server that routes by its path segments', () => 
         expect(evidence.routes.map(r => r.path)).not.toEqual(expect.arrayContaining(['/agent']));
     });
 });
+
+/*
+ * The fourteenth live check, 2026-11-11 (L236, an electronics store): the segment was looked up in
+ * a table of handlers — `const [, resource] = parts; const c = collections[resource]` — read as no
+ * route at all, and «orders, warranties (not served)» refused it four times.
+ */
+describe('a segment looked up in a table of handlers, compared, or switched on serves those names', () => {
+    const head = [
+        `const http = require('http');`,
+        `function route(req, res) {`,
+        `  const url = new URL(req.url, 'http://x');`,
+        `  if (!url.pathname.startsWith('/api/')) return res.end();`,
+        `  const parts = url.pathname.split('/').filter(Boolean);`,
+        `  const [, resource, rawId] = parts;`,
+    ];
+    const tail = [`}`, `http.createServer(route).listen(3000);`];
+    const paths = async (body: string[]) => (await collectServerEvidence([tree({ 'server.js': [...head, ...body, ...tail].join('\n') })], [])).routes.map(r => r.path);
+
+    test('a table of handlers keyed by name', async () => {
+        const got = await paths([
+            `  const collections = {`,
+            `    products: { list: listProducts, create: createProduct },`,
+            `    'orders': { list: listOrders, get: (db, id) => getOrder(db, { id, nested: { a: 1 } }) },`,
+            `    warranties: { list: listWarranties },`,
+            `  };`,
+            `  const c = collections[resource];`,
+            `  if (!c) { res.writeHead(404); return res.end(); }`,
+            `  res.end(JSON.stringify(c.list()));`,
+        ]);
+        expect(got).toEqual(expect.arrayContaining(['/api/products', '/api/orders', '/api/warranties']));
+        expect(got).not.toEqual(expect.arrayContaining(['/api/list', '/api/create', '/api/get', '/api/nested', '/api/a']));
+    });
+
+    test('a switch on the segment, a comparison, and a membership test', async () => {
+        expect(await paths([
+            `  switch (resource) {`,
+            `    case 'tickets': return listTickets(res);`,
+            `    case "agents": return listAgents(res);`,
+            `    default: res.writeHead(404); res.end();`,
+            `  }`,
+        ])).toEqual(expect.arrayContaining(['/api/tickets', '/api/agents']));
+        expect(await paths([`  if (resource === 'devices') return listDevices(res);`])).toEqual(expect.arrayContaining(['/api/devices']));
+        expect(await paths([
+            `  const HANDLERS = { rooms: listRooms, guests: listGuests };`,
+            `  if (!Object.hasOwn(HANDLERS, resource)) { res.writeHead(404); return res.end(); }`,
+            `  return HANDLERS[resource](res);`,
+        ])).toEqual(expect.arrayContaining(['/api/rooms', '/api/guests']));
+    });
+
+    /*
+     * qa-live19, 2026-11-12, L236 again: the split taken apart at once, with no variable to index —
+     * `const [, resource, rawId, extra] = url.pathname.split('/').filter(Boolean)` — and a table of
+     * handlers written in shorthand, `{ products, orders, warranties }`. Nothing was read, and the
+     * store was refused four times with «products, orders, warranties (not served)».
+     */
+    test('a split taken apart at once, and a shorthand table of handlers', async () => {
+        const server = [
+            `const http = require('node:http');`,
+            `const handlers = { products, orders, warranties };`,
+            `async function handleApi(db, req, res, url) {`,
+            `  const [, resource, rawId, extra] = url.pathname.split('/').filter(Boolean);`,
+            `  const h = handlers[resource];`,
+            `  if (!h || extra !== undefined) throw new Error('404');`,
+            `  if (req.method === 'GET') return res.end(JSON.stringify(h.list(db)));`,
+            `}`,
+            `http.createServer((req, res) => {`,
+            `  const url = new URL(req.url, 'http://x');`,
+            `  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return handleApi(null, req, res, url);`,
+            `}).listen(3000);`,
+        ].join('\n');
+        const got = (await collectServerEvidence([tree({ 'src/app.js': server })], [])).routes.map(r => r.path);
+        expect(got).toEqual(expect.arrayContaining(['/api/products', '/api/orders', '/api/warranties']));
+        //  Without .filter(Boolean) the first part is the empty one before the leading slash.
+        const bare = server.replace(".split('/').filter(Boolean)", ".split('/')").replace('const [, resource, rawId, extra]', 'const [, , resource, rawId, extra]');
+        expect((await collectServerEvidence([tree({ 'src/app.js': bare })], [])).routes.map(r => r.path)).toEqual(expect.arrayContaining(['/api/products', '/api/orders', '/api/warranties']));
+    });
+
+    //  The fifth review, 2026-11-11: the keys of the table checked with Object.keys(…).includes, and a quote inside a pattern of the table.
+    test('a table checked with Object.keys(…).includes(v), and a pattern holding a quote', async () => {
+        expect(await paths([
+            `  const collections = { products: { check: /^[a-z']+$/ }, orders: { check: /^\\{[0-9]+\\}$/ }, invoices: {} };`,
+            `  if (!Object.keys(collections).includes(resource)) { res.writeHead(404); return res.end(); }`,
+            `  res.end(JSON.stringify(collections[resource]));`,
+        ])).toEqual(expect.arrayContaining(['/api/products', '/api/orders', '/api/invoices']));
+    });
+});

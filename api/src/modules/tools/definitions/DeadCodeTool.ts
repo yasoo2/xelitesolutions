@@ -64,7 +64,7 @@ export class DeadCodeTool extends BaseTool {
 
             const result = await executionEngine.run(`npx ${args.join(' ')}`, {
                 cwd: workDir,
-                env: { ...process.env, FORCE_COLOR: '0' }
+                env: { FORCE_COLOR: '0' }
             });
 
             let issues: any[] = [];

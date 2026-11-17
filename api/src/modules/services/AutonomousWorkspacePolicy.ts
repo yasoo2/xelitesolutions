@@ -3,6 +3,7 @@ import path from 'path';
 import { isReadOnlyWorkspaceOverviewRequest } from '../../core/orchestrator/workspace-overview';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { snapshotRuntimeDiagnosticInput } from './RuntimeDiagnosticsPolicy';
+import { isWithinRoot } from '../tools/path-containment';
 
 export const AUTONOMOUS_DIRECTORY_ENTRIES = 256;
 export function autonomousWorkspaceTool(name: unknown): boolean {
@@ -52,8 +53,9 @@ export function validateAutonomousWorkspaceDirectory(raw: string, rootValue: str
     if (typeof raw !== 'string' || /[\u0000-\u001f\u007f]/u.test(raw) || /^[\\/]{2}/u.test(raw)) deny('invalid_workspace_path');
     const segments = raw.replace(/\\/g, '/').replace(/^[A-Za-z]:\//u, '').split('/');
     if (segments.some(s => s !== '.' && !safeSegment(s))) deny('sensitive_or_invalid_path');
-    const target = path.resolve(root, raw), relative = path.relative(root, target);
-    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) deny('path_outside_workspace');
+    const target = path.resolve(root, raw);
+    // The one shared containment reader; the root itself («.») is admitted.
+    if (!isWithinRoot(target, root)) deny('path_outside_workspace');
     let cursor = path.parse(target).root;
     for (const segment of target.slice(cursor.length).split(path.sep)) {
         cursor = path.join(cursor, segment);

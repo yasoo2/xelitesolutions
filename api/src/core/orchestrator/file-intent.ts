@@ -94,11 +94,58 @@ const NAMED_FILE_PATTERNS = [
 // «Node.js», «Vue.js», «Three.js» name a technology, not a file he wants written.
 const TECHNOLOGY_NAME = /^(?:node|vue|next|nuxt|react|express|three|d3|chart|angular|ember|backbone|deno|bun|solid|svelte|alpine|moment|lodash|p5|anime|pixi|babylon|socket\.io)\.js$/i;
 
+/*
+ * ⛔ A FILE HE PROTECTS IS NEVER THE FILE TO WRITE.
+ *
+ * «غير العنوان ولا تلمس ملف config.json» planned ai_write_file with path "config.json":
+ * the one name in the request was the one he forbade. A name that stands under a
+ * protection in its own sentence — «لا تلمس / لا تعدل / بدون / ما عدا / اترك», "do not
+ * touch / never / without / except / leave" — is what the order must keep away from,
+ * and is not counted. A creating verb between the protection and the name opens a new
+ * order («لا تنشئ مشروعاً جديداً، أنشئ ملف notes.md», "don't worry, create a file named
+ * a.txt"); the verb the protection itself negates does not ("do not create a.txt").
+ */
+/*
+ * …AND ONLY A PROTECTION THAT GOVERNS THE FILE PROTECTS IT. The fifth pre-merge review
+ * (2026-11-12): "If it does not exist, create config.json" and "This is not hard: create
+ * hello.py that prints hi" lost their file — any «not» earlier in the sentence protected
+ * whatever was named after it.
+ *
+ *  - a bare «not» protects only the name it stands right before ("create a.txt, not the
+ *    file named b.txt"). «does not exist», «is not hard», «did not pass» state something
+ *    and forbid nothing; the forbidding forms are "do not", "don't", "never", "without";
+ *  - a reminder forbids nothing either: "don't forget to create a.txt", «لا تنسى ملف a.txt»;
+ *  - «لا تلمس», «ما تعدل» carry their verb with them: the word after them is no deed of the
+ *    protection, and an order that follows at once («ولا تقلق، أنشئ ملف a.txt») is read.
+ * Anything else that forbids still protects what follows it in its sentence: a file kept
+ * out of a write by mistake is asked about; a file written against his word is damage.
+ */
+const PROTECTS_WHAT_FOLLOWS = new RegExp([
+    String.raw`\b(?:do\s+not|don['’]?t|never)\b(?!\s+(?:forget|hesitate|worry|skip|omit|miss)\b)`,
+    String.raw`\b(?:without|except|excluding|other\s+than|apart\s+from|aside\s+from|besides)\b`,
+    String.raw`\b(?:not|leave|keep|preserve)\s+(?:(?:the|a|any)\s+)?(?:files?\s+)?(?:(?:named|called)\s+)?[\x60'"“”«]?$`,
+    String.raw`(?<![\p{L}\p{N}_])[وف]?(?:(?:لا|ما)\s+(?!تنس)ت[\p{L}]+|بدون|دون|بلاش|[اأ]وعى|[إا]ياك|عدا|ماعدا|باستثناء|[إا]لا|اترك)(?![\p{L}\p{N}_])`,
+].join('|'), 'giu');
+const OPENS_A_NEW_ORDER = /\b(?:create|write|make|generate|save|add|build|put)\b|(?<![\p{L}\p{N}_])[وف]?(?:[أا]نشئ|انشي|اكتب|اعمل|سوي|احفظ|[أا]ضف|حط)(?![\p{L}\p{N}_])/iu;
+const CARRIES_ITS_VERB = /^[وف]?(?:لا|ما)\s/u;
+function standsUnderAProtection(raw: string, at: number): boolean {
+    const sentence = raw.slice(Math.max(0, at - 120), at).split(/[!?؟؛;\n]|\.\s/u).pop() || '';
+    let nearest: RegExpMatchArray | null = null;
+    for (const m of sentence.matchAll(PROTECTS_WHAT_FOLLOWS)) nearest = m;
+    if (!nearest) return false;
+    //  The first word after the protection is the deed it forbids ("do not CREATE …").
+    const after = sentence.slice((nearest.index || 0) + nearest[0].length);
+    return !OPENS_A_NEW_ORDER.test(CARRIES_ITS_VERB.test(nearest[0]) ? after : after.replace(/^\s*[\p{L}]+/u, ''));
+}
+
 export function namedTargetFile(input: string, accept?: (name: string) => boolean): string | null {
     const raw = String(input || '');
     const names = new Set<string>();
     for (const re of NAMED_FILE_PATTERNS) {
-        for (const m of raw.matchAll(re)) names.add(String(m[1]).replace(/[.,؛،:»”'"\x60]+$/u, '').replace(/\\/g, '/'));
+        for (const m of raw.matchAll(re)) {
+            if (standsUnderAProtection(raw, m.index || 0)) continue;
+            names.add(String(m[1]).replace(/[.,؛،:»”'"\x60]+$/u, '').replace(/\\/g, '/'));
+        }
     }
     const valid = [...names].filter(n => n && !TECHNOLOGY_NAME.test(n) && !n.includes('..') && !n.startsWith('/') && !/^[A-Za-z]:/.test(n)
         && SAFE_RELATIVE_PATH.test(n) && /\.[A-Za-z0-9]{1,16}$/.test(n)

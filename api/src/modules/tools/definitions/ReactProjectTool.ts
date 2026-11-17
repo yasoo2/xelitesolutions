@@ -44,6 +44,7 @@ import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { artifactRootDir } from '../../../shared/artifact-root';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
+import { refuses, refusingMeasurement } from '../../../core/engine/browser-mend';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
@@ -423,6 +424,45 @@ export function canBuildDependencyFreeRecordsApp(
 /** A static recovery artifact has no React source tree for the repair loop to edit. */
 export function sourceRepairAllowedForArtifact(artifactMode: string | null | undefined): boolean {
     return artifactMode !== 'static_records';
+}
+
+/**
+ * ⛔ WHAT THE BUILD'S DELIVERY GATE READS FROM THE LAST AUDIT: WHAT REFUSES (review r40-2, A1).
+ *
+ * `openQualityFindings` was every finding, so any told line of the revived
+ * inspector (a11y_no_main, low_contrast, mobile_tap_targets…) — on most pages —
+ * made qualityDeliveryBlocked true and refused a React delivery verify.ts would
+ * accept. The told lines are told with the delivery (formatAudit lists them),
+ * at every severity; they are neither open, nor blockers, nor in the record.
+ */
+export function reactQualityGate(audit: any): { open: any[]; blockers: any[]; told: any[] } {
+    const all = ((audit?.findings || []) as any[]).filter((f: any) => f && f.id);
+    const open = all.filter(refuses);
+    return { open, blockers: open.filter((f: any) => f.severity === 'high'), told: all.filter((f: any) => !refuses(f)) };
+}
+
+/**
+ * What the build's improve loop is handed, and keeps or rolls back a round on (review r40-2, A2):
+ * the refusing findings with their own score, blended with the terminal's, and the terminal's
+ * failing checks. A told line is neither an id that keeps the loop running nor a finding fed to it.
+ */
+export function reactLoopMeasurement(audit: any, terminalFails: string[], blend: (browser: number) => number): {
+    score: number; findingIds: string[]; findings: Array<{ id: string; evidence?: any }>;
+} {
+    const m = refusingMeasurement(audit);
+    return { score: blend(m.score), findingIds: [...m.findingIds, ...terminalFails], findings: m.findings };
+}
+
+/**
+ * What the model rounds may be asked about (review r40-2, A3): the refusing findings only. low_contrast,
+ * mobile_overflow, mobile_tap_targets and mobile_header_fragmented are in the CSS round's own list, and
+ * a told line must never be paid for in a model round, nor written into the user's stylesheet.
+ */
+export function modelRepairable(audit: any): { behaviour: any[]; css: any[] } {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { cssRepairable, handlerRepairable } = require('../../../core/quality/model-round');
+    const refusing = ((audit?.findings || []) as any[]).filter((f: any) => f && f.id).filter(refuses);
+    return { behaviour: handlerRepairable(refusing), css: cssRepairable(refusing) };
 }
 
 function scriptSafeJson(value: unknown): string {
@@ -4404,7 +4444,7 @@ export class ReactProjectTool extends BaseTool {
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const logs: string[] = [];
         const request = String(input?.request || '').trim()
-            .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
+            .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
         /**
@@ -7391,7 +7431,39 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     integrationProfileId: externalIntegration.selection.integrationProfileId,
                 },
             } : {};
+            /**
+             * ONE WAY OF CHECKING FOR THIS BUILD'S AUDITS (design v13.3 §2.3, §2.5), chosen BEFORE the packaged
+             * server boots: the delivery record is read once (a new build has none and runs as today), and
+             * the path is chosen on the folder the walked server RUNS from — the packaged API (`node server.js`
+             * in apiDir) — never on the interface folder it serves. Every audit below shares this pin.
+             */
+            const { seedLoopQaPin, anchorPinOnFirstAudit, auditNotComparable, notComparableLine } = require('../../../core/quality/improve-loop');
+            const bootsPackaged = !!packaged && !!apiDir && fs.existsSync(path.join(apiDir, 'node_modules'));
+            let qaPin = await seedLoopQaPin({
+                projectRoot: proj, serverRoot: bootsPackaged ? apiDir : proj, hasServeUrl: bootsPackaged,
+                ...(bootsPackaged ? { startKind: 'node-entry' } : {}), sessionId,
+            });
+            /*
+             * THE OWNER'S DATA ACROSS THIS BUILD'S AUDITS (review 7, H2): on a change run, the verification's net —
+             * the verify lock, a snapshot taken before the packaged server boots, the recovery copy — and what the
+             * audits changed is put back once they are done (the server stopped first, and booted again).
+             */
+            const dataSpan = qaPin.record
+                ? await require('../../../core/quality/owner-data-span').openOwnerDataSpan({
+                    projectRoot: bootsPackaged ? apiDir : proj, pin: qaPin, runId: `react-${String(sessionId || 'run')}`,
+                    workspaceId: String(context?.workspaceId || 'default'), log: term,
+                })
+                : null;
             liveServer = await bootPackagedServer();
+            //  Nothing was started: the audits serve dist/ themselves, so the pin is chosen for that.
+            if (bootsPackaged && !liveServer) qaPin = await seedLoopQaPin({ projectRoot: proj, hasServeUrl: false, sessionId });
+            dataSpan?.restrict(qaPin);
+            const qaStreamTo = String(context?.browserSessionId || '').trim();
+            const qaOptions = {
+                projectRoot: proj, qaPin,
+                ...(liveServer ? { serverRoot: apiDir, startKind: 'node-entry' } : {}),
+                ...(qaStreamTo ? { streamTo: qaStreamTo } : {}),
+            };
             if (liveServer) {
                 term(`self-QA: measuring the RUNNING system at ${liveServer.url} — its API answers, so the catalogue is real`);
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
@@ -7415,6 +7487,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 ...externalApiAuditContext,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
                 ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
+                ...qaOptions,
                 /**
                  * And the invitation matches reality. When the audit cannot
                  * borrow the panel it runs in a private browser — and telling
@@ -7484,6 +7557,8 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     }
                 },
             });
+            //  The first audit has nothing earlier to keep: if the folder needed a stricter path, the build's audits take it.
+            if (anchorPinOnFirstAudit(qaPin, audit)) term(`self-QA: the checks run as ${qaPin.path} for every audit of this build`);
             /**
              *  BORROWED IS NOT WATCHED.
              *
@@ -7610,7 +7685,12 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         watchSessionId: auditSid,
                         requireVisibleBrowser: true,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
+                        ...qaOptions,
                     });
+                    //  This audit measures the restored tree, the only one left: it is kept, and a change of the
+                    //  way of checking (§2.3) is told rather than hidden.
+                    const changedWay = auditNotComparable(audit, qaPin);
+                    if (changedWay) term(`self-QA after rollback: ${notComparableLine(isAr ? 'ar' : 'en', changedWay.from, changedWay.to)}`);
                     term(`self-QA after rollback: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit.score}/100`}`);
                 }
             }
@@ -7720,12 +7800,12 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             }
             const supportsSourceRepair = sourceRepairAllowedForArtifact(artifactMode);
             const sourceBehaviourFindings = !audit.skipped && supportsSourceRepair
-                ? require('../../../core/quality/model-round').handlerRepairable(audit.findings || [])
+                ? modelRepairable(audit).behaviour
                 : [];
             // Verification measures and never repairs: the door's terminal
             // reading is the verdict, and the repair rounds do not open.
             if (verifyExisting && doorTerminal) terminalAudit = doorTerminal;
-            if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
+            if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings.filter(refuses)) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
@@ -7804,22 +7884,27 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         ...externalApiAuditContext,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                         ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
+                        ...qaOptions,
                     });
                     if (a?.skipped) return { score: 0, findingIds: [], skipped: true };
+                    //  Checked another way than the build's pin (§2.3): never compared — the round is rolled
+                    //  back through `skipped`, and the earlier reading stands.
+                    const notComparable = auditNotComparable(a, qaPin);
+                    if (notComparable) return { score: 0, findingIds: [], skipped: true, notComparable };
                     lastAudit = a;
                     const t = await runTerminal().catch(() => null);
                     if (t) terminalAudit = t;
                     const { failingIds } = require('../../../core/quality/terminal-audit');
                     const termFails: string[] = t && !t.skipped ? failingIds(t) : [];
-                    return {
-                        score: blend(Number(a.score || 0), t),
-                        findingIds: [...(a.findings || []).map((f: any) => f.id), ...termFails],
-                        // …and the offenders each finding named, so the next
-                        // round is surgery rather than another blanket.
-                        findings: (a.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
-                    };
+                    //  What refuses, with the offenders each finding named, so the next round is surgery
+                    //  rather than another blanket — and never a told line (review r40-2, A2).
+                    const reading = reactLoopMeasurement(a, termFails, (n: number) => blend(n, t));
+                    readings.set(reading, a);
+                    return reading;
                 };
                 let lastAudit: any = audit;
+                /** Each reading the loop was handed, with the audit it was read from. */
+                const readings = new Map<any, any>();
 
                 // The FIRST reading is taken with both eyes too, so round 1's
                 // «before» is the same number every later round is judged by.
@@ -7834,18 +7919,16 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 }
                 const firstTermFails: string[] = firstTerminal && !firstTerminal.skipped
                     ? require('../../../core/quality/terminal-audit').failingIds(firstTerminal) : [];
+                const firstReading = reactLoopMeasurement(audit, firstTermFails, (n: number) => blend(n, firstTerminal));
                 loop = await improveUntilItStops(
-                    {
-                        score: blend(Number(audit.score || 0), firstTerminal),
-                        findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
-                        findings: (audit.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
-                    },
+                    firstReading,
                     {
                         say: term,
                         // The measurement itself — the one wire that made the
                         // whole loop a no-op when it was missing, and that no
                         // unit test could catch because each one brings its own.
                         measure: measureNow,
+                        language: isAr ? 'ar' : 'en',
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
                         target: Math.max(1, Number(process.env.JOE_IMPROVE_TARGET || 95)),
                         snapshot: (label: string) => String(snapshotProject(proj, label)?.id || ''),
@@ -7865,12 +7948,16 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                             //  `handlerRepairable` before the deterministic round
                             //  is allowed to end the round on a colour tweak.
                             const {
-                                askForCss, cssRepairable, askForHandler, handlerRepairable, fileForBehaviour,
+                                askForCss, askForHandler, fileForBehaviour,
                             } = require('../../../core/quality/model-round');
-                            const known = await repairRound(proj, round, {
-                                isArabic: isAr, findings,
-                                protectedFiles: trustedRecordsFiles.map(file => file.rel),
-                            });
+                            //  A round handed no browser finding (the terminal's alone) does not run the
+                            //  deterministic repairer: with no findings it is ui-repair's untargeted blanket.
+                            const known = findings.length
+                                ? await repairRound(proj, round, {
+                                    isArabic: isAr, findings,
+                                    protectedFiles: trustedRecordsFiles.map(file => file.rel),
+                                })
+                                : { changed: [] as string[], repairs: [] as any[] };
                             /**
                              *  ⛔ A COSMETIC FIX USED TO END THE ROUND, AND THE
                              *  DEAD BUTTON NEVER GOT PAST IT.
@@ -7905,7 +7992,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                              *  the pair together, so nothing about the safety
                              *  changes.
                              */
-                            const severeFirst = handlerRepairable(lastAudit?.findings || []).length > 0;
+                            const severeFirst = modelRepairable(lastAudit).behaviour.length > 0;
                             if (known.changed.length && !severeFirst) return known.changed;
                             /**
                              * THE CEILING OF EIGHT, LIFTED.
@@ -7947,7 +8034,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                              *  pressing the button again. It is allowed to be
                              *  wrong; it is not allowed to be believed.
                              */
-                            const behaviourLeft = handlerRepairable(lastAudit?.findings || []);
+                            const behaviourLeft = modelRepairable(lastAudit).behaviour;
                             if (behaviourLeft.length) {
                                 const srcDir = path.join(proj, 'src');
                                 const sources: Record<string, string> = {};
@@ -7989,7 +8076,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                                     }
                                 }
                             }
-                            const rich = cssRepairable((lastAudit?.findings || []).filter((f: any) => f && f.id));
+                            const rich = modelRepairable(lastAudit).css;
                             if (!rich.length) {
                                 term('improve: no stylesheet-repairable findings remain; unresolved functional/semantic findings stay open');
                                 return known.changed;
@@ -8024,17 +8111,17 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         },
                     },
                 );
-                loop = normaliseImproveResult(loop, {
-                    score: blend(Number(audit.score || 0), firstTerminal),
-                    findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
-                    findings: (audit.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
-                });
+                //  The audit the kept reading was taken from — before normalising copies the readings.
+                const keptAudit = loop?.final && !loop.final.skipped ? readings.get(loop.final) : undefined;
+                loop = normaliseImproveResult(loop, firstReading);
                 term(improveSummary(loop, isAr));
                 if (sessionId) broadcastThinkingDetail(sessionId, improveSummary(loop, isAr));
 
                 // The verdict the report publishes is the LAST measurement the
-                // loop actually kept — never the best number it ever saw.
-                if (loop.final && !loop.final.skipped && loop.final.score !== audit.score) audit = lastAudit;
+                // loop actually kept — never the best number it ever saw, and
+                // never the rejected one a rollback undid (the first reading
+                // keeps the first audit).
+                if (keptAudit) audit = keptAudit;
                 const paid = loop.rounds.filter((r: any) => r.verdict === 'improved');
                 if (paid.length) {
                     selfRepair = {
@@ -8099,6 +8186,22 @@ Use the actual definitions above. Do not rewrite these files or implement persis
              * preview panel opens it, the delivery message carries its
              * address, and `project_run` adopts it instead of racing it.
              */
+            //  H2: every audit of this build is done — what they changed in his data is put back, the server booted again.
+            if (dataSpan) {
+                try {
+                    const walked = liveServer;
+                    await dataSpan.settle(walked ? {
+                        liveUrl: walked.url,
+                        stop: async () => { walked.stop(); return true; },
+                        start: async () => { liveServer = await bootPackagedServer(); },
+                    } : {});
+                    for (const line of dataSpan.lines(isAr ? 'ar' : 'en')) {
+                        term(`self-QA: told: ${line}`);
+                        if (sessionId) broadcastThinkingDetail(sessionId, line);
+                    }
+                } catch { /* the net never fails the build */ }
+                await dataSpan.close().catch(() => undefined);
+            }
             if (liveServer) {
                 try {
                     const prevPid = Number(prevEntry?.live?.pid || 0);
@@ -8674,7 +8777,10 @@ Use the actual definitions above. Do not rewrite these files or implement persis
          * thing does not work, and the message leads with that instead of
          * burying it under a list of filenames.
          */
-        const openQualityFindings = ((audit?.findings || []) as any[]);
+        //  What refuses (browser-mend.ts): a told line of the inspector is told with the delivery, never
+        //  open, never a blocker, never in the record (review r40-2, A1; design v3 §2).
+        const qualityGate = reactQualityGate(audit);
+        const openQualityFindings = qualityGate.open;
         const recordsPresentationMode = recordsPresentationSource();
         const trustedRecordsPresentation = recordsPresentationMode === 'model' || recordsPresentationMode === 'request_derived';
         if (recordsPresentation && recordsPresentationMode !== 'model') modelAuthoredEngine = false;
@@ -8683,7 +8789,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             ...(trustedRecordsPresentation ? [] : ['records_presentation_not_authored']),
         ] : [];
         if (recordsPresentationFindings.length) term(`presentation delivery blocked: ${recordsPresentationFindings.join(', ')}`);
-        const blockers = openQualityFindings.filter(f => f.severity === 'high');
+        const blockers = qualityGate.blockers;
         const terminalQualityFindings: string[] = (() => {
             const verdict = terminalAudit || doorTerminal;
             if (!verdict || verdict.skipped) return [];

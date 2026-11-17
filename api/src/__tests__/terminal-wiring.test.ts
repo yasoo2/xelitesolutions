@@ -64,7 +64,14 @@ describe('the stream is live, not a post-hoc flood', () => {
 
     it('a tool that streamed live is not flushed a second time', () => {
         expect(BUILDER).toContain('logsStreamedLive: true');
-        expect(TOOLSVC).toMatch(/if \(!\(res as any\)\?\.logsStreamedLive\)/);
+        //  Since 3917fe1d7 the streamed case is its own branch: it only records
+        //  the returned copy (so a parent pipeline cannot replay it) and never
+        //  broadcasts; the flush lives in the else.
+        const at = TOOLSVC.indexOf('if ((res as any)?.logsStreamedLive) {');
+        expect(at).toBeGreaterThan(-1);
+        const streamed = TOOLSVC.slice(at, TOOLSVC.indexOf('} else {', at));
+        expect(streamed).toMatch(/spokenLive\.add\(/);
+        expect(streamed).not.toContain('broadcastTerminalLine');
     });
 
     it('nobody claims "real-time" over a post-run flush any more', () => {

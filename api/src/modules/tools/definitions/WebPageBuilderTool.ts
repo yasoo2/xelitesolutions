@@ -245,7 +245,7 @@ export class WebPageBuilderTool implements ToolDefinition {
          */
         const request = String(
             input?.request || input?.question || input?.instruction || input?.task || input?.goal || ''
-        ).replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
+        ).replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
         const sessionId = context?.sessionId;
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');

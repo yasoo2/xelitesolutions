@@ -42,7 +42,9 @@ import { canAdoptRecordedLive, theServerThisSessionLeftRunning } from '../module
 describe('the previous server is retired before a new one is born', () => {
     it('a retirement exists and runs before the launch', () => {
         const retire = SOURCE.indexOf('await retireRecordedServer(context, cwd, logs);');
-        const launch = SOURCE.indexOf('const res = await ExecutionGateway.execute(detected.command');
+        //  The launch is a managed child since aa64954a4 («Keep project
+        //  previews alive under managed execution»), no longer a shell execute.
+        const launch = SOURCE.indexOf('const managed = ExecutionGateway.startManaged(launcher, launcherArgs');
         expect(retire).toBeGreaterThan(0);
         expect(launch).toBeGreaterThan(0);
         expect(retire).toBeLessThan(launch);

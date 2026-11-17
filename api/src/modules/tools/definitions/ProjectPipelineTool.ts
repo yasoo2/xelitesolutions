@@ -19,6 +19,11 @@ import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
 import { auditBuiltApp, AppAudit, COVERAGE_RETRY_TIMEOUT_MS, findingText } from '../../../core/quality/app-audit';
+import { anchorPinOnFirstAudit, auditNotComparable, notComparableLine, repinAfterLiveStart, seedLoopQaPin } from '../../../core/quality/improve-loop';
+import type { QaPath, QaPin } from '../../../core/quality/qa-target';
+import type { QaFence } from '../../../core/quality/qa-fence';
+import { openOwnerDataSpan, type OwnerDataSpan } from '../../../core/quality/owner-data-span';
+import { refuses } from '../../../core/engine/browser-mend';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { hasExplicitRecordSchema, isCliRequest as isCliRequestFn } from '../../../core/design/app-blueprints';
 import { requestedArtifact } from '../../../core/design/requested-artifact';
@@ -1852,6 +1857,16 @@ export interface CoverageRepairPass {
     currentTargets: () => string[];
     /** The builder's live claims on the server answering now. */
     measureProofs: () => Promise<BuilderProofs | null>;
+    /**
+     * The pipeline's pin is the no-write path (design v13.3 §6): the proofs asked only GET /api/health, so
+     * the contract cannot be re-measured without writing — «not measured», never failed.
+     */
+    noWrite?: boolean;
+}
+
+/** The options the builder's proofs are asked with on the no-write path (§6); nothing extra otherwise. */
+export function builderProofsWay(noWrite: boolean): { noWrite?: true } {
+    return noWrite ? { noWrite: true } : {};
 }
 
 /**
@@ -1895,7 +1910,7 @@ export async function runCoverageRepairPass(pass: CoverageRepairPass): Promise<{
                 let proofsAfter: BuilderProofs | null = null;
                 if (proofsBefore) { try { proofsAfter = await pass.measureProofs(); } catch { proofsAfter = null; } }
                 const lostClaims = proofsBefore && proofsAfter ? regressedBuilderProofs(proofsBefore, proofsAfter) : [];
-                remeasured = !!(proofsBefore && proofsAfter && builderClaimsRemeasured(proofsBefore, proofsAfter));
+                remeasured = !!(proofsBefore && proofsAfter && builderClaimsRemeasured(proofsBefore, proofsAfter, pass.noWrite === true));
                 if (stillMissing.length) undoReason = `the records it targeted are still missing: ${stillMissing.join(', ')}`;
                 else if (lostInstruments.length) undoReason = `checks that passed before the repair now fail: ${lostInstruments.join(', ')}`;
                 else if (proofsBefore && !proofsAfter) undoReason = 'the builder\'s own live claims could not be measured again';
@@ -1932,6 +1947,45 @@ export function applyRepairManifestPatch(patch: { file: string; script: string }
 }
 
 export interface PipelinePhaseIds { sessionId: string; runId: string }
+/** What one pipeline run holds open and must close however it ends (design v13.3 §4.4: the probes' fence). */
+export interface PipelineHeld {
+    probeFence?: QaFence;
+    /** Review 7, H2: the verification's net over the pipeline's checks on a change run (lock, snapshot, recovery copy, put-back). */
+    dataSpan?: OwnerDataSpan;
+    /** The pipeline's own project_run, to start its server again after the put-back. */
+    lastRun?: { input: Record<string, string>; context: any };
+}
+/** Keyed by the run's own ids object: one run, one holder, gone with the run. */
+const PIPELINE_HELD = new WeakMap<PipelinePhaseIds, PipelineHeld>();
+export function pipelineHeldFor(ids: PipelinePhaseIds): PipelineHeld {
+    let held = PIPELINE_HELD.get(ids);
+    if (!held) { held = {}; PIPELINE_HELD.set(ids, held); }
+    return held;
+}
+export async function releasePipelineHeld(ids: PipelinePhaseIds): Promise<void> {
+    const held = PIPELINE_HELD.get(ids);
+    PIPELINE_HELD.delete(ids);
+    if (held?.probeFence) await held.probeFence.close().catch(() => undefined);
+    //  A run that ended before its put-back has nothing written under a server that may run: logged, the copy kept.
+    if (held?.dataSpan) await held.dataSpan.close().catch(() => undefined);
+}
+
+/**
+ * THE OWNER HAS THIS FOLDER NOW (design v13.3 §2.1): `.joe/delivered`, an empty file never pruned, written
+ * only at the outermost delivery — here when the pipeline's final report says delivered (the engine's
+ * own run writes it in AgentEngineTool). The next check reads it as a change run, never as a new build.
+ */
+export function markPipelineDelivered(dir: string): boolean {
+    try {
+        const root = String(dir || '').trim();
+        if (!root || !fs.existsSync(root) || !fs.statSync(root).isDirectory()) return false;
+        const joe = path.join(root, '.joe');
+        fs.mkdirSync(joe, { recursive: true });
+        const marker = path.join(joe, 'delivered');
+        if (!fs.existsSync(marker)) fs.writeFileSync(marker, '');
+        return true;
+    } catch { return false; }
+}
 
 /** The session and run every phase hand-off of one pipeline run shares. */
 export function pipelinePhaseIds(context: any, now = Date.now()): PipelinePhaseIds {
@@ -2381,10 +2435,13 @@ export class ProjectPipelineTool implements ToolDefinition {
             return await this.executeRun(input, context, phaseIds);
         } finally {
             clearDeliveryParts(partsKey, phaseIds.runId);
+            //  What this run held open for its probes (design v13.3 §4.4) is closed however the run ends.
+            await releasePipelineHeld(phaseIds);
         }
     }
 
     private async executeRun(input: { request: string; path?: string }, context: any, phaseIds: PipelinePhaseIds) {
+        const held = pipelineHeldFor(phaseIds);
         const scopedFinal =(output: any) => ({ ...(output && typeof output === 'object' ? output : {}), pipelineFinal: true });
         const planningScope = engineeringScope(context);
         if (hasEngineeringToken(context) && !planningScope) return { ok: false, error: 'engineering_scope_invalid', output: scopedFinal({ status: 'failed', reason: 'engineering_scope_invalid', executed: false }), logs: [] };
@@ -3313,6 +3370,8 @@ export class ProjectPipelineTool implements ToolDefinition {
          * engine's verifier makes: this run gives them its ledger and its
          * facts, and keeps what they establish for its report.
          */
+        /** What the probes are given on a change run (§6, §4.4), read by delivery-run when a probe runs. */
+        const probeWay: { qaPath?: QaPath; browserProxy?: { server: string; bypass: string } } = {};
         const delivery = deliveryRun({
             productRequest,
             ledger,
@@ -3326,7 +3385,64 @@ export class ProjectPipelineTool implements ToolDefinition {
             isAr,
             say,
             log: line => appendBoundedPipelineLog(logs, line),
+            get qaPath() { return probeWay.qaPath; },
+            get browserProxy() {
+                //  Read when a probe opens its browser: a restart may answer on a new port, so the run's
+                //  live addresses known now are the ones the probes may reach, and only they.
+                if (probeWay.browserProxy) {
+                    allowProbeOrigin(liveRunResult?.output?.url);
+                    for (const m of ledger.all()) if (m.instrument === 'live' && m.ok) allowProbeOrigin((m as any).url);
+                }
+                return probeWay.browserProxy;
+            },
         });
+        /**
+         * ONE WAY OF CHECKING FOR THIS PIPELINE (design v13.3 §2.3, §2.5): the pin its builder proofs, its
+         * probes and its four Browser QA audits share. Seeded before its project_run, taken again after it
+         * on the folder the server runs from, with project_run's own kind; the stricter is kept.
+         */
+        const qaPin: QaPin = {};
+        /** The probes' fence (§4.4): only the run's own live origins are reachable from the probes' browser. */
+        const allowProbeOrigin = (url: unknown) => {
+            const u = String(url || '').trim();
+            if (held.probeFence && /^https?:\/\//i.test(u)) { try { held.probeFence.allow(new URL(u).origin); } catch { /* not a URL */ } }
+        };
+        /** DeliveryRunInput.qaPath (§6): the probes follow the pin; a fence that did not start keeps them at no-write. */
+        const setProbePath = () => {
+            held.dataSpan?.restrict(qaPin);
+            if (qaPin.path && probeWay.qaPath !== 'no-write') probeWay.qaPath = qaPin.path;
+            //  On path 3 the probes' fence holds every write their guards did not see (review 7, B2).
+            try { held.probeFence?.holdWrites(probeWay.qaPath === 'no-write'); } catch { /* the fence is gone */ }
+        };
+        const seedPipelineQaPin = async (projectRoot: string, serverRoot: string) => {
+            if (qaPin.path) return;
+            Object.assign(qaPin, await seedLoopQaPin({ projectRoot, serverRoot, hasServeUrl: true, sessionId: context?.sessionId }));
+            //  H2: on a change run, the verification's net before any of the pipeline's checks can write.
+            if (qaPin.record && !held.dataSpan) {
+                held.dataSpan = await openOwnerDataSpan({
+                    projectRoot: serverRoot || projectRoot, pin: qaPin, runId: phaseIds.runId,
+                    workspaceId: String(context?.workspaceId || 'default'), log: line => appendBoundedPipelineLog(logs, `[pipeline] ${line}`),
+                });
+            }
+            setProbePath();
+            if (qaPin.path && qaPin.path !== 'as-today' && !held.probeFence) {
+                try {
+                    const { startQaFence } = require('../../../core/quality/qa-fence');
+                    held.probeFence = await startQaFence({ allow: [], hold: qaPin.path === 'no-write' });
+                    probeWay.browserProxy = held.probeFence!.proxy;
+                } catch {
+                    //  The fence did not start (§4.5): the probes run without saving anything in his app.
+                    probeWay.qaPath = 'no-write';
+                    appendBoundedPipelineLog(logs, '[pipeline] the probes\' network fence did not start — they run without saving anything');
+                }
+            }
+        };
+        const repinPipelineAfterStart = async (run: any) => {
+            const cwd = String(run?.output?.cwd || '').trim();
+            if (qaPin.record === undefined || !cwd) return;
+            await repinAfterLiveStart(qaPin, { serverRoot: cwd, startKind: String(run?.output?.kind || ''), hasServeUrl: true });
+            setProbePath();
+        };
         let lastAcceptanceRoots: { qualityRoot: string; auditRoots: string[] } = { qualityRoot: '', auditRoots: [] };
         const recordLiveAcceptance = async (runRes: any, qualityRoot: string, auditRoots: string[]) => {
             lastAcceptanceRoots = { qualityRoot, auditRoots };
@@ -3415,9 +3531,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                 // (round 15 review, finding 46).
                 const phasesEditedTree = pipelineExecutedTasks(pipeline);
                 if (phasesEditedTree) (runInput as Record<string, unknown>).restart = true;
+                //  The way of checking is chosen BEFORE the live start (§2.5): on the folder project_run will
+                //  run, with the delivery record read once from the project.
+                await seedPipelineQaPin(plannedProjectRoot || discoveredProjectRoot || runInput.cwd || '', runInput.cwd || plannedProjectRoot || discoveredProjectRoot || '');
+                held.lastRun = { input: { ...runInput }, context: { ...context, language: isAr ? 'ar' : 'en' } };
                 const startedRun = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
                 const runRes = phasesEditedTree ? postRepairRunOutcome(startedRun) : startedRun;
                 liveRunResult = startedRun;
+                //  …and taken again on the folder the server now runs from, with project_run's own kind.
+                await repinPipelineAfterStart(startedRun);
                 const liveRuntimeRoot = String(
                     runRes?.output?.cwd || runInput.cwd || plannedProjectRoot || discoveredProjectRoot || ''
                 ).trim();
@@ -3868,7 +3990,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                 // fork 091554ed) is applied under the same snapshot as the file.
                 const manifestPatch = (task as any).manifestPatch as { file: string; script: string } | undefined;
                 const manifestFile = manifestPatch?.file && isWithinRoot(manifestPatch.file, serverRoot) ? manifestPatch.file : '';
+                //  The builder's proofs write (POST, DELETE, a bad sign-in): the pin decides before they run (§2.5, §6).
+                await seedPipelineQaPin(String(plannerResult?.output?.projectRoot || discoveredProjectRoot || serverRoot), serverRoot);
+                const proofsNoWrite = qaPin.path === 'no-write';
                 const pass = await runCoverageRepairPass({
+                    noWrite: proofsNoWrite,
                     file: task.repairFile,
                     guardedFiles: manifestFile ? [manifestFile] : [],
                     afterRepair: manifestFile ? () => applyRepairManifestPatch(manifestPatch!) : undefined,
@@ -3887,7 +4013,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                     recordRun: (run, before) => recordLiveAcceptance(postRepairRunOutcome(run, before), lastAcceptanceRoots.qualityRoot, lastAcceptanceRoots.auditRoots).then(() => undefined),
                     measurements: () => ledger.all(),
                     currentTargets: () => coverageRepairTargets(requestCoverage, dimension),
-                    measureProofs: () => measureBuilderProofs(verifiedLiveUrl(ledger.all()), { timeoutMs: proofTimeoutMs, signal: bound.signal }),
+                    //  On the no-write path only GET /api/health is asked (builder-proofs.ts, §6).
+                    measureProofs: () => measureBuilderProofs(verifiedLiveUrl(ledger.all()), { timeoutMs: proofTimeoutMs, signal: bound.signal, ...builderProofsWay(proofsNoWrite) }),
                 }).finally(() => bound.dispose());
                 if (pass.undoReason) {
                     requestCoverageRepairStatus = `request_coverage_repair_restored:${dimension}`;
@@ -3984,6 +4111,31 @@ export class ProjectPipelineTool implements ToolDefinition {
                 } catch {
                     appendBoundedPipelineLog(logs, '[pipeline] browser QA watcher status unavailable');
                 }
+                /**
+                 * WHERE THE CHECK MAY WRITE (design v13.3 §2, §2.3, §8): the owner's project folder, the folder
+                 * the walked server runs from and project_run's own kind (only when the walked address is that
+                 * run's), the pipeline's pin, his own panel id as the stream target, and the run's API address
+                 * when the walk opens another one (a durable preview).
+                 */
+                const verifiedLive = verifiedLiveUrl(ledger.all());
+                const walksTheLiveRun = !!verifiedLive && liveUrl === verifiedLive;
+                const qaStreamTo = String(context?.browserSessionId || '').trim();
+                const qaOptions = {
+                    projectRoot: artifactRoot || runtimeRoot || auditDir,
+                    ...(walksTheLiveRun && runtimeRoot ? { serverRoot: runtimeRoot } : {}),
+                    ...(walksTheLiveRun && liveRunResult?.output?.kind ? { startKind: String(liveRunResult.output.kind) } : {}),
+                    qaPin,
+                    ...(qaStreamTo ? { streamTo: qaStreamTo } : {}),
+                    ...(verifiedLive && !walksTheLiveRun ? { walkedOrigins: [verifiedLive] } : {}),
+                };
+                /** A retry or a recheck checked another way than the pipeline's pin (§2.3): the earlier audit stands, told. */
+                const changedWayOf = (audit: any, what: string): boolean => {
+                    const changed = auditNotComparable(audit, qaPin);
+                    if (!changed) return false;
+                    appendBoundedPipelineLog(logs, `[pipeline] browser QA ${what} not comparable: ${changed.from} -> ${changed.to}; the earlier measurement stands`);
+                    say(notComparableLine(isAr ? 'ar' : 'en', changed.from, changed.to));
+                    return true;
+                };
                 const progress = (phase: string) => {
                     if (phase.startsWith('private')) {
                         const why = phase.slice('private'.length).replace(/^:/, '').trim();
@@ -4009,7 +4161,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                     timeoutMs: 45_000,
                     onProgress: progress,
+                    ...qaOptions,
                 });
+                //  The first audit has nothing earlier to keep: if the folder needed a stricter path, the pipeline takes it.
+                if (anchorPinOnFirstAudit(qaPin, browserQa)) appendBoundedPipelineLog(logs, `[pipeline] browser QA runs as ${qaPin.path} for every audit of this run`);
                 if (browserQa.skipped) {
                     browserQaFailed = true;
                     ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${browserQa.skipped}` });
@@ -4040,8 +4195,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                             ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                             timeoutMs: COVERAGE_RETRY_TIMEOUT_MS,
                             onProgress: progress,
+                            ...qaOptions,
                         });
-                        if (!coverageRetry?.skipped) {
+                        if (changedWayOf(coverageRetry, 'coverage retry')) {
+                            browserQaCoverageRetryStatus = 'not_comparable';
+                        } else if (!coverageRetry?.skipped) {
                             browserQa = coverageRetry;
                             browserQaCoverageRetryStatus = browserQa.findings.some((finding: any) => finding.id === 'qa_budget_exhausted')
                                 ? 'still_incomplete' : 'complete';
@@ -4073,8 +4231,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                             ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                             timeoutMs: 45_000,
                             onProgress: progress,
+                            ...qaOptions,
                         });
-                        if (!infrastructureRetry?.skipped) {
+                        if (changedWayOf(infrastructureRetry, 'infrastructure retry')) {
+                            browserQaInfrastructureRetryStatus = 'not_comparable';
+                        } else if (!infrastructureRetry?.skipped) {
                             browserQa = infrastructureRetry;
                             browserQaInfrastructureRetryStatus = hasOnlyBrowserQaInfrastructureFindings(browserQa.findings)
                                 ? 'still_failed' : 'completed';
@@ -4087,7 +4248,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // Every measured finding is open work. Treating only
                     // "high" severity as blocking let coverage, accessibility,
                     // responsive, and visual defects pass the gate unchanged.
-                    let blocking = browserQa.findings.slice();
+                    // What refuses is what verify.ts refuses (browser-mend.ts): the
+                    // inspector's lines and a minor finding of taste are told, and
+                    // never start a project repair (design v3 §2.3).
+                    let blocking = browserQa.findings.filter(refuses);
                     // Instrumentation failures belong to Joe's browser rig,
                     // never to the application under test. Sending these to
                     // project_repair made Joe rewrite valid project files in
@@ -4117,8 +4281,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                                         serveUrl: liveUrl,
                                         artifactRootDir: repairProjectRoot,
                                         watchSessionId: panelSid || undefined,
+                                        //  The folder the walked server runs from and project_run's kind (§2).
+                                        ...(qaOptions.serverRoot ? { serverRoot: qaOptions.serverRoot } : {}),
+                                        ...(qaOptions.startKind ? { startKind: qaOptions.startKind } : {}),
                                     },
-                                    { ...(context || {}), browserQaRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                                    { ...(context || {}), browserQaRepairAttempted: true, language: isAr ? 'ar' : 'en', ...(held.dataSpan ? { joeOwnerDataSpan: true } : {}) },
                                 );
                                 appendBoundedPipelineLogs(logs, repairResult?.logs);
                                 browserQaRepairStatus = repairResult?.ok === true ? 'repair_tool_completed' : 'repair_tool_failed';
@@ -4133,10 +4300,14 @@ export class ProjectPipelineTool implements ToolDefinition {
                                         ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                                         timeoutMs: 45_000,
                                         onProgress: progress,
+                                        ...qaOptions,
+                                        projectRoot: repairProjectRoot,
                                     });
-                                    if (!recheck?.skipped) {
+                                    if (changedWayOf(recheck, 'recheck')) {
+                                        browserQaRepairStatus = 'recheck_not_comparable';
+                                    } else if (!recheck?.skipped) {
                                         browserQa = recheck;
-                                        blocking = browserQa.findings.slice();
+                                        blocking = browserQa.findings.filter(refuses);
                                         appendBoundedPipelineLog(logs, `[pipeline] browser QA recheck score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
                                         browserQaRepairStatus = blocking.length === 0 ? 'repaired_and_verified' : 'repaired_blockers_remain';
                                     } else {
@@ -4149,7 +4320,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             }
                         }
                     }
-                    blocking = browserQa.findings.slice();
+                    blocking = browserQa.findings.filter(refuses);
                     if (blocking.length > 0) {
                         browserQaFailed = true;
                         ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${blocking.length} blocking finding(s)` });
@@ -4309,6 +4480,36 @@ export class ProjectPipelineTool implements ToolDefinition {
             decisionEvidence, verificationUnavailable, staleBuilderProof,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
+        /*
+         * H2: every check of the pipeline is done — what they changed in his data is put back as the verification puts
+         * it back (its server stopped first, started again where it ran when the pipeline left one live), and told.
+         */
+        if (held.dataSpan) {
+            try {
+                const lastRun = held.lastRun;
+                let stoppedOne = false;
+                await held.dataSpan.settle({
+                    stop: async () => {
+                        const stop: any = await executeTool('project_stop', {}, lastRun?.context || context).catch(() => null);
+                        stoppedOne = stop?.output?.stopped === true;
+                        return stop?.ok === true && stop?.output?.released !== false;
+                    },
+                    start: async () => {
+                        if (!stoppedOne || !lastRun) return;
+                        const port = (() => { try { return Number(new URL(String(liveRunResult?.output?.url || '')).port) || 0; } catch { return 0; } })();
+                        await executeTool('project_run', { ...lastRun.input, ...(port ? { port: String(port) } : {}) }, lastRun.context);
+                    },
+                });
+                for (const line of held.dataSpan.lines(isAr ? 'ar' : 'en')) { say(line); appendBoundedPipelineLog(logs, `[pipeline] told: ${line}`); }
+            } catch { /* the net never fails the report */ }
+        }
+        //  The final report says delivered: the owner has these folders from now on (§2.1). Not when an
+        //  outer run (agent_engine) owns the delivery — that run writes the marker itself.
+        if (finalDeliveryStatus === 'delivered' && !context?.joeDeliveryOwner) {
+            const deliveredFolders = [plannerResult?.output?.projectRoot || discoveredProjectRoot, liveRunResult?.output?.cwd]
+                .map(r => String(r || '').trim()).filter(Boolean);
+            for (const root of Array.from(new Set(deliveredFolders))) markPipelineDelivered(root);
+        }
 
         return {
             ok: finalVerified || partialDelivery,

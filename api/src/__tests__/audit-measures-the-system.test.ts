@@ -110,7 +110,9 @@ describe('the build audits the system it just packaged', () => {
     it('packaging is reusable, because the repair rebuilds the interface', () => {
         const r = R();
         expect(r).toMatch(/const packageIntoApi = \(announce: boolean\) => \{/);
-        expect(r).toMatch(/const packaged = built \? packageIntoApi\(true\) : false;/);
+        // Repointed (76f66a5d3): a static-records build has no server to be
+        // packaged into; every other build is still packaged once it is built.
+        expect(r).toMatch(/const packaged = built && artifactMode !== 'static_records' \? packageIntoApi\(true\) : false;/);
         // After a repair the packaged copy is the OLD build until this runs.
         expect(r).toMatch(/if \(packaged\) packageIntoApi\(false\);/);
         // Inside the loop's rebuild(), so EVERY round measures the page it
@@ -119,7 +121,14 @@ describe('the build audits the system it just packaged', () => {
         expect(r).toContain('if (packaged) packageIntoApi(false);');
         // Inside the loop's rebuild(), so EVERY round measures the page it
         // just produced rather than the one before it.
-        expect(r.indexOf('rb.ok !== true')).toBeLessThan(r.indexOf('// The packaged copy is the OLD interface until this'));
+        // Repointed: `rb.ok !== true` no longer exists (runBuild returns an exit
+        // code), so indexOf gave -1 and this passed for any order. Anchored on
+        // the real failed-build return, and both anchors must exist.
+        const failedRebuild = r.indexOf('if (rb !== 0) return false;');
+        const repackage = r.indexOf('// The packaged copy is the OLD interface until this');
+        expect(failedRebuild).toBeGreaterThan(0);
+        expect(repackage).toBeGreaterThan(0);
+        expect(failedRebuild).toBeLessThan(repackage);
         expect(at === -1 || true).toBe(true);
     });
 

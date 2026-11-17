@@ -259,7 +259,13 @@ describe('the seed reaches the shelf, not just a variable', () => {
     it('NEGATIVE — and the catalogue stands down with the other authors', () => {
         //  It spends the same rationed fuel as the section and copy authors;
         //  guarding two of three is the «one layer, two generators» class.
-        expect(TOOL).toMatch(/if \(!copyProvidersRationing && seedFields\.length/);
+        //  The guard grew (0e2ff0962: an unavailable model and unified tables;
+        //  6adfb6ab5: a verify-only rerun authors nothing), so read the whole
+        //  condition in front of the catalogue, whatever order it is written in.
+        const guard = TOOL.match(/if \(([^{;]*?)&& seedFields\.length && !input\?\.skipAuthoredCopy\)/);
+        expect(guard).not.toBeNull();
+        expect(guard![1]).toContain('!copyProvidersRationing');
+        expect(guard![1]).toContain('!modelUnavailableDuringBuild');
     });
 });
 

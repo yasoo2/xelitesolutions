@@ -69,7 +69,7 @@ export function detectPageKind(request: string, probe?: string): PageKind {
     // caller that forgot: the block talks about installs, restarts and carts
     // of state, and one measured build became a STORE because of the word
     // "stored" inside it.
-    const own = String(request || '').replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE)[\s\S]*$/i, '');
+    const own = String(request || '').replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE)[\s\S]*$/i, '');
     // Normalise first. «لشركه» is «لشركة» to any reader and to nobody's regex —
     // the same Arabic spelling gap that sent a build request to the generic
     // planner once already. The canonical companion is tested alongside the

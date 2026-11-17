@@ -114,17 +114,101 @@ interface LedgerFile {
 
 const RECENT_KEPT = 500;
 
+type RunSpend = LedgerFile['byRun'][string];
+/** What this process charged since its last write: ADDED to the file, never written over it. */
+interface Unsynced { usd: number; calls: number; byRun: Record<string, RunSpend>; recent: LedgerEntry[] }
+const noneUnsynced = (): Unsynced => ({ usd: 0, calls: 0, byRun: {}, recent: [] });
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+/** Windows answers a file another process is renaming or reading with these, for a moment. */
+const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES']);
+
+function addRun(into: Record<string, RunSpend>, runId: string, r: RunSpend): void {
+    const cur = into[runId];
+    if (!cur) { into[runId] = { ...r }; return; }
+    cur.usd += r.usd;
+    cur.calls += r.calls;
+    cur.firstAt = Math.min(cur.firstAt, r.firstAt);
+    if (r.lastAt >= cur.lastAt) { cur.lastAt = r.lastAt; cur.model = r.model; }
+}
+
+/** The file as it is, with what this process has not written yet added on top. */
+function withUnsynced(base: LedgerFile, u: Unsynced): LedgerFile {
+    const byRun: Record<string, RunSpend> = {};
+    for (const [k, v] of Object.entries(base.byRun || {})) byRun[k] = { ...v };
+    for (const [k, v] of Object.entries(u.byRun)) addRun(byRun, k, v);
+    const recent = u.recent.length ? [...(base.recent || []), ...u.recent].sort((a, b) => a.at - b.at) : [...(base.recent || [])];
+    return { totalUsd: base.totalUsd + u.usd, calls: base.calls + u.calls, byRun, recent: recent.slice(-RECENT_KEPT) };
+}
+
+/** The ledger on disk, or null when there is none yet. A ledger that cannot be read throws: it must never reset the total to zero. */
+async function readLedger(file: string): Promise<{ data: LedgerFile; mtimeMs: number } | null> {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            const st = await fsp.stat(file);
+            const parsed = JSON.parse(await fsp.readFile(file, 'utf8'));
+            const data: LedgerFile = typeof parsed?.totalUsd === 'number' && parsed.byRun && typeof parsed.byRun === 'object'
+                ? { totalUsd: parsed.totalUsd, calls: Number(parsed.calls) || 0, byRun: parsed.byRun, recent: Array.isArray(parsed.recent) ? parsed.recent : [] }
+                : { totalUsd: 0, calls: 0, byRun: {}, recent: [] };
+            return { data, mtimeMs: st.mtimeMs };
+        } catch (e: any) {
+            if (e?.code === 'ENOENT') return null;
+            if (BUSY.has(e?.code) && attempt < 20) { await pause(25); continue; }
+            throw Object.assign(new Error(`The spend ledger ${file} cannot be read: ${String(e?.message || e).slice(0, 200)}`), { code: 'ENGINE_BUDGET_LEDGER' });
+        }
+    }
+}
+
 /**
- * The spend record. One Joe process owns the file. Every hold and charge
- * changes one in-memory copy at once (no await between the check and the
- * change), and each charge is then written back atomically (temp file, then
- * rename), in order. A crash loses at most the calls in flight, never the
- * total already written.
+ * One writer at a time across processes: a lock file made with «wx». A lock
+ * older than 15 s was left by a process that died holding it. After 5 s of
+ * waiting the write goes ahead anyway — a charge written without the lock
+ * may race once; a charge never written is money nobody counted.
+ */
+async function underFileLock<T>(lockPath: string, work: () => Promise<T>): Promise<T> {
+    const until = Date.now() + 5_000;
+    let handle: Awaited<ReturnType<typeof fsp.open>> | null = null;
+    while (!handle && Date.now() < until) {
+        try {
+            handle = await fsp.open(lockPath, 'wx');
+        } catch (e: any) {
+            if (e?.code !== 'EEXIST' && !BUSY.has(e?.code)) break;
+            try {
+                if (Date.now() - (await fsp.stat(lockPath)).mtimeMs > 15_000) { await fsp.rm(lockPath, { force: true }); continue; }
+            } catch { continue; }
+            await pause(20);
+        }
+    }
+    try { return await work(); } finally {
+        if (handle) {
+            await handle.close().catch(() => undefined);
+            await fsp.rm(lockPath, { force: true }).catch(() => undefined);
+        }
+    }
+}
+
+/**
+ * The spend record, shared by every Joe process that names the same file.
+ *
+ * Every hold and charge changes this process's copy at once (no await between
+ * the check and the change). Each charge is then ADDED to the file, never
+ * written over it: under a lock file, the file is read, what this process
+ * charged since its last write is added, and the sum is written atomically
+ * (temp file, then rename). A copy that only wrote itself back lost the other
+ * process's spend: on 2026-11-12 a second Joe (5097) ran a paid exam beside
+ * the test Joe (5047), both held the ledger in memory, and each write erased
+ * the other's calls — on a server with several workers it is every write.
+ * Before a hold, the file is read again when another process has changed it,
+ * so the budget counts what every process spent. A crash loses at most the
+ * calls in flight, never the total already written.
  */
 export class SpendLedger {
     private data: LedgerFile = { totalUsd: 0, calls: 0, byRun: {}, recent: [] };
+    private unsynced: Unsynced = noneUnsynced();
     private loaded: Promise<void> | null = null;
     private writes: Promise<void> = Promise.resolve();
+    private writing = 0;
+    private seenMtime = -1;
+    private checkedAt = 0;
     private heldTotal = 0;
     private readonly held = new Map<string, number>();
 
@@ -132,22 +216,27 @@ export class SpendLedger {
 
     private load(): Promise<void> {
         return (this.loaded ??= (async () => {
-            try {
-                const parsed = JSON.parse(await fsp.readFile(this.file, 'utf8'));
-                if (typeof parsed?.totalUsd === 'number' && parsed.byRun && typeof parsed.byRun === 'object') {
-                    this.data = { totalUsd: parsed.totalUsd, calls: Number(parsed.calls) || 0, byRun: parsed.byRun, recent: Array.isArray(parsed.recent) ? parsed.recent : [] };
-                }
-            } catch (e: any) {
-                if (e?.code !== 'ENOENT') {
-                    //  A ledger that exists but cannot be read must not reset the total to zero.
-                    throw Object.assign(new Error(`The spend ledger ${this.file} cannot be read: ${String(e?.message || e).slice(0, 200)}`), { code: 'ENGINE_BUDGET_LEDGER' });
-                }
-            }
+            const disk = await readLedger(this.file);
+            if (disk) { this.data = disk.data; this.seenMtime = disk.mtimeMs; }
+            this.checkedAt = Date.now();
         })());
     }
 
-    async spent(runId?: string): Promise<{ totalUsd: number; runUsd: number; calls: number }> {
+    /** What every process has written, read again when the file changed since this process last saw it (at most once a second). */
+    private async refresh(): Promise<void> {
         await this.load();
+        //  A write of ours in flight has taken its charges out of `unsynced` and not yet put them on disk.
+        if (this.writing > 0 || Date.now() - this.checkedAt < 1_000) return;
+        this.checkedAt = Date.now();
+        try {
+            if ((await fsp.stat(this.file)).mtimeMs === this.seenMtime) return;
+            const disk = await readLedger(this.file);
+            if (disk && this.writing === 0) { this.data = withUnsynced(disk.data, this.unsynced); this.seenMtime = disk.mtimeMs; }
+        } catch { /* the copy in memory still holds */ }
+    }
+
+    async spent(runId?: string): Promise<{ totalUsd: number; runUsd: number; calls: number }> {
+        await this.refresh();
         return { totalUsd: this.data.totalUsd, runUsd: runId ? (this.data.byRun[runId]?.usd ?? 0) : 0, calls: this.data.calls };
     }
 
@@ -158,7 +247,7 @@ export class SpendLedger {
      * `charge` (the billed cost replaces it) or `release` (nothing was billed).
      */
     async reserve(runId: string, worstUsd: number): Promise<Reservation> {
-        await this.load();
+        await this.refresh();
         const totalUsd = this.data.totalUsd;
         const runUsd = this.data.byRun[runId]?.usd ?? 0;
         const heldRun = this.held.get(runId) ?? 0;
@@ -192,19 +281,53 @@ export class SpendLedger {
                 run.model = entry.model;
                 this.data.recent.push({ ...entry, runId });
                 if (this.data.recent.length > RECENT_KEPT) this.data.recent.splice(0, this.data.recent.length - RECENT_KEPT);
+                //  …and owed to the file: added to whatever every other process wrote there meanwhile.
+                this.unsynced.usd += entry.costUsd;
+                this.unsynced.calls++;
+                addRun(this.unsynced.byRun, runId, { usd: entry.costUsd, calls: 1, model: entry.model, firstAt: entry.at, lastAt: entry.at });
+                this.unsynced.recent.push({ ...entry, runId });
+                if (this.unsynced.recent.length > RECENT_KEPT) this.unsynced.recent.splice(0, this.unsynced.recent.length - RECENT_KEPT);
                 return this.persist();
             },
         };
     }
 
-    /** Write the current copy. Writes run one after another; a failed one is reported and the next still runs. */
+    /**
+     * Add what this process charged to the file. Writes run one after another;
+     * a failed one keeps its charges owed (the next write adds them) and is
+     * reported, and the next still runs.
+     */
     private persist(): Promise<void> {
-        const snapshot = JSON.stringify(this.data, null, 2);
+        this.writing++;
         const next = this.writes.then(async () => {
-            await fsp.mkdir(path.dirname(this.file), { recursive: true });
-            const tmp = `${this.file}.${process.pid}.tmp`;
-            await fsp.writeFile(tmp, snapshot, 'utf8');
-            await fsp.rename(tmp, this.file);
+            const batch = this.unsynced;
+            this.unsynced = noneUnsynced();
+            try {
+                await fsp.mkdir(path.dirname(this.file), { recursive: true });
+                await underFileLock(`${this.file}.lock`, async () => {
+                    const disk = await readLedger(this.file);
+                    const merged = withUnsynced(disk ? disk.data : { totalUsd: 0, calls: 0, byRun: {}, recent: [] }, batch);
+                    const tmp = `${this.file}.${process.pid}.tmp`;
+                    await fsp.writeFile(tmp, JSON.stringify(merged, null, 2), 'utf8');
+                    for (let attempt = 0; ; attempt++) {
+                        try { await fsp.rename(tmp, this.file); break; } catch (e: any) {
+                            if (BUSY.has(e?.code) && attempt < 40) { await pause(25); continue; }
+                            await fsp.rm(tmp, { force: true }).catch(() => undefined);
+                            throw e;
+                        }
+                    }
+                    //  What every process wrote, and what this one charged while the write ran.
+                    this.data = withUnsynced(merged, this.unsynced);
+                    this.seenMtime = (await fsp.stat(this.file).catch(() => null))?.mtimeMs ?? -1;
+                });
+            } catch (e) {
+                //  Still owed: put back ahead of what came after it.
+                const owed = withUnsynced({ totalUsd: batch.usd, calls: batch.calls, byRun: batch.byRun, recent: batch.recent }, this.unsynced);
+                this.unsynced = { usd: owed.totalUsd, calls: owed.calls, byRun: owed.byRun, recent: owed.recent };
+                throw e;
+            } finally {
+                this.writing--;
+            }
         });
         this.writes = next.catch(() => undefined);
         return next;

@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: at 390 the third plan («Team $79», its «Choose») lies beyond the section, which a decorative clip-path cuts: invisible even when panning",
+ "targets": [
+  {
+   "sel": ".plan:nth-child(3) .buy",
+   "at": 390
+  }
+ ]
+}

@@ -17,6 +17,8 @@
  */
 import fs from 'fs';
 import path from 'path';
+import type { QaPath } from '../quality/qa-target';
+import { SHOW_COPIES_AR, SHOW_COPIES_EN } from './restore-reply';
 
 type Words = { short: string; whole: string };
 const INSTRUMENTS: Record<'ar' | 'en', Record<string, Words>> = {
@@ -113,6 +115,127 @@ export interface CertificateInput {
     roles?: Array<{ role: string; screens: string[] }>;
     /** What the browser check tried, counted (qaCoverageOf). */
     qaCoverage?: QaCoverage;
+    /**
+     * How Joe's checks treated the owner's data on a change run (design v13.3 §9, verify.ts DeliveryRecord.qaPath):
+     * the browser line is followed by what that way was, and on the no-write walk what was not tried is listed
+     * under «Not proven yet». None (a new build): as before.
+     */
+    qaPath?: { path: QaPath | string; notTried?: string[]; putBack?: string[]; leftChanged?: { files: string[]; why?: string }; putBackFailed?: string[]; putBackFailedBefore?: 'copies' | 'snapshot' };
+}
+
+/**
+ * The browser line on the no-write walk (review 7, H1): its forms were never sent and what saves was not pressed, so
+ * the certificate never says «its buttons and forms were used» there.
+ */
+const BROWSER_NO_WRITE: Record<'ar' | 'en', string> = {
+    ar: 'فُتح المشروع في متصفح حقيقي على شاشة الحاسوب والجوال، وقُرئت صفحاته وروابطه دون الضغط على ما يحفظ بيانات.',
+    en: 'The project was opened in a real browser at desktop and phone sizes; its pages and links were read, and nothing that saves data was pressed.',
+};
+
+/**
+ * The certificate's line after the browser check (design v13.3 §9; six languages in owner-lines13.json, the
+ * certificate itself is written in Arabic or English): a private window that reached only his app (path 1), as
+ * always with his data put back (2T), or his live app with nothing saved in it (path 3).
+ */
+const QA_CERT_LINES: Record<'ar' | 'en' | 'es' | 'fr' | 'de' | 'ru', { certPrivate: string; certAsBefore: string; certAsBeforeLeft: string; certAsBeforeFailed: string; certNoWrite: string; certNoWriteChanged: string; certPutBack: string; notTried: string }> = {
+    ar: {
+        certPrivate: 'جُرّب في المتصفح في نافذة خاصة لم تصل إلا إلى عنوان تطبيقك.',
+        certAsBefore: 'جُرّب في المتصفح على تطبيقك كما يجري دائمًا، ثم أُعيدت ملفات بياناته كما من قبل.',
+        certAsBeforeLeft: "جُرّب في المتصفح على تطبيقك كما يجري دائمًا؛ وتغيّرت أثناءها ملفات بيانات فيه ولم تُعَد، لأن خادم تطبيقك لم يتوقف: {files}.",
+        certAsBeforeFailed: "جُرّب في المتصفح على تطبيقك كما يجري دائمًا؛ وبعدها لم يُعَد بعض ملفات بياناته: {files}.",
+        certNoWrite: 'جُرّب في المتصفح على تطبيقك الحي دون حفظ شيء فيه؛ لم يُجرَّب {n} مما يحفظ بيانات.',
+        certNoWriteChanged: 'جُرّب في المتصفح على تطبيقك الحي دون الضغط على ما يحفظ؛ لم يُجرَّب {n} مما يحفظ بيانات.',
+        certPutBack: 'ملفات بيانات تغيّرت أثناء الفحوص وأُعيدت كما كانت قبلها: {files}.',
+        notTried: 'لم يُجرَّب',
+    },
+    en: {
+        certPrivate: 'Tried in the browser, in a private window that reached only your app\'s address.',
+        certAsBefore: 'Tried in the browser on your app as always, then its data files were put back as before.',
+        certAsBeforeLeft: "Tried in the browser on your app as always; data files it changed were not put back, because your app's server did not stop: {files}.",
+        certAsBeforeFailed: "Tried in the browser on your app as always; afterwards some of its data files could not be put back: {files}.",
+        certNoWrite: 'Tried in the browser on your live app without saving anything in it; {n} things that save data were not tried.',
+        certNoWriteChanged: 'Tried in the browser on your live app without pressing what saves; {n} things that save data were not tried.',
+        certPutBack: 'Data files that changed during the checks and were put back as they were before them: {files}.',
+        notTried: 'not tried',
+    },
+    es: {
+        certPrivate: 'Probado en el navegador, en una ventana privada que solo llegó a la dirección de tu aplicación.',
+        certAsBefore: 'Probado en el navegador en tu aplicación como siempre; después sus archivos de datos se restauraron como antes.',
+        certAsBeforeLeft: "Probado en el navegador en tu aplicación como siempre; los archivos de datos que cambió no se restauraron, porque el servidor de tu aplicación no se detuvo: {files}.",
+        certAsBeforeFailed: "Probado en el navegador en tu aplicación como siempre; después algunos de sus archivos de datos no se pudieron restaurar: {files}.",
+        certNoWrite: 'Probado en el navegador en tu aplicación real sin guardar nada; {n} cosas que guardan datos no se probaron.',
+        certNoWriteChanged: 'Probado en el navegador en tu aplicación real sin pulsar lo que guarda; {n} cosas que guardan datos no se probaron.',
+        certPutBack: 'Archivos de datos que cambiaron durante las comprobaciones y se restauraron como estaban antes: {files}.',
+        notTried: 'sin probar',
+    },
+    fr: {
+        certPrivate: 'Essayé dans le navigateur, dans une fenêtre privée qui n\'a joint que l\'adresse de votre application.',
+        certAsBefore: 'Essayé dans le navigateur sur votre application comme toujours, puis ses fichiers de données ont été remis comme avant.',
+        certAsBeforeLeft: "Essayé dans le navigateur sur votre application comme toujours ; les fichiers de données modifiés n'ont pas été remis, car le serveur de votre application ne s'est pas arrêté : {files}.",
+        certAsBeforeFailed: "Essayé dans le navigateur sur votre application comme toujours ; ensuite certains de ses fichiers de données n'ont pas pu être remis : {files}.",
+        certNoWrite: 'Essayé dans le navigateur sur votre application réelle sans rien y enregistrer ; {n} éléments qui enregistrent des données n\'ont pas été essayés.',
+        certNoWriteChanged: 'Essayé dans le navigateur sur votre application réelle sans appuyer sur ce qui enregistre ; {n} éléments qui enregistrent des données n\'ont pas été essayés.',
+        certPutBack: 'Fichiers de données qui ont changé pendant les vérifications et ont été remis comme avant : {files}.',
+        notTried: 'non essayé',
+    },
+    de: {
+        certPrivate: 'Im Browser ausprobiert, in einem privaten Fenster, das nur die Adresse Ihrer App erreichte.',
+        certAsBefore: 'Im Browser wie immer auf Ihrer App ausprobiert, danach wurden ihre Datendateien wie bisher zurückgelegt.',
+        certAsBeforeLeft: "Im Browser wie immer auf Ihrer App ausprobiert; geänderte Datendateien wurden nicht zurückgelegt, weil der Server Ihrer App nicht anhielt: {files}.",
+        certAsBeforeFailed: "Im Browser wie immer auf Ihrer App ausprobiert; danach konnten einige ihrer Datendateien nicht zurückgelegt werden: {files}.",
+        certNoWrite: 'Im Browser auf Ihrer echten App ausprobiert, ohne etwas zu speichern; {n} Dinge, die Daten speichern, wurden nicht ausprobiert.',
+        certNoWriteChanged: 'Im Browser auf Ihrer echten App ausprobiert, ohne zu drücken, was speichert; {n} Dinge, die Daten speichern, wurden nicht ausprobiert.',
+        certPutBack: 'Datendateien, die sich während der Prüfungen änderten und wie vorher zurückgelegt wurden: {files}.',
+        notTried: 'nicht ausprobiert',
+    },
+    ru: {
+        certPrivate: 'Опробовано в браузере, в приватном окне, обращавшемся только к адресу вашего приложения.',
+        certAsBefore: 'Опробовано в браузере на вашем приложении как обычно, затем файлы данных возвращены, как раньше.',
+        certAsBeforeLeft: "Опробовано в браузере на вашем приложении как обычно; изменённые файлы данных не возвращены, потому что сервер приложения не остановился: {files}.",
+        certAsBeforeFailed: "Опробовано в браузере на вашем приложении как обычно; затем некоторые файлы данных не удалось вернуть: {files}.",
+        certNoWrite: 'Опробовано в браузере на рабочем приложении без сохранения данных; {n} действий, сохраняющих данные, не опробовано.',
+        certNoWriteChanged: 'Опробовано в браузере на рабочем приложении, не нажимая то, что сохраняет; {n} действий, сохраняющих данные, не опробовано.',
+        certPutBack: 'Файлы данных, изменившиеся во время проверок и возвращённые в прежнее состояние: {files}.',
+        notTried: 'не опробовано',
+    },
+};
+
+/** How he sees the copies Joe keeps of the files not put back: the exact show line (restore-reply.ts). */
+const CERT_SEE_COPIES = {
+    ar: `نسخها بين النسخ التي يحتفظ بها جو؛ لتراها أرسل رسالة ليس فيها إلا «${SHOW_COPIES_AR}».`,
+    en: `Their versions are among the copies Joe keeps; to see them, send a message that is nothing but «${SHOW_COPIES_EN}».`,
+};
+
+/** The certificate's line for the way the browser check treated his data, in the given language ('' when none). */
+export function qaCertificateLine(qaPath: CertificateInput['qaPath'], language: string): string {
+    if (!qaPath) return '';
+    const lang = String(language || '').toLowerCase().slice(0, 2) as keyof typeof QA_CERT_LINES;
+    const w = QA_CERT_LINES[lang] || QA_CERT_LINES.en;
+    if (qaPath.path === 'private-live') return w.certPrivate;
+    //  M2 (review 8): «put back as before» only when it is true — files left changed, or not put back, are named.
+    if (qaPath.path === '2t') {
+        const list = (xs: string[]) => xs.slice(0, 6).join(lang === 'ar' ? '، ' : ', ') + (xs.length > 6 ? '…' : '');
+        if (qaPath.leftChanged?.files?.length && qaPath.leftChanged.why === 'serverRunning') return w.certAsBeforeLeft.replace('{files}', list(qaPath.leftChanged.files));
+        //  Their versions are among the copies Joe keeps (unless they sit in a temporary folder): the one exact line
+        //  that shows them is quoted, never «ask Joe in the chat» (review 10, M3).
+        if (qaPath.putBackFailed?.length) {
+            return w.certAsBeforeFailed.replace('{files}', list(qaPath.putBackFailed))
+                + (qaPath.putBackFailedBefore === 'snapshot' ? '' : ` ${(lang === 'ar' ? CERT_SEE_COPIES.ar : CERT_SEE_COPIES.en)}`);
+        }
+        return w.certAsBefore;
+    }
+    const n = String((qaPath.notTried || []).length);
+    if (qaPath.path === 'no-write') return (qaPath.putBack?.length ? w.certNoWriteChanged : w.certNoWrite).replace('{n}', n);
+    return '';
+}
+
+/** The certificate's line naming the data files the checks changed and put back (review 7, B1): '' when none. */
+export function qaCertificatePutBackLine(qaPath: CertificateInput['qaPath'], language: string): string {
+    const files = (qaPath?.putBack || []).filter(Boolean);
+    if (!files.length) return '';
+    const lang = String(language || '').toLowerCase().slice(0, 2) as keyof typeof QA_CERT_LINES;
+    const w = QA_CERT_LINES[lang] || QA_CERT_LINES.en;
+    return w.certPutBack.replace('{files}', files.slice(0, 6).join(lang === 'ar' ? '، ' : ', ') + (files.length > 6 ? '…' : ''));
 }
 
 /**
@@ -247,7 +370,16 @@ export function deliveryCertificate(input: CertificateInput): string {
     const summary = String(input.summary || '').trim();
     if (summary) out.push(ar ? '## ما بُني' : '## What was built', '', summary, '');
     out.push(ar ? '## كيف تحقّق جو منه' : '## How Joe proved it', '');
-    for (const id of input.passed) out.push(`- ✅ **${words[id]?.short || id}**: ${words[id]?.whole || id}`);
+    for (const id of input.passed) {
+        //  On the no-write walk no form was sent: the browser line says what was really done (H1).
+        const whole = id === 'browser' && input.qaPath?.path === 'no-write' ? BROWSER_NO_WRITE[ar ? 'ar' : 'en'] : words[id]?.whole || id;
+        out.push(`- ✅ **${words[id]?.short || id}**: ${whole}`);
+        //  How the browser check treated his data on a change run (design v13.3 §9), right after its line.
+        const how = id === 'browser' ? qaCertificateLine(input.qaPath, ar ? 'ar' : 'en') : '';
+        if (how) out.push(`- 🔒 ${how}`);
+        const back = id === 'browser' ? qaCertificatePutBackLine(input.qaPath, ar ? 'ar' : 'en') : '';
+        if (back) out.push(`- 🔒 ${back}`);
+    }
     const who = String(input.signedInAs || '').trim();
     if (who && input.passed.includes('browser')) {
         out.push(ar
@@ -261,7 +393,9 @@ export function deliveryCertificate(input: CertificateInput): string {
         for (const r of input.roles || []) out.push(`  - **${r.role}**: ${r.screens.join(ar ? '، ' : ', ') || (ar ? 'لا شاشات' : 'no screens')}`);
     }
     out.push('');
-    const unproven = (input.unproven || []).filter(Boolean);
+    //  On the no-write walk, what was not tried because it saves data is not proven either (design v13.3 §9).
+    const notTried = input.qaPath?.path === 'no-write' ? (input.qaPath.notTried || []).filter(Boolean) : [];
+    const unproven = [...(input.unproven || []).filter(Boolean), ...notTried.map(l => `${QA_CERT_LINES[ar ? 'ar' : 'en'].notTried}: ${l}`)];
     if (unproven.length) {
         out.push(ar ? '## ما لم يثبت بعد' : '## Not proven yet', '');
         for (const u of unproven) out.push(`- ⚠️ ${u}`);

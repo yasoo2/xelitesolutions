@@ -1,0 +1,9 @@
+{
+ "truth": "BROKEN: dir=\"rtl\" on <body> only; a nowrap orders table overflows at 390 toward the left — whether the page can pan there is the browser's viewport direction",
+ "targets": [
+  {
+   "sel": "table tr:nth-child(2) button",
+   "at": 390
+  }
+ ]
+}

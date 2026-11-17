@@ -1,0 +1,9 @@
+{
+ "truth": "SOUND: compact 56px header; the menu is a closed off-canvas drawer (fixed, full height, translated off screen) inside the header",
+ "targets": [],
+ "after": {
+  "js": "document.querySelector('.burger').click()",
+  "sel": ".drawer a:last-child",
+  "at": 390
+ }
+}

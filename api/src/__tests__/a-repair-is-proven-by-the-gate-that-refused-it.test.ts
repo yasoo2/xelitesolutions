@@ -145,7 +145,8 @@ describe('the guards that need a real browser and build', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
     it('the audit measures and never opens its repair rounds while verifying', () => {
         expect(source).toContain('if (verifyExisting && doorTerminal) terminalAudit = doorTerminal;');
-        expect(source).toContain('if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings)');
+        //  …on what refuses (design v3 §2.3: the inspector's told lines never open a repair round).
+        expect(source).toContain('if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings.filter(refuses))');
         expect(source).toContain('const canRestoreDeterministic = !verifyExisting && runtimeBlockers.length && !audit?.skipped');
     });
     it('a failing build is diagnosed but not remedied, rolled back or replaced', () => {

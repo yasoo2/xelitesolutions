@@ -25,6 +25,16 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
 import { isArabicReply } from '../../../shared/reply-language';
+import { refuses, refusingScore } from '../../../core/engine/browser-mend';
+import type { OwnerDataSpan } from '../../../core/quality/owner-data-span';
+
+/** What the repair holds of the owner's data across its run (review 7, H2), closed however it ends. */
+interface RepairDataHeld {
+    span?: OwnerDataSpan;
+    /** The walked server is one this repair did not start and cannot stop (review 8, M4): told once, in the result. */
+    notOurs?: boolean;
+    hooks?: () => { stop?: () => Promise<boolean>; start?: () => Promise<unknown>; liveUrl?: string };
+}
 
 export async function recoverPackagedQaAuth(packagedDir: string): Promise<any | null> {
     const dbFile = path.join(packagedDir, 'db.js');
@@ -90,7 +100,40 @@ export class ProjectRepairTool extends BaseTool {
     auditFields = ['projectDir'];
     mockSupported = false;
 
+    /**
+     * THE OWNER'S DATA ACROSS THE REPAIR (review 7, H2): on a change run the repair's audits get the verification's
+     * net — the verify lock, a snapshot before its first audit, the recovery copy, and what they changed put back
+     * at the end (the revived server stopped first and started again). Run inside a pipeline, the pipeline's own
+     * net covers it (`joeOwnerDataSpan`).
+     */
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
+        const held: RepairDataHeld = {};
+        let result: ToolExecutionResult | undefined;
+        try {
+            result = await this.repair(input, context, held);
+            return result;
+        } finally {
+            const span = held.span;
+            if (span) {
+                try {
+                    await span.settle(held.hooks?.() || {});
+                    const isAr = isArabicReply({ language: context?.language, text: String(input?.request || input?.prompt || input?.text || '') });
+                    const told = [
+                        ...(held.notOurs ? [isAr
+                            ? 'فحص جو تطبيقك على الخادم الذي يعمل الآن دون أن يضغط ما يحفظ بيانات: هذا الخادم لم يشغّله جو، فلا يستطيع إيقافه ليعيد بياناتك كما كانت.'
+                            : 'Joe checked your app on the server running now without pressing anything that saves data: Joe did not start that server, so it cannot stop it to put your data back.'] : []),
+                        ...span.lines(isAr ? 'ar' : 'en'),
+                    ];
+                    const out: any = result && (result as any).output;
+                    if (told.length && out && typeof out === 'object') out.message = [String(out.message || ''), ...told].filter(Boolean).join('\n');
+                    if (told.length && result) ((result as any).logs || []).push(...told.map(l => `repair: told: ${l}`));
+                } catch { /* the net never fails the repair */ }
+                await span.close().catch(() => undefined);
+            }
+        }
+    }
+
+    private async repair(input: any, context: any, held: RepairDataHeld): Promise<ToolExecutionResult> {
         const logs: string[] = [];
         const sessionId = context?.sessionId || input?.sessionId;
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -148,9 +191,61 @@ export class ProjectRepairTool extends BaseTool {
             runtimeAuth = await recoverPackagedQaAuth(packagedDir);
             if (runtimeAuth) term('repair: recovered a short-lived local QA token — protected screens will be tested');
         }
-        if (!serveUrl
-            && packagedDir && fs.existsSync(path.join(packagedDir, 'server.js'))
-            && fs.existsSync(path.join(packagedDir, 'node_modules'))) {
+        const reviving = !serveUrl
+            && !!packagedDir && fs.existsSync(path.join(packagedDir, 'server.js'))
+            && fs.existsSync(path.join(packagedDir, 'node_modules'));
+        /**
+         * ONE WAY OF CHECKING FOR THE WHOLE REPAIR (design v13.3 §2.3, §2.5), chosen BEFORE the revival.
+         *
+         * The delivery record is read once, here, so a round's own `.joe/` writes can never move the path
+         * mid-loop; the path is chosen on the folder the walked server RUNS from — the packaged API when it
+         * is revived, the recorded live server's folder, else the project — never the shared artifact root.
+         * Every audit of the loop is handed this pin and runs the stricter of it and its own choice.
+         */
+        const { seedLoopQaPin, anchorPinOnFirstAudit, auditNotComparable } = require('../../../core/quality/improve-loop');
+        //  The pipeline hands its server's folder and project_run's kind (input.serverRoot / startKind);
+        //  a recorded live server names its own folder (live.cwd).
+        const givenServerRoot = serveUrl && serveUrl === String(input?.serveUrl || '').trim() ? String(input?.serverRoot || '').trim() : '';
+        const liveCwd = serveUrl && projectEntry?.live?.url === serveUrl ? String(projectEntry?.live?.cwd || '').trim() : '';
+        const knownServerRoot = [givenServerRoot, liveCwd].find(root => root && fs.existsSync(root)) || '';
+        let qaServerRoot = reviving ? packagedDir : (knownServerRoot || dir);
+        let qaStartKind = reviving ? 'node-entry' : (givenServerRoot && knownServerRoot === givenServerRoot ? String(input?.startKind || '').trim() : '');
+        let qaPin = await seedLoopQaPin({
+            projectRoot: dir, serverRoot: qaServerRoot, hasServeUrl: !!serveUrl || reviving,
+            ...(qaStartKind ? { startKind: qaStartKind } : {}), sessionId,
+        });
+        /*
+         * H2: the owner's ALREADY-RUNNING live server (his recorded live address, not one this repair or a pipeline
+         * started) is never walked with writes on: Joe cannot stop it to put his data back. Path 3 there.
+         */
+        const walksOwnersLiveServer = !!serveUrl && !reviving && projectEntry?.live?.url === serveUrl && !givenServerRoot;
+        /*
+         * M4 (review 8): a server this repair was HANDED (a serveUrl that is not the recorded live server, or one a
+         * model named) is no more this repair's to stop than his own: outside a pipeline that holds its own net, it is
+         * walked on path 3 too, and nothing is ever written back under it.
+         */
+        const walksHandedServer = !!serveUrl && !reviving && !context?.joeOwnerDataSpan;
+        const { strictest } = require('../../../core/quality/qa-target');
+        if ((walksOwnersLiveServer || walksHandedServer) && qaPin.record) {
+            qaPin.path = strictest(qaPin.path, 'no-write');
+            term(walksOwnersLiveServer
+                ? 'repair: the owner\'s own live server is walked without saving anything (no-write)'
+                : 'repair: a server this repair did not start is walked without saving anything (no-write); nothing is put back under it');
+        }
+        //  The verification's net, unless a pipeline that called this repair holds its own (H2).
+        if (!context?.joeOwnerDataSpan && qaPin.record) {
+            const { openOwnerDataSpan } = require('../../../core/quality/owner-data-span');
+            held.span = await openOwnerDataSpan({
+                projectRoot: reviving ? packagedDir : qaServerRoot, pin: qaPin, runId: `repair-${sessionKey}`,
+                workspaceId: String(context?.workspaceId || 'default'), log: term,
+            });
+            //  His own running server, or one handed to the repair: nothing of Joe's to stop, so nothing is written under it — told.
+            if (walksOwnersLiveServer || walksHandedServer) {
+                held.hooks = () => ({ stop: async () => false });
+                held.notOurs = true;
+            }
+        }
+        if (reviving) {
             const port = 4600 + Math.floor(Math.random() * 300);
             try {
                 const { executionEngine } = require('../../../kernel/ExecutionEngine');
@@ -167,13 +262,40 @@ export class ProjectRepairTool extends BaseTool {
                     serveUrl = candidate;
                     projectEntry.live = { url: candidate, port, pid: child.pid, cwd: packagedDir, at: Date.now() };
                     term(`repair: revived the packaged system at ${candidate} — browser QA includes its real API`);
+                    //  H2: the revived server is this repair's: stopped to put his data back, and started again on its port.
+                    let running: any = child;
+                    held.hooks = () => ({
+                        liveUrl: candidate,
+                        stop: async () => { try { running?.kill(); } catch { /* already gone */ } await running?.done?.catch?.(() => undefined); return true; },
+                        start: async () => {
+                            const again = executionEngine.runArgvStreaming(process.execPath, ['server.js'], {
+                                cwd: packagedDir, env: { PORT: String(port), NODE_NO_WARNINGS: '1' },
+                                onLine: (line: string) => term(`  ${line.slice(0, 160)}`),
+                            });
+                            running = again;
+                            for (let i = 0; i < 30 && !(await this.urlAnswers(candidate)); i++) await new Promise(resolve => setTimeout(resolve, 250));
+                            if (projectEntry.live?.url === candidate) projectEntry.live.pid = again.pid;
+                        },
+                    });
                 } else {
                     try { child.kill(); } catch { /* already stopped */ }
                 }
             } catch (error: any) {
                 term(`repair: packaged system could not be revived — ${String(error?.message || error).slice(0, 160)}`);
             }
+            if (!serveUrl) {
+                //  Nothing was started: the audits serve the build themselves, so the pin is chosen for that.
+                qaServerRoot = dir;
+                qaStartKind = '';
+                qaPin = await seedLoopQaPin({ projectRoot: dir, hasServeUrl: false, sessionId });
+            }
         }
+        const streamTo = String(context?.browserSessionId || '').trim();
+        const qaOptions = {
+            projectRoot: dir, serverRoot: qaServerRoot, qaPin,
+            ...(qaStartKind ? { startKind: qaStartKind } : {}),
+            ...(streamTo ? { streamTo } : {}),
+        };
 
         // Open the panel and WAIT for it, exactly as the builder does: a repair
         // he was told he could watch must not be over before he can look.
@@ -202,6 +324,7 @@ export class ProjectRepairTool extends BaseTool {
                 ...(serveUrl ? { serveUrl } : {}),
                 ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 artifactRootDir,
+                ...qaOptions,
             onProgress: (where: string) => {
                 if (where.startsWith('private')) {
                     const why = where.slice('private'.length).replace(/^:/, '').trim();
@@ -218,6 +341,8 @@ export class ProjectRepairTool extends BaseTool {
         if (before.skipped) {
             return { ok: false, error: `audit_skipped: ${before.skipped}`, logs } as any;
         }
+        //  The first audit has nothing earlier to keep: if the folder needed a stricter path, the loop takes it.
+        if (anchorPinOnFirstAudit(qaPin, before)) term(`repair: the checks run as ${qaPin.path} for every round`);
         const blockersBefore = (before.findings || []).filter((f: any) => f.severity === 'high');
         term(`repair: before = ${before.score}/100${before.findings.length ? ` — ${before.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);
 
@@ -330,6 +455,24 @@ export class ProjectRepairTool extends BaseTool {
             term(`repair: baseline build preflight failed for ${dir}`);
             return { ok: false, output: { message, before: before.score, after: before.score, changed: [], remaining: before.findings || [], buildPreflightFailed: true }, logs } as any;
         }
+        /**
+         * WHAT THE LOOP IS HANDED, AND JUDGED BY: WHAT REFUSES (review r40-2, A4).
+         *
+         * Both readings handed every finding to repairRound, so a repair opened for one refusing
+         * finding also rewrote CSS for the told low_contrast and mobile_overflow, and their counts
+         * decided the rollback. The round gets the refusing findings; the score is theirs alone;
+         * `all` keeps every finding, so the told lines are still told with the repair.
+         */
+        const reading = (a: any) => {
+            const all = ((a?.findings || []) as any[]).map((f: any) => ({
+                id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, detailEn: f.detailEn, message: f.message,
+            }));
+            const kept = all.filter(refuses);
+            return {
+                score: refusingScore(a), auditScore: Number(a?.score || 0),
+                findingIds: kept.map(f => f.id), findings: kept, all, skipped: a?.skipped,
+            };
+        };
         const measure = async () => {
             const measured = await auditBuiltApp(auditDir, {
                 request: requestText,
@@ -340,28 +483,26 @@ export class ProjectRepairTool extends BaseTool {
                 ...(serveUrl ? { serveUrl } : {}),
                 ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 artifactRootDir,
+                ...qaOptions,
                 onProgress: (where: string) => {
                     if (where === 'watching') say(isAr ? '👁️ القياس المقيس يجري الآن أمامك في لوحة المتصفّح' : '👁️ The measured round is running in the Browser panel');
                 },
             });
-            return {
-                score: Number(measured.score || 0),
-                findingIds: (measured.findings || []).map((f: any) => String(f.id)),
-                findings: (measured.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, message: f.message })),
-                skipped: measured.skipped,
-            };
+            //  Checked another way than the loop's pin (§2.3): never compared — rolled back through `skipped`,
+            //  and the loop's earlier measurement stands.
+            const notComparable = auditNotComparable(measured, qaPin);
+            if (notComparable) return { ...reading(measured), skipped: true, notComparable };
+            return reading(measured);
         };
+        const firstReading = reading(before);
         const loop = await improveUntilItStops(
-            {
-                score: Number(before.score || 0),
-                findingIds: (before.findings || []).map((f: any) => String(f.id)),
-                findings: (before.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence, severity: f.severity, detail: f.detail, message: f.message })),
-                skipped: before.skipped,
-            },
+            firstReading,
             {
                 say,
                 measure,
                 repair: async (round: number, _ids: string[], findings: any[]) => {
+                    //  A round handed no finding writes nothing: never ui-repair's untargeted blanket.
+                    if (!findings.length) return [];
                     const repaired = await repairRound(dir, round, { isArabic: isAr, findings });
                     for (const file of repaired.changed) term(`repair: round ${round} edited ${file}`);
                     return repaired.changed;
@@ -371,13 +512,21 @@ export class ProjectRepairTool extends BaseTool {
                 rollback,
                 target: Math.max(1, Number(process.env.JOE_IMPROVE_TARGET || 95)),
                 maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
+                language: isAr ? 'ar' : 'en',
             },
         );
         term(improveSummary(loop, isAr));
 
-        const finalMeasurement = loop.final || before;
-        const gained = !finalMeasurement.skipped && finalMeasurement.score > before.score;
-        const remaining = (finalMeasurement.findings || []) as any[];
+        const finalMeasurement = loop.final || firstReading;
+        const gained = !finalMeasurement.skipped && finalMeasurement.score > firstReading.score;
+        //  The number the owner reads is the audit's own; the loop judged its rounds on what refuses.
+        const finalScore = Number(finalMeasurement.auditScore ?? finalMeasurement.score);
+        //  Every finding left — the told ones are told below, never dropped.
+        const remaining = (finalMeasurement.all || finalMeasurement.findings || []) as any[];
+        //  What refuses is what verify.ts refuses (browser-mend.ts): the inspector's lines and a
+        //  minor finding of taste are told with the repair, never «not accepted» (design v3 §2.3).
+        const refusing = remaining.filter(refuses);
+        const told = remaining.filter((f: any) => !refuses(f));
         const blockers = remaining.filter((f: any) => f.severity === 'high');
         const paidFiles = Array.from(new Set(loop.rounds
             .filter((r: any) => r.verdict === 'improved')
@@ -388,51 +537,56 @@ export class ProjectRepairTool extends BaseTool {
         const said = (f: any) => findingText(f, isAr);
         const lines: string[] = [];
         lines.push(isAr
-            ? `🔁 دورة التحسين المقيسة: ${before.score}/100 → ${finalMeasurement.score}/100 عبر ${loop.rounds.length} جولة، وتوقفت لأن: ${loop.stoppedBecause}.`
-            : `🔁 Measured improvement loop: ${before.score}/100 → ${finalMeasurement.score}/100 across ${loop.rounds.length} round(s), stopped because: ${loop.stoppedBecause}.`);
+            ? `🔁 دورة التحسين المقيسة: ${before.score}/100 → ${finalScore}/100 عبر ${loop.rounds.length} جولة، وتوقفت لأن: ${loop.stoppedBecause}.`
+            : `🔁 Measured improvement loop: ${before.score}/100 → ${finalScore}/100 across ${loop.rounds.length} round(s), stopped because: ${loop.stoppedBecause}.`);
         if (paidFiles.length) {
             lines.push(isAr
                 ? `عُدّلت ${paidFiles.length} ملفات مرتبطة بالمشكلة؛ أسماؤها وتغييراتها في Logs.`
                 : `Edited ${paidFiles.length} files tied to the finding; names and changes are in Logs.`);
         }
         lines.push(improveSummary(loop, isAr));
-        if (remaining.length) {
+        if (refusing.length) {
             lines.push(isAr
-                ? `⛔ لم أقبل الإصلاح — بقيت ${remaining.length} مشكلة أو فجوة تغطية:`
-                : `⛔ Repair not accepted — ${remaining.length} defect or coverage gap remains:`);
-            for (const f of remaining) lines.push(`   • ${said(f)}`);
+                ? `⛔ لم أقبل الإصلاح — بقيت ${refusing.length} مشكلة أو فجوة تغطية:`
+                : `⛔ Repair not accepted — ${refusing.length} defect or coverage gap remains:`);
+            for (const f of refusing) lines.push(`   • ${said(f)}`);
             lines.push(isAr
                 ? '   ↳ لم أنتقل للخطوة التالية، والأدلة الكاملة محفوظة في Logs.'
                 : '   ↳ I did not move to the next phase; the complete evidence remains in Logs.');
         } else {
-            lines.push(isAr ? '✅ ولم يبقَ شيء.' : '✅ Nothing left.');
+            lines.push(isAr ? '✅ ولم يبقَ ما يمنع التسليم.' : '✅ Nothing left that refuses the delivery.');
+        }
+        if (told.length) {
+            lines.push(isAr ? `ℹ️ ملاحظات تُذكر مع التسليم ولا تمنعه (${told.length}):` : `ℹ️ Told with the delivery, not refusing it (${told.length}):`);
+            for (const f of told) lines.push(`   • ${said(f)}`);
         }
 
         try {
             const entry = projects[sessionKey];
             if (entry) {
                 entry.lastAudit = {
-                    score: finalMeasurement.score, at: Date.now(),
+                    score: finalScore, at: Date.now(),
                     findings: remaining.slice(0, 12).map((f: any) => ({ severity: f.severity, message: String(f.detail || '').slice(0, 200) })),
                 };
             }
         } catch { /* memory is a bonus */ }
 
         return {
-            ok: remaining.length === 0,
-            ...(remaining.length ? {
-                error: `quality_findings_survived: ${remaining.slice(0, 5).map((f: any) => String(f.id || 'unnamed')).join(', ')}`,
+            ok: refusing.length === 0,
+            ...(refusing.length ? {
+                error: `quality_findings_survived: ${refusing.slice(0, 5).map((f: any) => String(f.id || 'unnamed')).join(', ')}`,
             } : {}),
             output: {
                 message: lines.join('\n'),
                 before: before.score,
-                after: finalMeasurement.score,
+                after: finalScore,
                 changed: paidFiles,
                 rounds: loop.rounds,
                 stoppedBecause: loop.stoppedBecause,
                 remaining: remaining.map((f: any) => f.id),
                 blockersBefore: blockersBefore.map((f: any) => f.id),
-                verificationFailed: remaining.length > 0,
+                told: told.map((f: any) => f.id),
+                verificationFailed: refusing.length > 0,
             },
             logs,
         } as any;

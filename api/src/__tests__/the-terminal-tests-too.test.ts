@@ -52,10 +52,12 @@ describe('the terminal has its own instrument, not just a pipe', () => {
     it('the terminal is part of the round\'s verdict, not a footnote after it', () => {
         expect(REACT).toMatch(/const blend = \(browser: number, terminal: any\) =>/);
         expect(REACT).toMatch(/Math\.round\(browser \* 0\.8 \+ Number\(terminal\.score \|\| 0\) \* 0\.2\)/);
-        // Its failing checks join the findings the next round is aimed at.
-        expect(REACT).toMatch(/findingIds: \[\.\.\.\(a\.findings \|\| \[\]\)\.map\(\(f: any\) => f\.id\), \.\.\.termFails\]/);
+        // Its failing checks join the findings the next round is aimed at
+        // (reactLoopMeasurement since review r40-2, A2: beside what refuses, never a told line).
+        expect(REACT).toMatch(/findingIds: \[\.\.\.m\.findingIds, \.\.\.terminalFails\]/);
+        expect(REACT).toMatch(/const reading = reactLoopMeasurement\(a, termFails, \(n: number\) => blend\(n, t\)\);/);
         // …and the FIRST reading is taken with both eyes too.
-        expect(REACT).toMatch(/score: blend\(Number\(audit\.score \|\| 0\), firstTerminal\)/);
+        expect(REACT).toMatch(/const firstReading = reactLoopMeasurement\(audit, firstTermFails, \(n: number\) => blend\(n, firstTerminal\)\);/);
     });
 
     it('a build with no server still measures — the blend degrades to the browser', () => {

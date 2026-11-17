@@ -4,6 +4,7 @@ import path from 'path';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { readModelJsonObject } from '../../../shared/utils/json';
 import { workspaceService } from '../../services/WorkspaceService';
+import { isWithinRoot } from '../path-containment';
 
 // Helper to encode image to base64
 function encodeImage(imagePath: string): string {
@@ -49,10 +50,11 @@ export const VisualQATool: ToolDefinition = {
     execute: async (input, context) => {
         const filePath = input.imagePath;
         
-        // Workspace containment: validate imagePath is within workspace boundary
+        // Workspace containment: validate imagePath is within workspace boundary,
+        // through the one shared reader (resolves; case-insensitive on Windows).
         const workspaceRoot = path.resolve(workspaceService.getActiveRoot(context?.workspaceId) || '');
         const resolvedFilePath = path.resolve(filePath);
-        if (!resolvedFilePath.startsWith(workspaceRoot + path.sep) && resolvedFilePath !== workspaceRoot) {
+        if (!isWithinRoot(resolvedFilePath, workspaceRoot)) {
             return {
                 ok: false,
                 error: `imagePath '${filePath}' escapes workspace boundary. Must be within workspace root: ${workspaceRoot}`,

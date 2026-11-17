@@ -61,6 +61,8 @@ export class DeployManager {
                         cwd,
                         timeout: timeoutMs,
                         shell: true,
+                        //  Joe deploying Joe: the pull, the build and the restart need Joe's own environment.
+                        joeInfrastructure: true,
                         env: {
                             ...process.env,
                             GIT_TERMINAL_PROMPT: '0',
@@ -123,7 +125,8 @@ export class DeployManager {
                     cwd: API_DIR,
                     env: { ...process.env, NODE_ENV: 'production' },
                     detached: true,
-                    stdio: 'ignore'
+                    stdio: 'ignore',
+                    joeInfrastructure: true,
                 }
             },
             priority: 'high'

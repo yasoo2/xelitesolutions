@@ -210,7 +210,7 @@ if __name__ == "__main__": unittest.main()
     term(`[orion] PYTHONPATH=services/business-core ${acceptanceCommand}`);
     const testRun = compile.missing
       ? compile // no interpreter: do not spawn a second doomed process just to collect the same ENOENT
-      : await runPython(['-m', 'unittest', 'discover', '-s', 'tests', '-v'], { cwd: projectPath, timeout: 30000, env: { ...process.env, PYTHONPATH: path.join(projectPath, 'services/business-core') } });
+      : await runPython(['-m', 'unittest', 'discover', '-s', 'tests', '-v'], { cwd: projectPath, timeout: 30000, env: { PYTHONPATH: path.join(projectPath, 'services/business-core') } });
     let schemaValid = false;
     try { JSON.parse(fs.readFileSync(path.join(projectPath, 'contracts/events/payment-captured.v1.json'), 'utf8')); schemaValid = true; } catch {}
 

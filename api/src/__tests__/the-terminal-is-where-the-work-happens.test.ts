@@ -221,7 +221,9 @@ describe('THE WIRING: both builders work in the visible shell', () => {
         expect(API).toMatch(/const shell = openTerminal\(term\);/);
         expect(API).toMatch(/const instRun = await shell\.run\('npm', \[\s*'install'/);
         expect(API).toMatch(/'--cache', npmCache/);
-        expect(API).toMatch(/const npmCache = path\.join\(proj, '\.npm-cache'\);/);
+        //  An exact cache already in the workspace is reused offline (76f66a5d3);
+        //  otherwise the project keeps its own.
+        expect(API).toMatch(/const npmCache = reusableCache \|\| path\.join\(proj, '\.npm-cache'\);/);
         expect(API).toContain("'--fetch-retries=0', '--fetch-timeout=10000'");
         expect(API).toContain('npm registry access is denied by this environment');
         // `node server.js` cannot be awaited like a command, but it is still

@@ -1,0 +1,14 @@
+{
+ "truth": "BROKEN: at 390 the orders table (in a classless <div>) makes the page pan; the «Sort» dropdown in the other classless <div> must still open fully after a repair",
+ "targets": [
+  {
+   "sel": "table tr:nth-child(2) button",
+   "at": 390
+  }
+ ],
+ "after": {
+  "js": "document.querySelector('.dd button').click()",
+  "sel": ".dd li:last-child a",
+  "at": 390
+ }
+}
