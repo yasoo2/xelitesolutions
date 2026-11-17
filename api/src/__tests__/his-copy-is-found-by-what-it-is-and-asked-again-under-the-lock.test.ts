@@ -283,6 +283,23 @@ describe('M1 — realFolderResolver gives the answer of realFolderOf', () => {
         const one = realFolderResolver();
         for (let i = 0; i < 20; i++) expect(one(path.join(many, `p${i}`))).toBe(realFolderOf(path.join(many, `p${i}`)));
     });
+
+    it('review 13: a folder named «Keys» with the Kelvin sign never hides the junction «keys» beside it', () => {
+        const { realFolderOf, realFolderResolver } = require('../modules/tools/path-containment');
+        const other = folder('m1-kelvin/otherChatProject', { 'data/orders.json': '[]' });
+        const projects = folder('m1-kelvin/projects', { 'a/x.txt': 'a', 'b/x.txt': 'b' });
+        const jn = path.join(projects, 'keys');
+        fs.symlinkSync(other, jn, 'junction');
+        links.push(jn);
+        //  «Keys» spelled with U+212A KELVIN SIGN: JavaScript lowers it to ASCII «keys».
+        fs.mkdirSync(path.join(projects, String.fromCharCode(0x212a) + 'eys'));
+        const one = realFolderResolver();
+        //  Two children asked first, so the folder's listing answers the third.
+        one(path.join(projects, 'a'));
+        one(path.join(projects, 'b'));
+        expect(one(path.join(jn, 'data'))).toBe(realFolderOf(path.join(jn, 'data')));
+        expect(one(jn)).toBe(realFolderOf(jn));
+    });
 });
 
 describe('L3 — the scope is asked again once the locks are held', () => {

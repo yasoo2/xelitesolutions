@@ -109,7 +109,8 @@ export function isWithinRealRoot(child: string, parent: string): boolean {
  *   - a part that is not there keeps its spelling below its parent's answer (realFolderOf's own rule);
  *   - a part that is a plain folder or file is its parent's answer joined with its name — the file system knows it
  *     by no other path;
- *   - a drive or share root, a link or junction (a mount point is one too), and on Windows a name that may be a second
+ *   - a drive or share root, a link or junction (a volume mount point lists as a link but lstat may call it a plain
+ *     folder — such a mount is then joined by its name, a known limit review 13 named), and on Windows a name that may be a second
  *     spelling of another — an 8.3 short name («~»), a trailing dot or space, a stream («:»), a letter whose case
  *     JavaScript and NTFS may fold differently — is asked of realpath itself (realFolderOf), and so is every part on
  *     macOS, whose file systems may fold case and Unicode their own way;
@@ -127,8 +128,13 @@ export function realFolderResolver(): (dir: string) => string {
     //  A folder asked about for a second child is listed once (readdir), and its children are answered from the list:
     //  the projects of many chats sit side by side in one folder. On Windows any reparse point lists as a link.
     const asks = new Map<string, number>();
-    const listed = new Map<string, Map<string, boolean> | null>();
-    const kindIn = (up: string, name: string): 'link' | 'plain' | 'none' | 'unknown' => {
+    //  Review 13: the list answers ONLY for a name spelled exactly as on disk that no other entry folds to. JavaScript's
+    //  lower case is not the file system's: «Keys» spelled with the Kelvin sign (U+212A) lowers to ASCII «keys» and, kept
+    //  by its folded name, took the place of the junction «keys» — the junction into another chat's project was then
+    //  answered as a plain folder. A name not on the list exactly, or one sharing its folded name with another entry,
+    //  is asked of lstat.
+    const listed = new Map<string, { exact: Map<string, boolean>; folded: Map<string, number> } | null>();
+    const kindIn = (up: string, name: string): 'link' | 'plain' | 'unknown' => {
         const n = (asks.get(up) || 0) + 1;
         asks.set(up, n);
         if (n < 2) return 'unknown';
@@ -136,14 +142,21 @@ export function realFolderResolver(): (dir: string) => string {
         if (list === undefined) {
             list = null;
             try {
-                list = new Map();
-                for (const e of fs.readdirSync(up, { withFileTypes: true })) list.set(fold(e.name), e.isSymbolicLink());
+                const exact = new Map<string, boolean>();
+                const folded = new Map<string, number>();
+                for (const e of fs.readdirSync(up, { withFileTypes: true })) {
+                    exact.set(e.name, e.isSymbolicLink());
+                    const f = fold(e.name);
+                    folded.set(f, (folded.get(f) || 0) + 1);
+                }
+                list = { exact, folded };
             } catch { list = null; }
             listed.set(up, list);
         }
         if (!list) return 'unknown';
-        const link = list.get(fold(name));
-        return link === undefined ? 'none' : link ? 'link' : 'plain';
+        const link = list.exact.get(name);
+        if (link === undefined || list.folded.get(fold(name)) !== 1) return 'unknown';
+        return link ? 'link' : 'plain';
     };
     const resolve = (resolved: string): string => {
         const known = memo.get(resolved);
@@ -154,7 +167,7 @@ export function realFolderResolver(): (dir: string) => string {
         if (up === resolved || !name || askRealpath(name) || (win && /^[\\/]{2}[?.][\\/]/u.test(resolved))) {
             out = realFolderOf(resolved);
         } else {
-            let kind = kindIn(up, name);
+            let kind: 'link' | 'plain' | 'none' | 'unknown' = kindIn(up, name);
             if (kind === 'unknown') {
                 try {
                     const st = fs.lstatSync(resolved, { throwIfNoEntry: false });
