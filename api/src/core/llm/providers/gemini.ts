@@ -21,6 +21,77 @@ const FALLBACK_MODELS = [
 interface GeminiRequestOptions {
     signal?: AbortSignal;
     timeoutMs?: number;
+    /**
+     * The model the user chose, and only that model. Without it a failure
+     * walks the fallback list, which is right for Auto and wrong for a choice:
+     * measured 2026-11-17 against a fake that speaks Google's wire, a 503 on
+     * the chosen gemini-3.5-flash-lite was answered by gemini-flash-latest,
+     * gemini-2.0-flash-exp and gemini-pro-latest in turn, and the run reported
+     * the last one's 404 («the provider does not serve this model»).
+     */
+    exactModel?: boolean;
+    /** Live tokens of a chat with no tools, as they arrive. */
+    onDelta?: (piece: string) => void;
+}
+
+/** The models one call may run on: the given one, then (unless it must be exact) the fallbacks. */
+function modelsToTryFor(model: string | undefined, exact: boolean | undefined): string[] {
+    const raw = (exact && model ? [model] : [model, DEFAULT_MODEL, ...FALLBACK_MODELS]).filter(Boolean).map(String);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const m of raw) {
+        if (!m.trim()) continue;
+        // Force models/ prefix as REQUIRED by the Google OpenAI endpoint
+        const prefixed = m.startsWith('models/') ? m : `models/${m}`;
+        if (seen.has(prefixed)) continue;
+        seen.add(prefixed);
+        out.push(prefixed);
+    }
+    return out;
+}
+
+/** Google's RetryInfo delay («17s», «1.5s») in whole seconds, rounded up. */
+function retryDelaySeconds(details: unknown): number | undefined {
+    if (!Array.isArray(details)) return undefined;
+    const info = details.find((d: any) => /RetryInfo$/.test(String(d?.['@type'] || '')));
+    const m = /^(\d+(?:\.\d+)?)s$/.exec(String(info?.retryDelay || '').trim());
+    return m ? Math.max(1, Math.ceil(Number(m[1]))) : undefined;
+}
+
+/**
+ * ⛔ GOOGLE'S REFUSALS ARRIVED AS «400 status code (no body)».
+ *
+ * The OpenAI-compatible endpoint answers an error with a JSON ARRAY of one
+ * error ([{"error":{code,message,status,details}}]); the OpenAI SDK reads
+ * `body.error`, finds nothing, and Google's own words were lost: «API key not
+ * valid», «You exceeded your current quota», «Function call is missing a
+ * thought_signature». The quota's RetryInfo («retryDelay": "17s») went with
+ * them, so a one-minute limit paused the provider for the router's default
+ * five minutes. The body is handed to the SDK as the object it expects, and
+ * the delay as the Retry-After header every reader in Joe already honours.
+ */
+export function geminiErrorBodyFetch(base: () => typeof fetch = () => globalThis.fetch): typeof fetch {
+    return (async (input: any, init?: any) => {
+        const res = await base()(input, init);
+        if (res.ok) return res;
+        let text = '';
+        try { text = await res.text(); } catch { return res; }
+        let body = text;
+        let delay: number | undefined;
+        try {
+            const parsed = JSON.parse(text);
+            const error = Array.isArray(parsed) ? parsed[0]?.error : parsed?.error;
+            if (error && typeof error === 'object') {
+                body = JSON.stringify({ error });
+                delay = retryDelaySeconds(error.details);
+            }
+        } catch { /* not JSON: passed on as it came */ }
+        const headers = new Headers(res.headers);
+        headers.delete('content-length');
+        headers.delete('content-encoding');
+        if (delay && !headers.has('retry-after')) headers.set('retry-after', String(delay));
+        return new Response(body, { status: res.status, statusText: res.statusText, headers });
+    }) as typeof fetch;
 }
 
 function stopsModelFallback(error: any, signal?: AbortSignal): boolean {
@@ -50,6 +121,7 @@ export class GeminiProvider {
                 apiKey: this.apiKey,
                 baseURL: GEMINI_BASE_URL,
                 maxRetries: 0,
+                fetch: geminiErrorBodyFetch(),
             });
             console.info('[Gemini] Provider initialized with API key');
         } else {
@@ -155,20 +227,7 @@ export class GeminiProvider {
             throw new Error('Gemini API key not configured');
         }
 
-        const modelsToTry = (() => {
-            const raw = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
-            const seen = new Set<string>();
-            const out: string[] = [];
-            for (const m of raw) {
-                if (!m.trim()) continue;
-                // Force models/ prefix as REQUIRED by the Google OpenAI endpoint
-                const prefixed = m.startsWith('models/') ? m : `models/${m}`;
-                if (seen.has(prefixed)) continue;
-                seen.add(prefixed);
-                out.push(prefixed);
-            }
-            return out;
-        })();
+        const modelsToTry = modelsToTryFor(model, options?.exactModel);
         let lastError: any;
 
         // Sanitize tool schemas if provided
@@ -196,6 +255,21 @@ export class GeminiProvider {
 
                 if (sanitizedTools) {
                     params.tools = sanitizedTools;
+                }
+
+                //  A chat with no tools streams when the caller shows tokens live:
+                //  every other provider's chat did, and Gemini's arrived whole.
+                if (options?.onDelta && !sanitizedTools) {
+                    const stream: any = await this.client.chat.completions.create({ ...params, stream: true }, requestOptions(options));
+                    let text = '';
+                    for await (const chunk of stream) {
+                        options?.signal?.throwIfAborted();
+                        const piece = chunk?.choices?.[0]?.delta?.content || '';
+                        if (piece) { text += piece; try { options.onDelta(piece); } catch { /* the window only */ } }
+                    }
+                    if (text.trim()) return text;
+                    lastError = new Error('Empty response from Gemini');
+                    continue;
                 }
 
                 const completion = await this.client.chat.completions.create(params, requestOptions(options));
@@ -251,19 +325,7 @@ export class GeminiProvider {
             throw new Error('Gemini API key not configured');
         }
 
-        const modelsToTry = (() => {
-            const raw = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
-            const seen = new Set<string>();
-            const out: string[] = [];
-            for (const m of raw) {
-                if (!m.trim()) continue;
-                const prefixed = m.startsWith('models/') ? m : `models/${m}`;
-                if (seen.has(prefixed)) continue;
-                seen.add(prefixed);
-                out.push(prefixed);
-            }
-            return out;
-        })();
+        const modelsToTry = modelsToTryFor(model, options?.exactModel);
         let lastError: any;
 
         const sanitizedTools = tools.map((t: any) => this.sanitizeTool(t));
@@ -336,19 +398,7 @@ export class GeminiProvider {
             throw new Error('Gemini API key not configured');
         }
 
-        const modelsToTry = (() => {
-            const raw = [model, DEFAULT_MODEL, ...FALLBACK_MODELS].filter(Boolean).map(String);
-            const seen = new Set<string>();
-            const out: string[] = [];
-            for (const m of raw) {
-                if (!m.trim()) continue;
-                const prefixed = m.startsWith('models/') ? m : `models/${m}`;
-                if (seen.has(prefixed)) continue;
-                seen.add(prefixed);
-                out.push(prefixed);
-            }
-            return out;
-        })();
+        const modelsToTry = modelsToTryFor(model, options?.exactModel);
         let lastError: any;
 
         const sanitizedTools = tools.map((t: any) => this.sanitizeTool(t));

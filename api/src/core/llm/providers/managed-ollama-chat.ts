@@ -34,6 +34,7 @@ function fail(code: string, message: string, details?: Record<string, number | s
 /** A closed vocabulary for a local server's error body: the text itself may hold prompt or secret fragments. */
 export function serverErrorClass(body: string): string {
     if (!body.trim()) return 'empty';
+    if (/does not support tools/i.test(body)) return 'no-tools';
     if (/out of memory|insufficient memory|requires more system memory|\balloc/i.test(body)) return 'memory';
     if (/context (?:length|window|size)|num_ctx|exceeds?|too long|truncat/i.test(body)) return 'context';
     if (/cancel/i.test(body)) return 'cancelled';
@@ -531,7 +532,19 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                     // five plans failed at 311-414 s as a bare HTTP 500, no reason.
                     let reason = '';
                     try { reason = (await response.text()).slice(0, 4096); } catch { /* The status alone is still logged. */ }
-                    console.warn('[LocalCall] server-error', JSON.stringify({ status: response.status, reason: serverErrorClass(reason) }));
+                    const kind = serverErrorClass(reason);
+                    console.warn('[LocalCall] server-error', JSON.stringify({ status: response.status, reason: kind }));
+                    //  Two refusals that asking again cannot change, said in Joe's own words
+                    //  (the server's text still stays out). Measured 2026-11-17 on Ollama
+                    //  0.40.16: the laptop's only model answers a call with tools «…
+                    //  moondream:latest does not support tools» (400), and the run ended
+                    //  «failed 3 times in a row: Local inference returned HTTP 400.»
+                    if (response.status === 400 && kind === 'no-tools') {
+                        fail('OLLAMA_MODEL_NO_TOOLS', `The local model ${options.model} cannot call tools, and Joe's engine works through tools: choose a local model that supports tool calling.`);
+                    }
+                    if (response.status === 404 && kind === 'model-missing') {
+                        fail('OLLAMA_MODEL_MISSING', `The local model ${options.model} is not installed on the local model server.`);
+                    }
                     fail('OLLAMA_HTTP_ERROR', `Local inference returned HTTP ${response.status}.`);
                 }
                 const completion = await consume(response, !!options.onDelta, run.signal, budget, mapped.promptEstimatedTokens, options.onDelta);
