@@ -274,7 +274,9 @@ export function routedModel(choice: ModelChoice, joe: any): EngineModel {
             } catch (e: any) {
                 //  A prompt longer than the provider's window is folded and asked again (the loop's
                 //  RESOURCE_CONTEXT_OVERFLOW), not reported three times as the provider being down.
-                if (ROUTED_CONTEXT_OVERFLOW.test(String(e?.message || ''))) {
+                //  Only a refusal of the request itself (400/413, or no status): a 429 saying «too many
+                //  tokens» is a per-minute limit to wait out, not a window to fold.
+                if ((!e?.status || e.status === 400 || e.status === 413) && ROUTED_CONTEXT_OVERFLOW.test(String(e?.message || ''))) {
                     throw Object.assign(new Error(`RESOURCE_CONTEXT_OVERFLOW: ${String(e.message).slice(0, 300)}`), { code: 'RESOURCE_CONTEXT_OVERFLOW', status: e?.status });
                 }
                 throw e;
