@@ -20,6 +20,7 @@ import fs from 'fs';
 import { builtinModules } from 'module';
 import path from 'path';
 import { isData } from './qa-leaves-no-trace';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 /** The four paths, from the loosest to the strictest. */
 export type QaPath = 'as-today' | 'private-live' | '2t' | 'no-write';
@@ -478,7 +479,7 @@ async function prove2T(root: string, budgetMs: number): Promise<{ ok: boolean; r
     for (const f of envFiles) {
         if (!f) continue;
         const abs = path.resolve(root, f);
-        if (!abs.startsWith(rootAbs + path.sep)) { c.no('envName', `an env file outside the project: ${f}`); continue; }
+        if (abs === rootAbs || !isWithinRoot(abs, rootAbs)) { c.no('envName', `an env file outside the project: ${f}`); continue; }
         let text = '';
         try { text = await fs.promises.readFile(abs, 'utf8'); } catch { continue; }
         for (const line of text.split(/\r?\n/)) {
