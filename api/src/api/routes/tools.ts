@@ -1,9 +1,33 @@
 import { Router, Request, Response } from 'express';
 import { tools } from '../../modules/tools/registry';
 import { executeTool } from '../../modules/services/ToolService';
-import { authenticate } from '../middleware/auth';
+import { authenticate, superAdminEmails } from '../middleware/auth';
 
 const router = Router();
+
+/**
+ * WHO MAY RUN A TOOL BY ITS NAME.
+ *
+ * 2026-11-17, the tenant review (N1): these two routes ran ANY registered tool
+ * for ANY signed-in account — execute_python, shell_execute, engine_device — on
+ * the server, in any folder. One sign-up was a shell on the machine that holds
+ * every user's projects and Joe's own secret. Only the owner and the super
+ * admins may run a tool directly. Everyone else gets the one call Joe's own
+ * interface makes here: the file explorer listing the GitHub repositories of the
+ * token the user typed (EliteFileExplorer.tsx).
+ */
+export function mayRunToolDirectly(auth: { role?: string; email?: string } | undefined, tool: string, input: any): boolean {
+  if (!auth) return false;
+  const email = String(auth.email || '').toLowerCase().trim();
+  if (auth.role === 'OWNER' || auth.role === 'SUPER_ADMIN' || (email && superAdminEmails().includes(email))) return true;
+  return tool === 'github_repo_manager' && String(input?.action || '') === 'list';
+}
+
+function refuseUnlessAllowed(req: Request, res: Response, tool: string, input: any): boolean {
+  if (mayRunToolDirectly((req as any)?.auth, tool, input)) return false;
+  res.status(403).json({ ok: false, error: 'Forbidden: only the owner may run a tool directly' });
+  return true;
+}
 
 function extractWorkspaceId(req: Request) {
   const fromReq = (req as any)?.workspace?._id ? String((req as any).workspace._id) : '';
@@ -30,6 +54,7 @@ router.post('/execute', authenticate, async (req: Request, res: Response) => {
   }
   const sessionId = requestedSession?.trim() || `session-${Date.now()}`;
   const input = (req.body as any)?.input || (req.body as any)?.args || req.body || {};
+  if (refuseUnlessAllowed(req, res, name, input)) return;
   try {
     const { executionFirewall } = require('../../orchestration/AgentExecutionFirewall');
     const result = await executionFirewall.context.exit(() => executionFirewall.runInContext(undefined, async () => {
@@ -51,7 +76,8 @@ router.post('/:name/execute', authenticate, async (req: Request, res: Response) 
     return res.status(400).json({ ok: false, error: 'Invalid sessionId' });
   }
   const sessionId = requestedSession?.trim() || `session-${Date.now()}`;
-  
+  if (refuseUnlessAllowed(req, res, name, req.body || {})) return;
+
   try {
     const { executionFirewall } = require('../../orchestration/AgentExecutionFirewall');
     
