@@ -596,12 +596,21 @@ export function isNavigationTimeout(error: unknown): boolean {
  * 30 s). A second timeout is still told as before: the inspector says what it
  * could not measure, it never invents a pass.
  */
-export async function openPatiently(page: any, target: string, opts: { waitUntil: 'load' | 'networkidle' | 'domcontentloaded'; timeout: number }): Promise<any> {
+/** Less than this left of the walk's budget after a timeout: no second wait (review 8, L4). */
+export const OPEN_RETRY_MIN_MS = 2_000;
+export async function openPatiently(page: any, target: string, opts: { waitUntil: 'load' | 'networkidle' | 'domcontentloaded'; timeout: number; remainingMs?: number }): Promise<any> {
+    const { remainingMs, ...goto } = opts;
+    const t0 = Date.now();
     try {
-        return await page.goto(target, opts);
+        return await page.goto(target, goto);
     } catch (e) {
         if (!isNavigationTimeout(e)) throw e;
-        return page.goto(target, { ...opts, timeout: Math.min(30_000, Math.max(opts.timeout * 2, opts.timeout)) });
+        //  The second wait fits in what is left of the walk's budget (review 8, L4): never past it, and none when too little is left.
+        const wanted = Math.min(30_000, Math.max(goto.timeout * 2, goto.timeout));
+        const left = remainingMs === undefined ? wanted : Math.floor(remainingMs - (Date.now() - t0));
+        const second = Math.min(wanted, left);
+        if (second < OPEN_RETRY_MIN_MS) throw e;
+        return page.goto(target, { ...goto, timeout: second });
     }
 }
 
@@ -2311,7 +2320,7 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
                 //  A jump inside one document («/#summary» → «/#cars») loads nothing: a product that reads its #view on load is loaded again.
                 const jumpFrom = sameDocumentUrl(String(page.url() || ''), target)
                     ? viewKey(await evalInPage(page, readViewParts).catch(() => null)) : '';
-                let opened = await openPatiently(page, target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
+                let opened = await openPatiently(page, target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000), remainingMs: remainingWalkMs() });
                 if (jumpFrom) {
                     await page.waitForTimeout(300);
                     if (viewKey(await evalInPage(page, readViewParts).catch(() => null)) === jumpFrom) {
@@ -2498,7 +2507,7 @@ async function walkBuiltApp(distDir: string, opts: AuditBuiltAppOptions | undefi
                 const heard = mark();
                 try {
                     const target = routeUrl(url, r);
-                    await openPatiently(page, target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
+                    await openPatiently(page, target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000), remainingMs: Math.min(passBudget, remainingWalkMs()) });
                     await reenter();
                     await applyViewportSize(page, size.w, size.h);
                     await page.waitForTimeout(260);

@@ -328,18 +328,74 @@ export function chatProjectOrigin(sessionId: unknown): 'built' | 'imported' | un
 }
 
 /**
- * Does this message ask for a copy of the app's DATA back — the copies Joe kept of his data files before each
- * put-back of the checks (review 7, B3)? A data word with a bring-back or copy word: «رجّع بيانات تطبيقي»,
- * «استرجع نسخة البيانات رقم 2», «وين نسخ بياناتي», «restore my data copy», «bring back the records Joe kept».
- * Not a request to BUILD a backup feature («أضف نسخة احتياطية للبيانات»), and not a long brief.
+ * DOES THIS MESSAGE ASK, UNMISTAKABLY, FOR THE APP'S DATA BACK FROM ONE OF JOE'S COPIES (review 8, B1)?
+ *
+ * Bringing a copy back replaces the owner's live records, so a guess is never enough. Review 8 proved the old reader
+ * (any data word plus any «recover» letters) sent ordinary work here: «صلح خطأ الاتصال بقاعدة البيانات» (اعد inside
+ * «قاعدة»), «الصفحة ترجع بيانات خاطئة» (رجع inside «ترجع»), «انسخ بيانات الطلب» and «Fix bug #2: the data table copy»
+ * — and «الخطأ رقم 1 في قاعدة البيانات، صلحه» restored copy 1 over today's records. Now it is a request for his data
+ * back only when ALL hold:
+ *   - a bring-back verb as a WHOLE word (Arabic-aware boundaries: «رجّع/ارجع/أرجع/استرجع/استعد/أعد», «restore»,
+ *     «recover», «bring back», «put back») — never the letters inside «قاعدة», «ترجع», «يرجع» or «انسخ»;
+ *   - a data noun as a whole word («بيانات/سجلات» with their article and endings, «data», «records»), or a copy noun
+ *     followed by the id of one of Joe's copies (`20261117-020212`) — «نسخة» alone, as in «نسخة الجوال», is no noun;
+ *   - no fix, build, improve or change verb and no fault word anywhere in it («صلح», «حسّن», «غيّر», «fix», «error»,
+ *     «خطأ», «wrong»…), and no «why».
+ * Anything else takes the normal path, exactly as on main.
  */
-const DATA_WORD = /(?:بيانات|سجلات|سجلّات|\bdata\b|\brecords?\b)/iu;
-const RECOVER_WORD = /(?:رجّع|رجع|ارجع|أرجع|استرجع|استرجاع|استعد|استعادة|أعد|اعد|نسخ|\brecover\w*|\brestore\w*|bring\s+back|\bcop(?:y|ies)\b|\bget\s+back\b)/iu;
-const FEATURE_WORD = /(?:أضف|اضف|ضيف|إضافة|اضافة|أنشئ|انشئ|ابن|ابني|اصنع|صمم|طور|برمج|ميزة|ميزه|خاصية|خاصيه|زر|\badd\b|\bbuild\b|\bcreate\b|\bmake\b|\bimplement\b|\bfeature\b|\bbutton\b)/iu;
+const AR_LETTER = 'ء-ي';
+/** A whole Arabic-or-Latin word from `alts`, with the conjunction «و/ف» before it and the given endings after it. */
+const wholeWord = (alts: string, endings = '') => new RegExp(
+    `(?<![${AR_LETTER}A-Za-z0-9_])(?:[وف])?(?:${alts})${endings ? `(?:${endings})?` : ''}(?![${AR_LETTER}A-Za-z0-9_])`, 'iu');
+/** The bring-back verbs (diacritics are stripped first, so «رجّع» reads «رجع»). */
+const RESTORE_VERB_AR = wholeWord('رجع|ارجع|أرجع|إرجع|استرجع|استرجاع|استعد|استعادة|أعد|اعد|إعادة|اعادة', 'لي|ها|ه|هم|يها|يه|وا|ولي');
+const RESTORE_VERB_EN = /\b(?:restore|recover|bring\s+back|put\s+back|roll\s+back)\b/iu;
+/** The data nouns: «بيانات/سجلات» with «ال», «ب/ل» and the possessive endings; «data», «records». */
+const DATA_NOUN_AR = new RegExp(`(?<![${AR_LETTER}])(?:[وفبل]|لل)?(?:ال)?(?:بيانات|سجلات)(?:ي|نا|ه|ها|هم|ك|كم)?(?![${AR_LETTER}])`, 'u');
+const DATA_NOUN_EN = /\b(?:data|records)\b/iu;
+/** The id Joe shows for one of his copies (`listRecoveryCopies`): its time, `YYYYMMDD-HHMMSS`, and `-N` when two share a second. */
+export const RECOVERY_COPY_ID = /(?<![0-9])(\d{8}-\d{6}(?:-\d{1,2})?)(?![0-9])/u;
+const COPY_NOUN_WITH_ID = new RegExp(`(?:(?<![${AR_LETTER}])(?:ال)?نسخ[ةه]?(?![${AR_LETTER}])|\\bcopy\\b)\\s*(?:رقم\\s*|number\\s*|no\\.?\\s*|#\\s*)?\\d{8}-\\d{6}`, 'iu');
+/** Work asked of the app, or a fault in it: never a request for a copy back. */
+const NOT_A_RESTORE_AR = new RegExp(`(?<![${AR_LETTER}])(?:[وف])?(?:صلح|أصلح|اصلح|إصلاح|اصلاح|تصليح|صحح|تصحيح|عالج|معالجة|حسن|تحسين|طور|تطوير|عدل|تعديل|غير|تغيير|بدل|تبديل|أضف|اضف|ضيف|إضافة|اضافة|أنشئ|انشئ|إنشاء|انشاء|ابن|ابني|بناء|اصنع|صمم|تصميم|برمج|اجعل|خلي|ميزة|ميزه|خاصية|خاصيه|زر|خطأ|الخطأ|خطا|الخطا|أخطاء|اخطاء|خاطئ|خاطئة|خاطئه|غلط|مشكلة|مشكله|المشكلة|المشكله|عطل|معطل|يتعطل|خلل|لماذا|ليش|ليه)`, 'u');
+const NOT_A_RESTORE_EN = /\b(?:fix\w*|repair\w*|debug\w*|improve\w*|optimi[sz]e\w*|change\w*|edit\w*|update\w*|modify\w*|add|build\w*|create\w*|make|implement\w*|design\w*|feature\w*|button\w*|bug\w*|error\w*|wrong|broken|crash\w*|fail\w*|issue\w*|exception\w*|why)\b/iu;
+
+/** The message, diacritics and tatweel gone, Arabic-Indic digits read as digits. */
+function plainOwnerText(text: string): string {
+    //  The digits first: «٠-٩» sit inside the diacritics' range (U+064B–U+0670) and would be stripped with them.
+    return String(text || '').trim().replace(/[٠-٩]/gu, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/gu, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[ً-ٰٟـ]/gu, '');
+}
+
 export function isDataRecoveryRequest(text: string): boolean {
-    const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
-    if (!t || t.length > 300 || startsAfresh(t)) return false;
-    return DATA_WORD.test(t) && RECOVER_WORD.test(t) && !FEATURE_WORD.test(t);
+    const t = plainOwnerText(text);
+    if (!t || t.length > 240 || startsAfresh(t)) return false;
+    if (NOT_A_RESTORE_AR.test(t) || NOT_A_RESTORE_EN.test(t)) return false;
+    const verb = RESTORE_VERB_AR.test(t) || RESTORE_VERB_EN.test(t);
+    const noun = DATA_NOUN_AR.test(t) || DATA_NOUN_EN.test(t) || COPY_NOUN_WITH_ID.test(t);
+    if (!verb || !noun) return false;
+    //  A fault said in words the lists above do not hold is still a fault: the classifier's own reader has the last word.
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reportsAFaultOrOrdersAFix } = require('../intelligence/intent-classifier');
+        if (reportsAFaultOrOrdersAFix(t)) return false;
+    } catch { /* the reader is optional: the lists above already decided */ }
+    return true;
+}
+
+/** The id of one of Joe's copies the owner's message names, if it names exactly one (`20261117-020212`). Never a bare number. */
+export function recoveryCopyIdIn(text: string): string | undefined {
+    const t = plainOwnerText(text);
+    const all = Array.from(t.matchAll(new RegExp(RECOVERY_COPY_ID.source, 'gu'))).map(m => m[1]);
+    const ids = Array.from(new Set(all));
+    return ids.length === 1 ? ids[0] : undefined;
+}
+
+/** Whether the owner's message confirms («نعم», «أكّد», «موافق», «confirm», «yes») — and does not refuse. */
+export function confirmsRecovery(text: string): boolean {
+    const t = plainOwnerText(text);
+    if (new RegExp(`(?<![${AR_LETTER}])(?:لا|كلا|لأ|ألغ|الغ|إلغاء|الغاء|توقف)(?![${AR_LETTER}])`, 'u').test(t) || /\b(?:no|not|don'?t|cancel|stop)\b/iu.test(t)) return false;
+    return new RegExp(`(?<![${AR_LETTER}])(?:[وف])?(?:نعم|أكد|اكد|أؤكد|اؤكد|تأكيد|تاكيد|موافق|أوافق|اوافق|أيوه|ايوه|أجل|اجل)(?![${AR_LETTER}])`, 'u').test(t)
+        || /\b(?:yes|confirm(?:ed)?|i\s+confirm|go\s+ahead)\b/iu.test(t);
 }
 
 /** Does this message ask to put the project back, or to see its kept versions? */

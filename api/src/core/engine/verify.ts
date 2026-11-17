@@ -1539,6 +1539,22 @@ const QA_LINES = {
         "de": "Joes Prüfungen liefen wie immer auf Ihrer App und probierten ihre Formulare und Schaltflächen aus; danach wurden die Datendateien Ihrer App wie bisher zurückgelegt. Der Browser der Prüfungen erreichte nur die Adresse Ihrer App {origin}.",
         "ru": "Проверки Joe прошли на вашем приложении как обычно и опробовали его формы и кнопки; затем файлы данных приложения были возвращены, как и раньше. Браузер проверок обращался только к адресу приложения {origin}."
     },
+    "checkedLeftChanged": {
+        "ar": "جرت فحوص جو على تطبيقك كما تجري دائمًا، وجرّبت نماذجه وأزراره؛ وتغيّرت أثناءها ملفات بيانات في تطبيقك: {files}، ولم تُعَد كما كانت، لأن خادم تطبيقك لم يتوقف. ولم يصل متصفح الفحوص إلا إلى عنوان تطبيقك {origin}.",
+        "en": "Joe's checks ran on your app the way they always have, trying its forms and buttons; these data files of your app changed meanwhile: {files} — they were not put back, because your app's server did not stop. The checks' browser reached only your app's address {origin}.",
+        "es": "Las comprobaciones de Joe se hicieron en tu aplicación como siempre, probando sus formularios y botones; mientras tanto cambiaron estos archivos de datos de tu aplicación: {files}, y no se restauraron, porque el servidor de tu aplicación no se detuvo. El navegador de las comprobaciones solo llegó a la dirección de tu aplicación {origin}.",
+        "fr": "Les vérifications de Joe ont tourné sur votre application comme toujours, en essayant ses formulaires et ses boutons ; pendant ce temps, ces fichiers de données de votre application ont changé : {files}, et ils n'ont pas été remis, car le serveur de votre application ne s'est pas arrêté. Le navigateur des vérifications n'a joint que l'adresse de votre application {origin}.",
+        "de": "Joes Prüfungen liefen wie immer auf Ihrer App und probierten ihre Formulare und Schaltflächen aus; dabei änderten sich diese Datendateien Ihrer App: {files}, und sie wurden nicht zurückgelegt, weil der Server Ihrer App nicht anhielt. Der Browser der Prüfungen erreichte nur die Adresse Ihrer App {origin}.",
+        "ru": "Проверки Joe прошли на вашем приложении как обычно и опробовали его формы и кнопки; за это время изменились эти файлы данных приложения: {files}, и они не возвращены, потому что сервер приложения не остановился. Браузер проверок обращался только к адресу приложения {origin}."
+    },
+    "checkedSomeNotPutBack": {
+        "ar": "جرت فحوص جو على تطبيقك كما تجري دائمًا، وجرّبت نماذجه وأزراره؛ وبعدها أُعيد ما أمكن من ملفات بيانات تطبيقك، ولم يُعَد بعضها (مذكور أدناه). ولم يصل متصفح الفحوص إلا إلى عنوان تطبيقك {origin}.",
+        "en": "Joe's checks ran on your app the way they always have, trying its forms and buttons; afterwards the data files that could be put back were, and some could not (named below). The checks' browser reached only your app's address {origin}.",
+        "es": "Las comprobaciones de Joe se hicieron en tu aplicación como siempre, probando sus formularios y botones; después se restauraron los archivos de datos que se pudo, y algunos no (se nombran abajo). El navegador de las comprobaciones solo llegó a la dirección de tu aplicación {origin}.",
+        "fr": "Les vérifications de Joe ont tourné sur votre application comme toujours, en essayant ses formulaires et ses boutons ; ensuite, les fichiers de données qui pouvaient être remis l'ont été, et certains non (nommés ci-dessous). Le navigateur des vérifications n'a joint que l'adresse de votre application {origin}.",
+        "de": "Joes Prüfungen liefen wie immer auf Ihrer App und probierten ihre Formulare und Schaltflächen aus; danach wurden die Datendateien zurückgelegt, bei denen es ging, einige nicht (unten genannt). Der Browser der Prüfungen erreichte nur die Adresse Ihrer App {origin}.",
+        "ru": "Проверки Joe прошли на вашем приложении как обычно и опробовали его формы и кнопки; затем файлы данных, которые удалось вернуть, возвращены, а некоторые — нет (они названы ниже). Браузер проверок обращался только к адресу приложения {origin}."
+    },
     "recoveryKept": {
         "ar": "أثناء الفحوص تغيّر أيضًا {files} في لحظة لم يكن فيها أي طلب من الفحوص يمكن أن يحفظ شيئًا، فقد لا يكون التغيير منها؛ ثم أُعيد كما كان. كل نسخة رآها جو بين النسخ التي يحتفظ بها؛ اطلبها من جو في المحادثة إن كانت تلك التغييرات منك أو من زبائنك.",
         "en": "While the checks ran, {files} also changed at a moment when none of the checks' requests could save anything, so the change may not have come from the checks; then it was put back. Every version Joe saw is among the copies it keeps; ask Joe for it in the chat if those changes were yours or your customers'.",
@@ -1693,13 +1709,21 @@ export function qaPathLines(q: DeliveryQaPath | undefined, language: string): st
     const say = (key: QaLineKey, vars: Record<string, string | number> = {}) => fill(QA_LINES[key][lang] || QA_LINES[key].en, vars);
     const quoted = (items: string[], max: number) => `${items.slice(0, max).map(l => `«${l}»`).join(comma)}${items.length > max ? `${comma}…` : ''}`;
     const lines: string[] = [];
+    let toldLeftChanged = false;
     //  «Nothing saved» is said only when nothing of his changed during the checks (review 7, B1).
     const changedFirst = !!(q.putBack?.length || q.leftChanged?.files.length || q.putBackFailed?.length);
     if (q.fenceDown) lines.push(say(changedFirst ? 'fenceDownChanged' : 'fenceDown'));
     if (q.lockBusy) lines.push(say(changedFirst ? 'lockBusyChanged' : 'lockBusy'));
     if (q.walked && q.origin) {
         if (q.path === 'private-live' && !q.blocked) lines.push(say('checkedPrivately', { origin: q.origin }));
-        if (q.path === '2t') lines.push(say('checkedAsBefore', { origin: q.origin }));
+        //  M2 (review 8): on 2T the one line says what really became of his data — never «put back» for files left changed.
+        if (q.path === '2t') {
+            if (q.leftChanged?.files.length && q.leftChanged.why === 'serverRunning') {
+                lines.push(say('checkedLeftChanged', { origin: q.origin, files: quoted(q.leftChanged.files, 6) }));
+                toldLeftChanged = true;
+            } else if (q.putBackFailed?.length) lines.push(say('checkedSomeNotPutBack', { origin: q.origin }));
+            else lines.push(say('checkedAsBefore', { origin: q.origin }));
+        }
     }
     //  «Nothing saved» is said only when nothing of his changed during the checks (review 7, B1): else what changed is named below.
     const changedDuring = !!(q.putBack?.length || q.leftChanged?.files.length || q.putBackFailed?.length);
@@ -1726,7 +1750,7 @@ export function qaPathLines(q: DeliveryQaPath | undefined, language: string): st
     }
     //  Which of his data files changed during the checks, and what became of them (B1, H3) — on every path.
     if (q.putBack?.length) lines.push(say('dataPutBack', { files: quoted(q.putBack, 6) }));
-    if (q.leftChanged?.files.length) lines.push(say(q.leftChanged.why === 'lockBusy' ? 'leftChangedLock' : 'leftChangedServer', { files: quoted(q.leftChanged.files, 6) }));
+    if (q.leftChanged?.files.length && !toldLeftChanged) lines.push(say(q.leftChanged.why === 'lockBusy' ? 'leftChangedLock' : 'leftChangedServer', { files: quoted(q.leftChanged.files, 6) }));
     if (q.putBackFailed?.length) lines.push(say(q.putBackFailedBefore === 'snapshot' ? 'putBackFailedSnapshot' : 'putBackFailed', { files: quoted(q.putBackFailed, 6) }));
     return lines;
 }
@@ -1784,7 +1808,7 @@ function qaPathOfRecord(span: QaSpan, audit: AppAudit | undefined, watched: AppD
 /* ───────────────────────── bringing a kept version back (design v13.3 §5b step 2) ───────────────────────── */
 
 /** A kept run of one project: when, and each version's number, time, files (project-relative) and bytes — never their contents. */
-export interface RecoveryRunListing { runId: string; startedAt: number; versions: Array<{ n: number; at: number; files: string[]; bytes: number }> }
+export interface RecoveryRunListing { runId: string; startedAt: number; versions: Array<{ n: number; at: number; files: string[]; bytes: number; why?: string }> }
 
 /** The recovery copies kept for a project, newest first (names and sizes only: what Joe shows before he brings one back). */
 export async function listRecoveryVersions(workspaceId: string, projectRoot: string, env: NodeJS.ProcessEnv = process.env): Promise<RecoveryRunListing[]> {
@@ -1801,6 +1825,7 @@ export async function listRecoveryVersions(workspaceId: string, projectRoot: str
                 startedAt: Number(index?.startedAt) || 0,
                 versions: (Array.isArray(index?.versions) ? index.versions : []).map((v: any) => ({
                     n: Number(v?.n) || 0, at: Number(v?.at) || 0, files: Array.isArray(v?.files) ? v.files.map(String) : [], bytes: Number(v?.bytes) || 0,
+                    ...(typeof v?.why === 'string' && v.why ? { why: String(v.why).slice(0, 80) } : {}),
                 })),
             });
         } catch { /* not a run */ }

@@ -31,6 +31,8 @@ import type { OwnerDataSpan } from '../../../core/quality/owner-data-span';
 /** What the repair holds of the owner's data across its run (review 7, H2), closed however it ends. */
 interface RepairDataHeld {
     span?: OwnerDataSpan;
+    /** The walked server is one this repair did not start and cannot stop (review 8, M4): told once, in the result. */
+    notOurs?: boolean;
     hooks?: () => { stop?: () => Promise<boolean>; start?: () => Promise<unknown>; liveUrl?: string };
 }
 
@@ -116,7 +118,12 @@ export class ProjectRepairTool extends BaseTool {
                 try {
                     await span.settle(held.hooks?.() || {});
                     const isAr = isArabicReply({ language: context?.language, text: String(input?.request || input?.prompt || input?.text || '') });
-                    const told = span.lines(isAr ? 'ar' : 'en');
+                    const told = [
+                        ...(held.notOurs ? [isAr
+                            ? 'فحص جو تطبيقك على الخادم الذي يعمل الآن دون أن يضغط ما يحفظ بيانات: هذا الخادم لم يشغّله جو، فلا يستطيع إيقافه ليعيد بياناتك كما كانت.'
+                            : 'Joe checked your app on the server running now without pressing anything that saves data: Joe did not start that server, so it cannot stop it to put your data back.'] : []),
+                        ...span.lines(isAr ? 'ar' : 'en'),
+                    ];
                     const out: any = result && (result as any).output;
                     if (told.length && out && typeof out === 'object') out.message = [String(out.message || ''), ...told].filter(Boolean).join('\n');
                     if (told.length && result) ((result as any).logs || []).push(...told.map(l => `repair: told: ${l}`));
@@ -212,10 +219,18 @@ export class ProjectRepairTool extends BaseTool {
          * started) is never walked with writes on: Joe cannot stop it to put his data back. Path 3 there.
          */
         const walksOwnersLiveServer = !!serveUrl && !reviving && projectEntry?.live?.url === serveUrl && !givenServerRoot;
+        /*
+         * M4 (review 8): a server this repair was HANDED (a serveUrl that is not the recorded live server, or one a
+         * model named) is no more this repair's to stop than his own: outside a pipeline that holds its own net, it is
+         * walked on path 3 too, and nothing is ever written back under it.
+         */
+        const walksHandedServer = !!serveUrl && !reviving && !context?.joeOwnerDataSpan;
         const { strictest } = require('../../../core/quality/qa-target');
-        if (walksOwnersLiveServer && qaPin.record) {
+        if ((walksOwnersLiveServer || walksHandedServer) && qaPin.record) {
             qaPin.path = strictest(qaPin.path, 'no-write');
-            term('repair: the owner\'s own live server is walked without saving anything (no-write)');
+            term(walksOwnersLiveServer
+                ? 'repair: the owner\'s own live server is walked without saving anything (no-write)'
+                : 'repair: a server this repair did not start is walked without saving anything (no-write); nothing is put back under it');
         }
         //  The verification's net, unless a pipeline that called this repair holds its own (H2).
         if (!context?.joeOwnerDataSpan && qaPin.record) {
@@ -224,8 +239,11 @@ export class ProjectRepairTool extends BaseTool {
                 projectRoot: reviving ? packagedDir : qaServerRoot, pin: qaPin, runId: `repair-${sessionKey}`,
                 workspaceId: String(context?.workspaceId || 'default'), log: term,
             });
-            //  His own running server: nothing of Joe's to stop, so nothing is written under it — told if it changed.
-            if (walksOwnersLiveServer) held.hooks = () => ({ stop: async () => false });
+            //  His own running server, or one handed to the repair: nothing of Joe's to stop, so nothing is written under it — told.
+            if (walksOwnersLiveServer || walksHandedServer) {
+                held.hooks = () => ({ stop: async () => false });
+                held.notOurs = true;
+            }
         }
         if (reviving) {
             const port = 4600 + Math.floor(Math.random() * 300);

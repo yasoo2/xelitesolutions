@@ -128,7 +128,16 @@ const getWrites = url => {
   const q = tail.indexOf('?'); const p = q < 0 ? tail : tail.slice(0, q);
   if (WRITING_GET && !STATIC.test(p) && WRITING_GET.test(tail)) return true;
   if (STATIC.test(p)) return false;
-  for (const seg of p.split('/')) for (const t of seg.split(/[-_.]+/)) if (t && ACTIONS.has(t.toLowerCase())) return true;
+  for (const seg of p.split('/')) for (const t of seg.split(/[-_.]+/).flatMap(x => x.split(/(?<=[a-z0-9])(?=[A-Z])/))) if (t && ACTIONS.has(t.toLowerCase())) return true;
+  /* A query parameter that names the act (?action=done, ?_method=DELETE), as live-data-guard isActionUrl reads it (review 8, L2). */
+  if (q >= 0) {
+    for (const pair of tail.slice(q + 1).split('#')[0].split('&')) {
+      const at = pair.indexOf('='); const k = (at < 0 ? pair : pair.slice(0, at)).trim(); const v = (at < 0 ? '' : pair.slice(at + 1)).trim().toLowerCase();
+      if (!/^(?:action|op|do|cmd|command|_method|method)$/i.test(k)) continue;
+      if (/^_?method$/i.test(k)) { if (v && v !== 'get') return true; continue; }
+      if (ACTIONS.has(v) || v.split(/[-_.\s+]+/).some(t => ACTIONS.has(t))) return true;
+    }
+  }
   return false;
 };
 /* A client frame holds a sign-in when it holds one spelling of the identity and one of the password (W7). */

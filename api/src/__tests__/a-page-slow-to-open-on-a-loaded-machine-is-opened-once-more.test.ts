@@ -63,7 +63,8 @@ describe('a page slow to open on a loaded machine is opened once more', () => {
 
     it('the page walk and the walk at every width open their pages patiently', () => {
         const src = fs.readFileSync(path.join(__dirname, '../core/quality/app-audit.ts'), 'utf8');
-        expect(src).toMatch(/let opened = await openPatiently\(page, target, \{ waitUntil: 'load', timeout: Math\.min\(timeoutMs, 20_000\) \}\)/);
-        expect(src).toMatch(/await openPatiently\(page, target, \{ waitUntil: 'load', timeout: Math\.min\(timeoutMs, 12_000\) \}\);\s*\n\s*await reenter\(\);\s*\n\s*await applyViewportSize/);
+        //  …within what is left of the walk's budget (review 8, L4).
+        expect(src).toMatch(/let opened = await openPatiently\(page, target, \{ waitUntil: 'load', timeout: Math\.min\(timeoutMs, 20_000\), remainingMs: remainingWalkMs\(\) \}\)/);
+        expect(src).toMatch(/await openPatiently\(page, target, \{ waitUntil: 'load', timeout: Math\.min\(timeoutMs, 12_000\), remainingMs: Math\.min\(passBudget, remainingWalkMs\(\)\) \}\);\s*\n\s*await reenter\(\);\s*\n\s*await applyViewportSize/);
     });
 });

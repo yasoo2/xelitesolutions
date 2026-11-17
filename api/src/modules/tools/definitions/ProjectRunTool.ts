@@ -2666,6 +2666,67 @@ export function forgetRecordedLive(sessionKey: string | undefined, pid: number):
     try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
 }
 
+/**
+ * EVERY SERVER OF JOE'S THAT SERVES A PROJECT, STOPPED (review 8, H1).
+ *
+ * Bringing a copy of the owner's data back under a running server is no restore: the server writes the copy it holds
+ * in memory over it at its next request, and a database file is replaced under an open handle. project_stop knows
+ * one server, this session's project_run. Joe starts more: a pipeline's or another session's project_run (all in
+ * RUNNING), react_project's packaged API and project_repair's revived server (recorded as the session's `live`).
+ * Each whose folder is inside one of `roots` is stopped; a recorded pid is killed only while it is still that
+ * process (its start time, or the listener of its recorded port), so a reused pid is never touched. What would not
+ * stop is returned, and the caller refuses.
+ */
+export async function stopServersServing(roots: string[], sessionKey: string | undefined, logs: string[]): Promise<{
+    stopped: Array<{ pid: number; port: number }>;
+    stillRunning: Array<{ pid: number; port: number }>;
+}> {
+    const out = { stopped: [] as Array<{ pid: number; port: number }>, stillRunning: [] as Array<{ pid: number; port: number }> };
+    const folders = roots.map(r => String(r || '').trim()).filter(Boolean);
+    const inside = (cwd: unknown) => { const c = String(cwd || '').trim(); return !!c && folders.some(r => isWithinRoot(c, r)); };
+    for (const [key, server] of Array.from(RUNNING.entries())) {
+        if (!inside(server.cwd)) continue;
+        const { stopped, released } = await stopServer(key, logs);
+        (stopped && released ? out.stopped : out.stillRunning).push({ pid: server.pid, port: server.port });
+    }
+    const entry = sessionKey ? (global as any).joeProjects?.[sessionKey] : undefined;
+    const live = entry?.live;
+    const pid = Number(live?.pid);
+    const port = Number(live?.port);
+    if (Number.isInteger(pid) && pid > 0 && inside(live?.cwd || live?.projectCwd) && !out.stopped.some(s => s.pid === pid) && !out.stillRunning.some(s => s.pid === pid)) {
+        let alive = false;
+        try { process.kill(pid, 0); alive = true; } catch (e: any) { alive = e?.code === 'EPERM'; }
+        if (!alive) {
+            forgetRecordedLive(sessionKey, pid);
+        } else {
+            const ours = live?.identity
+                ? (await pidIdentity.read(pid).catch(() => '')) === live.identity
+                : Number.isInteger(port) && port > 0 && (await portListener.read(port, 1).catch(() => 0)) === pid;
+            if (ours) {
+                await killTree(pid);
+                const released = await portReleased(port, [{ pid, ...(live?.identity ? { identity: live.identity } : {}) }]);
+                logs.push(`stopped the recorded server pid=${pid} port=${port}${released ? '' : ' (its port is still held)'}`);
+                forgetRecordedLive(sessionKey, pid);
+                (released ? out.stopped : out.stillRunning).push({ pid, port });
+            } else {
+                logs.push(`the recorded server pid=${pid} is not the process Joe recorded any more: not killed`);
+            }
+        }
+    }
+    return out;
+}
+
+/** The ports of Joe's servers whose folder is inside one of `roots` (RUNNING, and the session's recorded `live`). */
+export function portsOfServersServing(roots: string[], sessionKey: string | undefined): number[] {
+    const folders = roots.map(r => String(r || '').trim()).filter(Boolean);
+    const inside = (cwd: unknown) => { const c = String(cwd || '').trim(); return !!c && folders.some(r => isWithinRoot(c, r)); };
+    const ports = new Set<number>();
+    for (const server of RUNNING.values()) if (inside(server.cwd) && server.port > 0) ports.add(server.port);
+    const live = sessionKey ? (global as any).joeProjects?.[sessionKey]?.live : undefined;
+    if (live && inside(live.cwd || live.projectCwd) && Number(live.port) > 0) ports.add(Number(live.port));
+    return Array.from(ports);
+}
+
 export class ProjectStopTool implements ToolDefinition {
     name = 'project_stop';
     version = '1.0.0';

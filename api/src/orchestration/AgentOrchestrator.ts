@@ -699,6 +699,9 @@ export class AgentOrchestrator {
                 ? (goalContext?.plannerReasoningEffort || 'low')
                 : goalContext?.plannerReasoningEffort,
               language: goalContext?.language,
+              //  What the owner himself wrote for this run — never a model's words. A tool whose act cannot be undone
+              //  without his say (project_data_recovery's restore, review 8 B1) reads his confirmation here.
+              ownerMessage: String(goalText || ''),
               // [PERSISTENT MEMORY] Forward the recalled user/project context so tools
               // (central_answer, page builder) can personalise their output.
               memoryContext: goalContext?.memoryContext,

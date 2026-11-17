@@ -3507,30 +3507,38 @@ Rules:
             || /(تراجع|استرجع|(ارجع|أرجع|رجّع)[^.\n]{0,20}نسخ|نسخ(ة|ه)\s*(السابق|القديم|رقم)|اعرض\s*النسخ|إصدار\s*سابق|\bundo\b|\brollback\b|\brevert\b|version\s*history)/i.test(probe);
 
         /**
-         * [DATA RECOVERY FAST-PATH] «رجّع بيانات تطبيقي» (review 7, B3). When Joe's checks put the owner's data
-         * files back, every version they saw is kept outside the project, and he is told to ask Joe in the chat for
-         * one. That ask lands here — ahead of the undo, whose «استرجع» it shares — on the session's project:
-         * project_data_recovery lists the copies, or brings back the one he numbered. No menu, no button.
+         * [DATA RECOVERY FAST-PATH] «رجّع بيانات تطبيقي» (review 7, B3; review 8, B1). When Joe's checks put the owner's
+         * data files back, every version they saw is kept outside the project, and he is told to ask Joe in the chat
+         * for one. Only an UNMISTAKABLE ask lands here (`isDataRecoveryRequest`: a bring-back verb and a data noun as
+         * whole words, no fix, build or fault word) — anything else goes on exactly as on main. And it never restores
+         * from here on a guess: it lists the copies (each with its id), and only a later message of his that names
+         * one id and confirms («نعم، رجّع النسخة 20261117-020212») asks for that copy, with the token the list
+         * issued; the tool checks it all again against his own message. A number in a message never names a copy.
          */
         {
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { isDataRecoveryRequest } = require('../engine/select');
+            const { isDataRecoveryRequest, recoveryCopyIdIn, confirmsRecovery } = require('../engine/select');
             const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
             const active = ((global as any).joeProjects || {})[sessionKey];
             if (active?.dir && !longConstructionBrief && isDataRecoveryRequest(userGoal)) {
-                const numbered = String(userGoal).replace(/[٠-٩]/gu, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).match(/(?:رقم|#|number|no\.?)\s*(\d{1,3})\b/iu);
+                const named: string | undefined = recoveryCopyIdIn(userGoal);
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const { pendingRecoveryToken } = require('../../modules/tools/definitions/ProjectDataRecoveryTool');
+                const token: string | undefined = named && confirmsRecovery(userGoal)
+                    ? pendingRecoveryToken(context?.sessionId, active.dir)
+                    : undefined;
                 return {
                     id: `data_recovery_${Date.now()}`,
                     goal: intent.goal,
                     steps: [{
                         id: 'project_data_recovery',
-                        description: numbered ? 'إعادة نسخة من بيانات التطبيق احتفظ بها جو' : 'عرض نسخ بيانات التطبيق التي احتفظ بها جو',
+                        description: token ? 'إعادة نسخة من بيانات التطبيق أكّدها المالك' : 'عرض نسخ بيانات التطبيق التي احتفظ بها جو',
                         tool: 'project_data_recovery',
                         agent: 'Dev',
-                        input: { projectDir: active.dir, ...(numbered ? { version: numbered[1] } : { list: true }), request: userGoal },
+                        input: { projectDir: active.dir, ...(token ? { restore: named, confirmToken: token } : { list: true }), request: userGoal },
                         dependsOn: [],
                     }],
-                    metadata: { complexity: 'low', riskLevel: numbered ? 'medium' : 'low' },
+                    metadata: { complexity: 'low', riskLevel: token ? 'medium' : 'low' },
                 };
             }
         }

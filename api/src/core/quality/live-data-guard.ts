@@ -101,7 +101,13 @@ export const ACTION_WORDS: readonly string[] = [
     'تم', 'انجاز', 'إنجاز', 'اعتماد', 'موافقة', 'قبول', 'رفض', 'الغاء', 'إلغاء', 'تأكيد', 'تاكيد', 'أرشفة', 'ارشفة', 'استعادة',
     'استرجاع', 'نشر', 'اعجاب', 'إعجاب', 'تصويت', 'اشتراك', 'خروج', 'تفعيل', 'تعطيل', 'ارسال', 'إرسال', 'تشغيل', 'حذف',
     'ازالة', 'إزالة', 'مقروء',
+    //  Review 8, L2: a press that stars, pins, follows or bookmarks saves too.
+    'star', 'unstar', 'favorite', 'unfavorite', 'favourite', 'unfavourite', 'pin', 'unpin', 'bookmark', 'unbookmark', 'follow', 'unfollow',
 ];
+/** A segment's tokens: split at `-_.` and at a camelCase turn (`markDone` → mark, done), review 8 L2. */
+export function addressTokens(segment: string): string[] {
+    return String(segment || '').split(/[-_.]+/u).flatMap(t => t.split(/(?<=[a-z0-9])(?=[A-Z])/u)).filter(Boolean);
+}
 const ACTION_SET = new Set(ACTION_WORDS.map(w => w.toLowerCase()));
 /** A query parameter that names what the GET does (`?action=done`, `?_method=DELETE`). */
 const ACTION_PARAM = /^(?:action|op|do|cmd|command|_method|method)$/i;
@@ -118,7 +124,7 @@ export function isActionUrl(url: string): boolean {
     pathname = plain(pathname);
     if (STATIC_FILE.test(pathname)) return false;
     for (const seg of pathname.split('/')) {
-        for (const token of seg.split(/[-_.]+/u)) if (token && ACTION_SET.has(token.toLowerCase())) return true;
+        for (const token of addressTokens(seg)) if (ACTION_SET.has(token.toLowerCase())) return true;
     }
     for (const [k, v] of u.searchParams) {
         if (!ACTION_PARAM.test(k)) continue;
@@ -329,8 +335,13 @@ export async function createLiveDataGuard(context: BrowserContext, opts: { signI
         record(method, url, 'write');
         return route.abort('blockedbyclient');
     };
-    /** W11: what the guard lets through goes on marked, so the fence knows the guard saw it. */
+    /**
+     * W11: what the guard lets through goes on marked, so the fence knows the guard saw it — only when a fence that
+     * holds and strips the mark is in front (review 8, L1). With no fence, or an https origin (`holdWorkers`), the
+     * mark would reach his server and every other host as it is: it is not added there.
+     */
     const pass = (route: Route) => {
+        if (opts.holdWorkers) return route.fallback();
         let headers: Record<string, string> = {};
         try { headers = { ...route.request().headers() }; } catch { headers = {}; }
         headers[QA_GUARD_HEADER] = QA_GUARD_TAG;

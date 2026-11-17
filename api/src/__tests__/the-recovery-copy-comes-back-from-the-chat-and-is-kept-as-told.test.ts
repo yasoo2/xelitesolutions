@@ -46,7 +46,7 @@ async function project(name: string, files: Record<string, string>): Promise<str
 
 describe('B3 — his ask in the chat reaches the copies', () => {
     it('the words he uses route to the data copies, never to the code\'s undo or a build', () => {
-        for (const ask of ['رجّع بيانات تطبيقي', 'استرجع نسخة البيانات رقم 2', 'وين نسخ بياناتي اللي احتفظ فيها جو', 'bring back my data copy', 'restore the records Joe kept']) {
+        for (const ask of ['رجّع بيانات تطبيقي', 'استرجع نسخة البيانات رقم 2', 'رجّع بياناتي اللي احتفظ فيها جو', 'bring back my data copy', 'restore the records Joe kept']) {
             expect([ask, isDataRecoveryRequest(ask)]).toEqual([ask, true]);
         }
         for (const ask of ['تراجع عن آخر تعديل', 'أضف ميزة نسخة احتياطية للبيانات', 'Build a data dashboard', 'غيّر لون الزر', 'undo the last change']) {
@@ -55,7 +55,7 @@ describe('B3 — his ask in the chat reaches the copies', () => {
         expect(isUndoRequest('تراجع عن آخر تعديل')).toBe(true);
     });
 
-    it('the planner answers «رجّع بيانات تطبيقي» with project_data_recovery on the session\'s project, and «… رقم 1» with that copy', async () => {
+    it('the planner answers «رجّع بيانات تطبيقي» with project_data_recovery on the session\'s project, and «… رقم 1» with the list — never a copy taken from a number (review 8)', async () => {
         const root = await project('planned', { 'data/store.json': '[]' });
         const sessionId = 'joe-r7-recovery-plan';
         const { writeJoeProject } = require('../api/page-store');
@@ -72,7 +72,7 @@ describe('B3 — his ask in the chat reaches the copies', () => {
             const listed = await plan('رجّع بيانات تطبيقي من النسخ التي احتفظ بها جو');
             expect(listed.steps.map((s: any) => [s.tool, s.input.projectDir, s.input.list])).toEqual([['project_data_recovery', root, true]]);
             const one = await plan('رجّع نسخة البيانات رقم 1');
-            expect(one.steps.map((s: any) => [s.tool, s.input.version])).toEqual([['project_data_recovery', '1']]);
+            expect(one.steps.map((s: any) => [s.tool, s.input.list, s.input.version, s.input.restore])).toEqual([['project_data_recovery', true, undefined, undefined]]);
         } finally {
             delete (global as any).joeProjects?.[previewKey(sessionId)];
         }
@@ -93,24 +93,33 @@ describe('B3 — his ask in the chat reaches the copies', () => {
 
         const choices = await recoveryChoices('ws-r7', root, env);
         expect(choices.length).toBeGreaterThan(0);
-        expect(pickRecoveryChoice(choices, 'رقم ١')?.number).toBe(1);
+        //  A copy is named by its id, never by a number (review 8, M1).
+        expect(pickRecoveryChoice(choices, 'رقم ١')).toBeUndefined();
+        expect(pickRecoveryChoice(choices, choices[0].id)?.runId).toBe('run-1');
         const tool = new ProjectDataRecoveryTool();
-        const context = { sessionId: 'joe-r7-recovery-tool', workspaceId: 'ws-r7', language: 'ar' };
-        const listed: any = await tool.execute({ projectDir: root, list: true }, context);
+        const { writeJoeProject } = require('../api/page-store');
+        const { previewKey } = require('../modules/tools/preview-site');
+        const sessionId = 'joe-r7-recovery-tool';
+        writeJoeProject(previewKey(sessionId), { dir: root, type: 'agent', updatedAt: Date.now() }, 'run-earlier');
+        const turn = (runId: string, ownerMessage: string) => ({ sessionId, workspaceId: 'ws-r7', language: 'ar', runId, ownerMessage });
+        const listed: any = await tool.execute({ projectDir: root, list: true }, turn('t1', 'رجّع بيانات تطبيقي'));
         expect(listed.ok).toBe(true);
-        expect(listed.output.message).toMatch(/^1\. .*data\/store\.json/mu);
-        expect(listed.output.message).toMatch(/رجّع نسخة البيانات رقم 1/u);
-        const back: any = await tool.execute({ projectDir: root, version: '1' }, context);
+        expect(listed.output.message).toMatch(new RegExp(`^• ${choices[0].id} — .*data/store\.json`, 'mu'));
+        expect(listed.output.message).toMatch(/«نعم، رجّع النسخة \d{8}-\d{6}»/u);
+        const id = choices[0].id;
+        const back: any = await tool.execute({ restore: id, confirmToken: listed.output.confirmToken }, turn('t2', `نعم، رجّع النسخة ${id}`));
         expect(back.ok).toBe(true);
         expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'store.json'), 'utf8')).orders).toContainEqual({ id: 2, customer: 'real customer' });
-        expect(back.output.message).toMatch(/أعاد جو نسخة البيانات رقم 1/u);
+        expect(back.output.message).toMatch(new RegExp(`أعاد جو نسخة البيانات ${id}`, 'u'));
         //  What his file was just before is itself a copy the chat lists — going back loses nothing.
         const after = await recoveryChoices('ws-r7', root, env);
         expect(after[0].files).toEqual(['data/store.json']);
         expect(after.length).toBe(choices.length + 1);
-        const undo: any = await tool.execute({ projectDir: root, version: '1' }, context);
+        const relisted: any = await tool.execute({ list: true }, turn('t3', 'رجّع بياناتي'));
+        const undo: any = await tool.execute({ restore: after[0].id, confirmToken: relisted.output.confirmToken }, turn('t4', `نعم، رجّع النسخة ${after[0].id}`));
         expect(undo.ok).toBe(true);
         expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'store.json'), 'utf8')).orders).toEqual([{ id: 1 }]);
+        delete (global as any).joeProjects?.[previewKey(sessionId)];
     });
 
     it('is registered for the chat, and nowhere is a menu, button or panel added for it', () => {

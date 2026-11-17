@@ -98,8 +98,27 @@ export function hasDeliveryRecord(projectRoot: string, opts: { origin?: 'built' 
     } catch { /* no result */ }
     try { if (fs.statSync(path.join(joe, 'delivered')).isFile()) return 'delivered'; } catch { /* no marker */ }
     if (opts.origin === 'imported') return 'imported';
-    if (opts.resumed && hasOwnerData(projectRoot)) return 'data';
+    //  Review 8, L5: a retry of Joe's own build that never delivered (its `.joe` says so) is still a new build, whatever
+    //  seed records it holds; M4's rule is for an app delivered before the record existed (no `.joe` record at all).
+    if (opts.resumed && !joeBuildNeverDelivered(joe) && hasOwnerData(projectRoot)) return 'data';
     return '';
+}
+
+/** The statuses of a run of Joe's that ended without delivering. */
+const UNDELIVERED = new Set(['failed', 'cancelled', 'canceled', 'interrupted', 'aborted', 'error', 'errored', 'timeout', 'timed_out', 'running', 'building', 'started']);
+/** Whether `.joe` records only Joe's own runs that never delivered (history or result) — a build being retried. */
+function joeBuildNeverDelivered(joe: string): boolean {
+    const statuses: string[] = [];
+    try {
+        const h = JSON.parse(fs.readFileSync(path.join(joe, 'history.json'), 'utf8'));
+        const runs: any[] = Array.isArray(h) ? h : (Array.isArray(h?.runs) ? h.runs : []);
+        for (const r of runs) statuses.push(String(r?.status || '').toLowerCase());
+    } catch { /* no history */ }
+    try {
+        const r = JSON.parse(fs.readFileSync(path.join(joe, 'result.json'), 'utf8'));
+        statuses.push(String(r?.status || '').toLowerCase());
+    } catch { /* no result */ }
+    return statuses.length > 0 && statuses.every(s => UNDELIVERED.has(s));
 }
 
 /** A data file holds records when it is more than an empty list, object or nothing. */
@@ -230,16 +249,32 @@ function callArgs(text: string, open: number): string[] {
     return args;
 }
 
+/** Whether the code itself sets `process.argv[slot]` to its own folder (`__dirname`, `process.cwd()`, `'.'`) — the project. */
+function argvIsTheProject(slot: number, text: string): boolean {
+    return new RegExp(`\\bprocess\\s*\\.\\s*argv\\s*\\[\\s*${slot}\\s*\\]\\s*=(?!=)\\s*(?:__dirname|process\\s*\\.\\s*cwd\\s*\\(\\s*\\)|(['"])\\.\\/?\\1)\\s*[;\\n]`, 'u').test(text);
+}
+
 /**
  * What one file expression names, read through the file's own constants (three deep): the string parts in order,
  * or `unresolved` when a part comes from something the file does not define (a parameter, an import, the env).
  */
-function fileNameOf(expr: string, text: string, depth = 0): { parts: string[]; unresolved: boolean } {
+function fileNameOf(expr: string, text: string, depth = 0): { parts: string[]; raw: string[]; unresolved: boolean; climbs: number; fileBased: boolean } {
     const parts: string[] = [];
     let unresolved = false;
-    const push = (literal: string) => { for (const p of literal.split('/')) if (p && p !== '.') parts.push(p); };
-    const follow = (inner: string) => { const sub = fileNameOf(inner, text, depth + 1); parts.push(...sub.parts); unresolved = unresolved || sub.unresolved; };
+    let fileBased = false;
+    const push = (literal: string) => { for (const p of literal.split(/[\\/]/u)) if (p && p !== '.') parts.push(p); };
+    const follow = (inner: string) => { const sub = fileNameOf(inner, text, depth + 1); parts.push(...sub.raw); unresolved = unresolved || sub.unresolved; fileBased = fileBased || sub.fileBased; };
     if (/\bprocess\.env\b|\bimport\.meta\.env\b/u.test(expr)) unresolved = true;
+    /*
+     * A folder the app is STARTED with (`process.argv[3]`) is whatever the start says — any folder, outside the project
+     * too (review 8, H3). It is the project only when the app's own code sets that very slot to its folder
+     * (`process.argv[3] = __dirname`) before it reads it; else it is not read to the end, so not covered: never 2T.
+     */
+    const slot = /^\s*process\s*\.\s*argv\s*\[\s*(\d+)\s*\]/u.exec(expr);
+    if (slot) return argvIsTheProject(Number(slot[1]), text)
+        ? { parts: [], raw: [], unresolved: false, climbs: 0, fileBased: false }
+        : { parts: [], raw: [], unresolved: true, climbs: 0, fileBased: false };
+    if (/\bprocess\s*\.\s*argv\b/u.test(expr)) unresolved = true;
     //  In source order: a template literal (its text, then each ${…}), a quoted string, a name (or a member read).
     const TOKEN = /`((?:\\[\s\S]|[^`\\])*)`|(['"])((?:\\.|(?!\2)[^\\])*)\2|([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)/gu;
     for (const m of expr.matchAll(TOKEN)) {
@@ -250,24 +285,36 @@ function fileNameOf(expr: string, text: string, depth = 0): { parts: string[]; u
         if (m[3] !== undefined) { push(m[3]); continue; }
         const chain = String(m[4] || '').split('.').map(x => x.trim());
         const name = chain[0];
+        //  `__dirname`, `import.meta.url`: the name starts at the code file's own folder.
+        if (name === '__dirname' || name === '__filename' || name === 'import') fileBased = true;
         if (NAME_FREE.has(name)) continue;
         //  `cfg.file`, `this.path`: a member read is not this file's to name.
         if (chain.length > 1 || depth >= 3) { unresolved = true; continue; }
         const esc = name.replace(/\$/gu, '\\$');
         const def = new RegExp(`\\b(?:const|let|var)\\s+${esc}\\s*=\\s*([^;\\n]+)`, 'u').exec(text);
         if (def) { follow(def[1]); continue; }
-        //  `const [port, root] = process.argv.slice(2)`: the folder the app was started with is its base, not a name.
+        //  `const [port, root] = process.argv.slice(2)`: a folder the app is STARTED with is whatever the start says —
+        //  any folder, outside the project too (review 8, H3). It is not read to the end, so not covered: never 2T.
         const unpacked = new RegExp(`\\b(?:const|let|var)\\s*[\\[{][^\\]}=;]*(?<![\\w$])${esc}(?![\\w$])[^\\]}=;]*[\\]}]\\s*=\\s*([^;\\n]+)`, 'u').exec(text);
-        if (unpacked && /\bprocess\s*\.\s*argv\b/u.test(unpacked[1])) continue;
-        if (unpacked) { follow(unpacked[1]); continue; }
+        if (unpacked && !/\bprocess\s*\.\s*argv\b/u.test(unpacked[1])) { follow(unpacked[1]); continue; }
+        if (unpacked) {
+            //  `const [port, root] = process.argv.slice(2)`: `root` is slot 3 — the project only if the code sets it so.
+            const from = /^\s*process\s*\.\s*argv\s*\.\s*slice\s*\(\s*(\d+)\s*\)\s*$/u.exec(unpacked[1]);
+            const names = /^[^[]*\[([^\]]*)\]/u.exec(unpacked[0])?.[1]?.split(',').map(x => x.trim().replace(/\s*=.*$/u, '')) || [];
+            const at = names.indexOf(name);
+            if (from && at >= 0 && argvIsTheProject(Number(from[1]) + at, text)) continue;
+        }
         unresolved = true;
     }
-    return { parts: parts.filter(p => p !== '..'), unresolved };
+    //  How far above its base the name climbs («..»): above the project is outside what the snapshot keeps.
+    let level = 0, lowest = 0;
+    for (const p of parts) { level += p === '..' ? -1 : 1; lowest = Math.min(lowest, level); }
+    return { parts: parts.filter(p => p !== '..'), raw: parts, unresolved, climbs: -lowest, fileBased };
 }
 
 /** T4b: every file a server file's write calls name, read as far as the file itself names it. */
-function writeTargets(text: string): Array<{ expr: string; parts: string[]; unresolved: boolean }> {
-    const out: Array<{ expr: string; parts: string[]; unresolved: boolean }> = [];
+function writeTargets(text: string): Array<{ expr: string; parts: string[]; raw: string[]; unresolved: boolean; climbs: number; fileBased: boolean }> {
+    const out: Array<{ expr: string; parts: string[]; raw: string[]; unresolved: boolean; climbs: number; fileBased: boolean }> = [];
     for (const [re, which] of TARGET_CALLS) {
         for (const m of text.matchAll(re)) {
             const args = callArgs(text, (m.index || 0) + m[0].length);
@@ -432,7 +479,11 @@ async function prove2T(root: string, budgetMs: number): Promise<{ ok: boolean; r
         for (const t of writeTargets(text)) {
             if (t.unresolved) { c.no('notCovered', `a file the server writes whose name Joe cannot read to the end: ${r}: ${t.expr.slice(0, 60)}`); continue; }
             const rel = t.parts.join('/').replace(/\/{2,}/gu, '/').replace(/^\.?\//u, '');
+            //  A log is no store of his (as before), wherever it is written.
             if (!rel || /\.log$/iu.test(rel)) continue;
+            //  H3: a name that climbs out of the project — above the code file's folder for `__dirname`, above the
+            //  project for a name relative to where it starts — is a store the snapshot never keeps.
+            if (t.climbs > (t.fileBased ? r.split('/').length - 1 : 0)) { c.no('outsidePath', `a file the server writes outside the folder: ${r}: ${t.expr.slice(0, 60)}`); continue; }
             if (!isData(rel) && !rel.split('/').some(seg => DATA_DIR.test(seg))) c.no('notCovered', `a file the server writes that the snapshot does not keep: ${r}: ${rel}`);
         }
     }
