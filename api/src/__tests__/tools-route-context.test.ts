@@ -5,7 +5,7 @@ import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 jest.mock('../modules/tools/registry', () => ({ tools: [] }));
 jest.mock('../modules/services/ToolService', () => ({ executeTool: jest.fn() }));
-jest.mock('../api/middleware/auth', () => ({ authenticate: jest.fn() }));
+jest.mock('../api/middleware/auth', () => ({ authenticate: jest.fn(), superAdminEmails: () => ['boss@example.test'] }));
 jest.mock('../shared/utils/logger', () => ({ logger: { debug: jest.fn(), error: jest.fn() } }));
 
 // Exercise the registered HTTP handlers and the real AsyncLocalStorage firewall.
@@ -19,7 +19,7 @@ function handler(route: string) {
 }
 function request(overrides: any = {}) {
     return {
-        auth: { sub: 'owner-a' }, params: { name: 'echo' }, query: {},
+        auth: { sub: 'owner-a', role: 'OWNER' }, params: { name: 'echo' }, query: {},
         body: { tool: 'echo', input: { message: 'safe' }, sessionId: 'session-a', workspaceId: 'workspace-a' },
         ...overrides,
     };
@@ -80,7 +80,7 @@ describe('public tool routes preserve user execution authority', () => {
                 return { ok: true, output: context.userId };
             });
             const a = request();
-            const b = request({ auth: { sub: 'owner-b' } });
+            const b = request({ auth: { sub: 'owner-b', role: 'OWNER' } });
             b.body = { ...b.body, sessionId: 'session-b', workspaceId: 'workspace-b' };
             const ra = response(), rb = response();
             await Promise.all([handler(route)(a, ra), handler(route)(b, rb)]);
@@ -111,4 +111,44 @@ describe('public tool routes preserve user execution authority', () => {
             }, { userId: 'background-owner', sessionId: 'background-session' });
         });
     }
+});
+
+describe('a signed-in account that is not the owner never runs a tool by its name (tenant review N1)', () => {
+    beforeEach(() => { jest.clearAllMocks(); (executeTool as jest.Mock).mockResolvedValue({ ok: true, output: 'ran' }); });
+    const dangerous: Array<[string, any]> = [
+        ['shell_execute', { command: 'type ..\\.env' }],
+        ['execute_python', { code: 'print(open("/etc/passwd").read())', cwd: '/' }],
+        ['engine_device', { op: 'look' }],
+        ['github_repo_manager', { action: 'delete', repo: 'x' }],
+    ];
+    for (const role of ['USER', 'ADMIN', undefined]) {
+        for (const [tool, input] of dangerous) {
+            test(`/execute: ${role || 'no role'} running ${tool} is refused, nothing runs`, async () => {
+                const res = response();
+                await handler('/execute')(request({ auth: { sub: 'someone', role }, body: { tool, input, sessionId: 's' } }), res);
+                expect(res.statusCode).toBe(403);
+                expect(executeTool).not.toHaveBeenCalled();
+            });
+            test(`/:name/execute: ${role || 'no role'} running ${tool} is refused, nothing runs`, async () => {
+                const res = response();
+                await handler('/:name/execute')(request({ auth: { sub: 'someone', role }, params: { name: tool }, body: { ...input, sessionId: 's' } }), res);
+                expect(res.statusCode).toBe(403);
+                expect(executeTool).not.toHaveBeenCalled();
+            });
+        }
+    }
+    test('the file explorer\'s own call — listing his GitHub repositories — still works for any account', async () => {
+        const res = response();
+        await handler('/execute')(request({ auth: { sub: 'someone', role: 'USER' }, body: { tool: 'github_repo_manager', input: { action: 'list', token: 't' } } }), res);
+        expect(executeTool).toHaveBeenCalledTimes(1);
+        expect(res.body.ok).toBe(true);
+    });
+    test('the owner, a super admin and an allow-listed email run any tool', async () => {
+        for (const auth of [{ sub: 'o', role: 'OWNER' }, { sub: 's', role: 'SUPER_ADMIN' }, { sub: 'b', role: 'USER', email: 'Boss@Example.test' }]) {
+            const res = response();
+            await handler('/execute')(request({ auth, body: { tool: 'shell_execute', input: { command: 'echo hi' } } }), res);
+            expect(res.statusCode).toBe(200);
+        }
+        expect(executeTool).toHaveBeenCalledTimes(3);
+    });
 });
