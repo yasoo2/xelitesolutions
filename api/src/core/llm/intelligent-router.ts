@@ -1779,6 +1779,20 @@ async function routeOnModel(
           const refuseChosen = (code: ChosenProviderCode, reason: string, retryAfterMs?: number): never => {
               throw new ChosenProviderError(String(cfgProvider), cfgModel, code, reason, retryAfterMs);
           };
+          /**
+           *  ⛔ A STRICT REFUSAL SAID WHY, BUT NOT TO THE LOOP.
+           *
+           *  The engine runs every named provider through the strict check, and
+           *  these refusals were bare Errors: no status, no code, no wait. Measured
+           *  2026-11-17 against fakes speaking OpenRouter's and Gemini's wire: one
+           *  429 (free-models-per-min; Gemini's 17 s RetryInfo) was waited 30 s,
+           *  then the route's own pause answered «quota cooldown is active» three
+           *  times in a row with nothing the loop reads as a wait, and the run
+           *  failed «the model call failed 3 times in a row». The refusal now
+           *  carries the status, Joe's code for it, and how long the pause holds.
+           */
+          const strictRefusal = (reason: string, code: ChosenProviderCode, status: number, retryAfterMs?: number) =>
+              Object.assign(new Error(`direct_provider_check_failed: ${reason}`), { code, status, ...(retryAfterMs && retryAfterMs > 0 ? { retryAfterMs } : {}) });
           //  A key the user typed is his consent; free_only guards the server's
           //  keys (provider-continuity.ts, usersOwnKeyAllowed).
           const usersOwnKey = usersOwnKeyAllowed(cfgProvider, cfgApiKey, cfgBaseUrl);
@@ -1787,15 +1801,22 @@ async function routeOnModel(
             recordProviderAttempt(cfgProvider, false, 'skipped: free_only policy excludes this provider, model or endpoint');
             refuseChosen('PROVIDER_UNSUPPORTED', knownCustomEndpoint ? 'the free_only policy excludes this provider, model or endpoint' : 'Joe has no route to this provider');
           } else if (failedCustomRoutes.has(routeKey) && providerCircuitStatus(circuitKey).blocked) {
-            if (strictProviderCheck) throw new Error('direct_provider_check_failed: provider authentication is unavailable');
+            if (strictProviderCheck) throw strictRefusal('provider authentication is unavailable', 'PROVIDER_AUTH', 401);
             recordProviderAttempt(cfgProvider, false, 'skipped: the provider refused this key moments ago');
             refuseChosen('PROVIDER_AUTH', 'the provider refused this key moments ago');
           } else if (quotaPausedUntil > Date.now()) {
-            if (strictProviderCheck) throw new Error('direct_provider_check_failed: provider quota cooldown is active');
+            if (strictProviderCheck) throw strictRefusal('provider quota cooldown is active', 'PROVIDER_QUOTA', 429, quotaPausedUntil - Date.now());
             recordProviderAttempt(cfgProvider, false, 'skipped: the provider\'s limit is still in effect');
             refuseChosen('PROVIDER_QUOTA', 'the provider\'s rate or daily limit is in effect', quotaPausedUntil - Date.now());
           } else if (!(circuitClaim = claimProviderCircuit(circuitKey)).allowed) {
-            if (strictProviderCheck) throw new Error('direct_provider_check_failed: provider circuit is cooling down or probing');
+            if (strictProviderCheck) {
+                const breaker = providerCircuitStatus(circuitKey);
+                const limited = breaker.state === 'QUOTA_EXHAUSTED' || breaker.state === 'RATE_LIMITED';
+                throw strictRefusal('provider circuit is cooling down or probing',
+                    limited ? 'PROVIDER_QUOTA' : breaker.state === 'AUTH_FAILED' ? 'PROVIDER_AUTH' : 'PROVIDER_COOLING',
+                    limited ? 429 : breaker.state === 'AUTH_FAILED' ? 401 : 503,
+                    breaker.retryAt && breaker.retryAt > Date.now() ? breaker.retryAt - Date.now() : 2_000);
+            }
             recordProviderAttempt(cfgProvider, false, 'skipped: provider circuit is cooling down or probing');
             const status = providerCircuitStatus(circuitKey);
             refuseChosen(status.state === 'QUOTA_EXHAUSTED' || status.state === 'RATE_LIMITED' ? 'PROVIDER_QUOTA' : status.state === 'AUTH_FAILED' ? 'PROVIDER_AUTH' : 'PROVIDER_COOLING',
@@ -1926,7 +1947,9 @@ async function routeOnModel(
                     console.log(`[IntelligentRouter] Routing via GeminiProvider with sanitized schemas...`);
                     const gProvider = new GeminiProvider(effectiveApiKey);
                     const rawModel = cfgModel || 'gemini-2.0-flash';
-                    const answer = await gProvider.chatComplete(messages, rawModel, tools, { signal: providerAbortController.signal, timeoutMs: providerTimeoutMs });
+                    //  exactModel: the user chose this model; a failure is said, never answered by another one.
+                    const answer = await gProvider.chatComplete(messages, rawModel, tools, { signal: providerAbortController.signal, timeoutMs: providerTimeoutMs, exactModel: true,
+                        ...(typeof onPartial === 'function' && !tools?.length ? { onDelta: onPartial } : {}) });
                     if (answer && answer.length > 0) {
                         return customAnswer(cleanOutput(answer));
                     }
@@ -2029,6 +2052,16 @@ async function routeOnModel(
                             ...completionOptions,
                             ...customReasoningOptions,
                         }, providerRequestOptions);
+                        //  OpenRouter can answer 200 with its error in the body and no
+                        //  choices (a provider that failed after the request was taken):
+                        //  read it as that error, with its status, not as «Cannot read
+                        //  properties of undefined (reading '0')».
+                        if (!Array.isArray(completion?.choices) || !completion.choices.length) {
+                            const said = completion?.error;
+                            const code = Number(said?.code);
+                            throw Object.assign(new Error(`${Number.isFinite(code) && code > 0 ? `${code} ` : ''}${String(said?.message || 'the provider answered with no choices').slice(0, 300)}`),
+                                { status: Number.isFinite(code) && code >= 400 ? code : 502 });
+                        }
                         assertCustomComplete(completion.choices[0]?.finish_reason);
                         const message = completion.choices[0]?.message;
                         if (message?.tool_calls && message.tool_calls.length > 0) {
@@ -2083,7 +2116,11 @@ async function routeOnModel(
                 //  One reading of the refusal, for Connect and for a run alike.
                 const code = authProblem ? 'PROVIDER_AUTH' : providerErrorCode(status, msg, timedOut, String(cfgProvider));
                 if (strictProviderCheck) {
-                    throw Object.assign(new Error(`direct_provider_check_failed: ${reason}`), { status, code });
+                    //  The pause the route just set (a 429's own reset) or the breaker's wait after a 5xx.
+                    const breaker = providerCircuitStatus(circuitKey);
+                    const pause = code === 'PROVIDER_QUOTA' ? (customRouteCooldownUntil.get(routeKey) || 0) - Date.now()
+                        : code === 'PROVIDER_DOWN' && !timedOut && breaker.blocked && breaker.retryAt ? breaker.retryAt - Date.now() : 0;
+                    throw Object.assign(new Error(`direct_provider_check_failed: ${reason}`), { status, code, ...(pause > 0 ? { retryAfterMs: pause } : {}) });
                 }
                 if (code === 'PROVIDER_QUOTA') {
                     refuseChosen(code, reason, Math.max(0, (customRouteCooldownUntil.get(routeKey) || Date.now()) - Date.now()));
@@ -3365,7 +3402,28 @@ export async function verifyProviderDirect(
         //  The check the interface makes on every page load spends nothing:
         //  the key must list the chosen model (the vendor's own models
         //  endpoint). Connect makes the one real call. OpenRouter lists its
-        //  models to anyone, so its list proves no key; it gets the call.
+        //  models to anyone, so its list proves no key: the key is proved by
+        //  OpenRouter's own key endpoint (GET /key, free), and the model by
+        //  the public list. Measured 2026-11-17: the light check made a real
+        //  completion on every page load, on the user's key, paid models too.
+        //  An endpoint that does not answer /key falls back to that call.
+        if (cfg.light && p === 'openrouter' && hasRealKey) {
+            const base = String(cfg.baseUrl || '').trim().replace(/\/+$/, '') || 'https://openrouter.ai/api/v1';
+            let keyRes: Response | undefined;
+            try { keyRes = await fetch(`${base}/key`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8_000) }); } catch { keyRes = undefined; }
+            if (keyRes && (keyRes.status === 401 || keyRes.status === 403)) {
+                return { ok: false, provider, code: 'PROVIDER_AUTH', detail: `key_refused: OpenRouter refused the key (${keyRes.status})` };
+            }
+            if (keyRes?.ok) {
+                const { providerModels } = require('../engine/provider-models');
+                const list = await providerModels({ provider: p, apiKey: key, baseUrl: cfg.baseUrl });
+                const wanted = String(cfg.model || '').trim();
+                if (list.source === 'live' && wanted && list.models.length && !list.models.includes(wanted)) {
+                    return { ok: false, provider, code: 'PROVIDER_MODEL', detail: `model_not_listed: ${wanted}` };
+                }
+                return { ok: true, provider, detail: 'key_listed' };
+            }
+        }
         if (cfg.light && p !== 'openrouter') {
             const { providerModels } = require('../engine/provider-models');
             const list = await providerModels({ provider: p, apiKey: hasRealKey ? key : '', baseUrl: cfg.baseUrl });

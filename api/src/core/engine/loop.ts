@@ -209,6 +209,13 @@ export const RECITE_EVERY = 5;
 const FINAL_MODEL_FAILURES = new Set([
     'ENGINE_BUDGET_EXHAUSTED', 'ENGINE_BUDGET_LEDGER', 'ENGINE_PRICE_UNKNOWN',
     'MODEL_AUTH', 'MODEL_BILLING', 'MODEL_NOT_FOUND', 'MODEL_REFUSAL',
+    //  The same refusals from any other provider the user chose (run-model-choice.ts).
+    //  Measured 2026-11-17: OpenRouter's 401 «User not found.» was asked three
+    //  times, and the run ended on the router's own «provider authentication is
+    //  unavailable» instead of the provider's words.
+    'PROVIDER_AUTH', 'PROVIDER_BILLING', 'PROVIDER_NEEDS_KEY', 'PROVIDER_MODEL', 'PROVIDER_UNSUPPORTED', 'PROVIDER_BUDGET',
+    //  A local model that cannot call tools, or is not installed, stays that way.
+    'OLLAMA_MODEL_NO_TOOLS', 'OLLAMA_MODEL_MISSING',
 ]);
 
 function message(e: unknown): string {
@@ -489,7 +496,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 role: 'assistant',
                 content: turn.text || '',
                 ...(turn.toolCalls.length ? {
-                    tool_calls: turn.toolCalls.map(tc => ({ id: tc.id, type: 'function' as const, function: { name: tc.name, arguments: tc.arguments } })),
+                    tool_calls: turn.toolCalls.map(tc => ({ id: tc.id, type: 'function' as const, function: { name: tc.name, arguments: tc.arguments },
+                        ...(tc.extra ? { extra_content: tc.extra } : {}) })),
                 } : {}),
                 ...(turn.native ? { native: turn.native } : {}),
             });

@@ -25,6 +25,22 @@ export interface ToolCall {
     id: string;
     name: string;
     arguments: string;
+    /**
+     * What the provider attached to the call and wants back with it, opaque to
+     * Joe: Gemini 3's `extra_content.google.thought_signature`, without which
+     * its next request is refused with a 400 («Function call is missing a
+     * thought_signature»).
+     */
+    extra?: Record<string, unknown>;
+}
+
+/** One tool call in an assistant message, in the OpenAI shape. */
+export interface AssistantToolCall {
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+    /** The provider's own data for the call, sent back unchanged (ToolCall.extra). */
+    extra_content?: Record<string, unknown>;
 }
 
 export type ContentPart =
@@ -36,7 +52,7 @@ export type ChatMessage =
     | { role: 'system'; content: string }
     | { role: 'user'; content: string | ContentPart[] }
     | {
-        role: 'assistant'; content: string; tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+        role: 'assistant'; content: string; tool_calls?: AssistantToolCall[];
         /**
          * The turn exactly as a native provider returned it (Claude's content
          * blocks, thinking included), replayed unchanged on the next call.
