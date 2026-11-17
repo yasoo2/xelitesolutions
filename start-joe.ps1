@@ -23,6 +23,9 @@ $env:PERSISTENCE_MODE = "JSON"     # حفظ في ملفات JSON بدل MongoDB
 $env:MOCK_DB = "true"              # لا حاجة لقاعدة بيانات
 $env:ENABLE_AUTH_BYPASS = "true"   # مستخدم واحد: الأدوات تعمل بلا تسجيل دخول
 $env:AUTO_APPROVE_ALL = "1"        # موافقة تلقائية على تنفيذ الأدوات
+# المحرّك الذي امتُحن عليه جو (468 من 500 وكل امتحانات الجولات): بدونه كان جو المالك
+# يعمل بمحرّك القوالب القديم، فلم يرَ شيئاً من التحسينات (2026-11-17).
+if (-not $env:JOE_ENGINE) { $env:JOE_ENGINE = "agent" }
 $env:NODE_ENV = "development"
 
 # These are launcher invariants, not discovery results. An older PowerShell
