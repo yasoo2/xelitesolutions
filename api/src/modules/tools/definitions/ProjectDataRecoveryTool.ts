@@ -20,9 +20,12 @@
  *            or a model's words, never a repair step's or a re-run's) IS that line for a copy the most recent list of
  *            this session and project showed, in an earlier turn, within thirty minutes, once. The planner routes
  *            exactly that message here; nothing the model passes can make any other message restore, and there is no
- *            token for it to see or pass. The copy is the one the project's copies hold NOW under that id, in the
- *            same folder, run and version the list showed — its folder taken from them, never from the record (review
- *            11, F1) — and its use is recorded before it is written, or nothing is (F3). Then: the project's verify lock; every port the app names that is not one
+ *            token for it to see or pass. The copy is the one the project's copies hold NOW in the same folder, run and
+ *            version the list showed — found by what it is, not by its id, which shifts when an older copy of the same
+ *            second is pruned (review 12, L1); its folder taken from them, never from the record (review 11, F1) — and
+ *            its use is recorded before it is written, or nothing is (F3; a record that cannot be read now is never
+ *            «gone», review 12 L2). Then: the project's verify lock, and under it the scope and the copy asked again
+ *            (review 12, L3); every port the app names that is not one
  *            of Joe's servers checked BEFORE anything is stopped; Joe's own servers of the project (and only of it:
  *            never a drive root, the home folder, a folder above the project, or another chat's project) stopped;
  *            what each file is now kept aside; the copy written. When a step after the stop fails, the servers Joe
@@ -37,7 +40,7 @@ import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { isArabicReply } from '../../../shared/reply-language';
-import { isHomeDriveOrAbove, isWithinRealRoot, isWithinRoot, realFolderOf } from '../path-containment';
+import { isHomeDriveOrAbove, realFolderOf, realFolderResolver } from '../path-containment';
 import { restoreLine, restoreReplyCopyId, SHOW_COPIES_AR, SHOW_COPIES_EN } from '../../../core/engine/restore-reply';
 
 /** verify.ts, read when used: it imports the pipeline and the run tools, which the registry imports too. */
@@ -81,10 +84,11 @@ export function recoveryLocalTime(at: number): string {
  */
 export async function recoveryChoices(workspaceId: string, roots: string | string[], env: NodeJS.ProcessEnv = process.env, exclude: string[] = []): Promise<RecoveryChoice[]> {
     const all: Array<Omit<RecoveryChoice, 'id'>> = [];
+    const rf = realFolderResolver();
     for (const root of Array.from(new Set((Array.isArray(roots) ? roots : [roots]).map(r => path.resolve(r))))) {
         const runs = await recovery().listRecoveryVersions(workspaceId, root, env);
         for (const run of runs) for (const v of run.versions) {
-            const files = exclude.length ? v.files.filter(rel => !inOtherProject(path.join(root, ...rel.split('/')), exclude)) : v.files;
+            const files = exclude.length ? v.files.filter(rel => !inOtherProject(path.join(root, ...rel.split('/')), exclude, rf)) : v.files;
             if (!(v.n > 0) || !files.length) continue;
             all.push({ root, runId: run.runId, n: v.n, at: v.at || run.startedAt, files, bytes: v.bytes, ...(v.why ? { why: v.why } : {}) });
         }
@@ -126,13 +130,22 @@ const SERVER_MARK = /^(?:package\.json|server\.(?:c?js|mjs|ts)|app\.(?:c?js|mjs|
  * Inside one of `exclude` — compared as the file system knows the folders (review 11, F2): another chat's project known
  * by a second spelling (a junction, a symlink, an 8.3 short name, a `subst` drive) is still that project.
  */
-const inOtherProject = (p: string, exclude: string[]) => exclude.some(o => isWithinRealRoot(p, o));
+const inOtherProject = (p: string, exclude: string[], rf: (d: string) => string = realFolderResolver()) => {
+    if (!exclude.length) return false;
+    const c = rf(p);
+    return exclude.some(o => within(c, rf(o)));
+};
+/**
+ * `child` is `parent` or inside it, both already as realFolderOf / realFolderResolver give them (resolved, and case
+ * folded on Windows): a string compare on a path boundary, with none of isWithinRoot's resolving (review 12, M1).
+ */
+const within = (child: string, parent: string) => child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
 /**
  * The folders below the project (two deep) a server runs from: where a pipeline keys its copies (`serverRoot`). Another
  * chat's project inside it is never walked into, and a folder that holds one is not a server folder of this project
  * (review 10, M1).
  */
-function serverFoldersBelow(root: string, exclude: string[] = []): string[] {
+function serverFoldersBelow(root: string, exclude: string[] = [], rf: (d: string) => string = realFolderResolver()): string[] {
     const out: string[] = [];
     let seen = 0;
     const walk = (dir: string, depth: number) => {
@@ -143,8 +156,8 @@ function serverFoldersBelow(root: string, exclude: string[] = []): string[] {
             if (++seen > 400) return;
             if (!e.isDirectory() || e.isSymbolicLink() || SKIP_DIRS.has(e.name.toLowerCase()) || e.name.startsWith('.')) continue;
             const sub = path.join(dir, e.name);
-            if (inOtherProject(sub, exclude)) continue;
-            const holdsOther = exclude.some(o => isWithinRealRoot(o, sub));
+            if (inOtherProject(sub, exclude, rf)) continue;
+            const holdsOther = exclude.some(o => within(rf(o), rf(sub)));
             if (!holdsOther) { try { if (fs.readdirSync(sub).some(f => SERVER_MARK.test(f))) out.push(sub); } catch { /* unreadable */ } }
             walk(sub, depth + 1);
         }
@@ -173,31 +186,35 @@ export interface RecoveryScope {
  */
 export function projectRecoveryScope(
     project: { dir: string; packagedInto?: string; linkedApiDir?: string; live?: { cwd?: string; projectCwd?: string } },
-    others: string[] = otherChatsProjects(project.dir),
+    others?: string[],
 ): RecoveryScope {
     const base = recoveryRoots(project.dir)[0];
     if (!base) return { base: '', roots: [], exclude: [] };
-    //  Review 11, F2: every comparison here is of the folders as the file system knows them (realFolderOf), so a second
-    //  spelling of another chat's project — a junction, a symlink, an 8.3 short name, a `subst` drive — is that project.
-    const realBase = realFolderOf(base);
-    const realOthers = others.map(o => ({ o, real: realFolderOf(o) }));
-    const exclude = realOthers.filter(({ real }) => real !== realBase && isWithinRoot(real, realBase)).map(({ o }) => o);
-    const realExclude = exclude.map(o => realFolderOf(o));
+    //  Review 11, F2: every comparison here is of the folders as the file system knows them, so a second spelling of
+    //  another chat's project — a junction, a symlink, an 8.3 short name, a `subst` drive — is that project.
+    //  Review 12, M1: one resolver for the whole call — his folder resolved once, every folder at most once, at about
+    //  an lstat each (or one listing of a folder many chats' projects share) — and the folders compared as strings.
+    const rf = realFolderResolver();
+    const realBase = rf(base);
+    const realOthers = (others ?? otherChatsProjects(project.dir, rf)).map(o => ({ o, real: rf(o) }));
+    const excluded = realOthers.filter(({ real }) => real !== realBase && within(real, realBase));
+    const exclude = excluded.map(({ o }) => o);
+    const realExclude = excluded.map(({ real }) => real);
     //  One root per folder, whatever its spelling: the first spelling met is kept.
     const out = new Map<string, string>([[realBase, base]]);
-    const add = (d: string, real = realFolderOf(d)) => { if (!out.has(real)) out.set(real, d); };
+    const add = (d: string, real = rf(d)) => { if (!out.has(real)) out.set(real, d); };
     const isDir = (p: string) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
-    const related = (d: string, o: string) => isWithinRoot(o, d) || isWithinRoot(d, o);
+    const related = (d: string, o: string) => within(o, d) || within(d, o);
     const recorded = (p: unknown) => {
         const s = String(p || '').trim();
         if (!s) return;
         const d = path.resolve(s);
         if (!isDir(d) || homeDriveOrAbove(d)) return;
-        const real = realFolderOf(d);
+        const real = rf(d);
         //  Under the project: its own — unless it is, holds or sits in another chat's project inside it.
-        if (isWithinRoot(real, realBase)) { if (!realExclude.some(o => related(real, o))) add(d, real); return; }
+        if (within(real, realBase)) { if (!realExclude.some(o => related(real, o))) add(d, real); return; }
         //  Above the project: never.
-        if (isWithinRoot(realBase, real)) return;
+        if (within(realBase, real)) return;
         //  Outside it: never another chat's project, a folder holding one, or a folder inside one.
         if (realOthers.some(({ real: o }) => related(real, o))) return;
         add(d, real);
@@ -206,27 +223,35 @@ export function projectRecoveryScope(
     recorded(project.linkedApiDir);
     recorded(project.live?.cwd);
     recorded(project.live?.projectCwd);
-    for (const sub of serverFoldersBelow(base, exclude)) add(sub);
+    for (const sub of serverFoldersBelow(base, exclude, rf)) add(sub);
     return { base, roots: Array.from(out.values()), exclude };
 }
 
 /** The folders of projectRecoveryScope. */
 export function projectRecoveryRoots(
     project: { dir: string; packagedInto?: string; linkedApiDir?: string; live?: { cwd?: string; projectCwd?: string } },
-    others: string[] = otherChatsProjects(project.dir),
+    others?: string[],
 ): string[] {
     return projectRecoveryScope(project, others).roots;
 }
 
 /** One folder, whatever its spelling (review 11, F2). */
-const samePath = (a: string, b: string) => realFolderOf(a) === realFolderOf(b);
-/** The project folders of the other chats Joe knows, but not this one's. */
-function otherChatsProjects(dir: string): string[] {
-    const mine = path.resolve(String(dir || ''));
+const samePath = (a: string, b: string, rf: (d: string) => string = realFolderResolver()) => rf(a) === rf(b);
+/**
+ * The project folders of the other chats Joe knows, but not this one's — each folder once, however many chats share
+ * it (review 12, M1: the map holds every session since boot), resolved by the caller's one resolver.
+ */
+function otherChatsProjects(dir: string, rf: (d: string) => string = realFolderResolver()): string[] {
+    const mine = rf(String(dir || ''));
+    const seen = new Set<string>();
     const out: string[] = [];
     for (const entry of Object.values(((global as any).joeProjects || {}) as Record<string, any>)) {
         const d = String(entry?.dir || '').trim();
-        if (d && !samePath(path.resolve(d), mine)) out.push(path.resolve(d));
+        if (!d) continue;
+        const at = path.resolve(d);
+        if (seen.has(at)) continue;
+        seen.add(at);
+        if (rf(at) !== mine) out.push(at);
     }
     return out;
 }
@@ -327,19 +352,30 @@ const shownHome = () => path.join(noTrace().joeDataDir(), SHOWN_DIR);
 const shownFile = (key: string) => path.join(shownHome(), `${crypto.createHash('sha256').update(key).digest('hex').slice(0, 32)}.json`);
 let lastSweep = 0;
 
-function readShownOnDisk(key: string): ShownList | undefined {
+/**
+ * A record that is there but cannot be read now (review 12, L2): another program holds it (EBUSY — an antivirus, an
+ * indexer), the disk refuses it (EPERM, EACCES, EIO…), or it is not whole. It may be read again in a moment, by this
+ * Joe, by another instance on the same server, or by this one after a restart: it is never taken for «no record».
+ */
+const UNREADABLE = 'unreadable' as const;
+/** The record on disk; undefined ONLY when there is none (ENOENT). */
+function readShownOnDisk(key: string): ShownList | undefined | typeof UNREADABLE {
+    let text: string;
+    try { text = fs.readFileSync(shownFile(key), 'utf8'); } catch (e: any) { return e?.code === 'ENOENT' ? undefined : UNREADABLE; }
     try {
-        const v = JSON.parse(fs.readFileSync(shownFile(key), 'utf8')) as ShownList;
+        const v = JSON.parse(text) as ShownList;
         if (v && v.key === key && v.copies && typeof v.copies === 'object') return v;
-    } catch { /* none on disk */ }
-    return undefined;
+    } catch { /* not whole */ }
+    return UNREADABLE;
 }
 /**
  * The latest record of this session and project. Review 11, F3: memory holds one only when the disk refused it, so
- * a disk copy never wins over a newer memory one — a list shown later, or the same list with its line used.
+ * a disk copy never wins over a newer memory one — a list shown later, or the same list with its line used. Review 12,
+ * L2: when the disk's record cannot be read now, neither can be trusted to be the latest: UNREADABLE.
  */
-function readShown(key: string): ShownList | undefined {
+function readShown(key: string): ShownList | undefined | typeof UNREADABLE {
     const disk = readShownOnDisk(key);
+    if (disk === UNREADABLE) return UNREADABLE;
     const memory = SHOWN_MEMORY.get(key);
     if (!memory) return disk;
     if (!disk) return memory;
@@ -423,6 +459,27 @@ function versionKept(workspaceId: string, root: string, copy: { runId: string; n
         return st.isDirectory() && !st.isSymbolicLink();
     } catch { return false; }
 }
+
+/**
+ * The copy a list showed, among the project's copies NOW (review 12, L1): found by what it is — its folder, run and
+ * version — never by its id, which shifts from `X-2` to `X` when the older copy of the same second is pruned. Its
+ * folder is taken from the scope, never from the record. `kept: false` when it is no longer kept but its folder is
+ * still one of the scope's own (the restore tells him so); undefined when it aims at nothing of this project now.
+ */
+function matchListed(workspaceId: string, choices: RecoveryChoice[], scope: RecoveryScope, listed: ShownCopy | undefined): { copy: ShownCopy; kept: boolean } | undefined {
+    if (!listed || typeof listed.root !== 'string' || typeof listed.runId !== 'string' || !Number.isInteger(listed.n)) return undefined;
+    const rf = realFolderResolver();
+    const at = rf(listed.root);
+    const current = choices.find(c => c.runId === listed.runId && c.n === listed.n && rf(c.root) === at);
+    if (current) return { copy: { root: current.root, runId: current.runId, n: current.n, at: current.at, files: current.files }, kept: true };
+    const ownRoot = scope.roots.find(r => rf(r) === at);
+    if (ownRoot && !inOtherProject(ownRoot, scope.exclude, rf) && !versionKept(workspaceId, ownRoot, listed)) return { copy: { ...listed, root: ownRoot }, kept: false };
+    return undefined;
+}
+const movedAr = (id: string) => `لم يُعَد شيء ولم يوقف جو شيئًا: النسخة ${id} لم تعد حيث عرضتها القائمة — تغيّر مجلدها، أو صار مشروع محادثة أخرى. أرسل «${SHOW_COPIES_AR}» لترى نسخ تطبيقك كما هي الآن.`;
+const movedEn = (id: string) => `Nothing was brought back and Joe stopped nothing: copy ${id} is no longer where the list showed it — its folder changed, or it is another chat's project now. Send «${SHOW_COPIES_EN}» to see your app's copies as they are now.`;
+const unreadableAr = (id: string) => `لم يُعَد شيء ولم يوقف جو شيئًا: لا يستطيع جو الآن أن يقرأ سجلّ القائمة التي عرضها عليك (يمسك به برنامج آخر، أو لا يقبله القرص)، فلا يعرف إن كان سطر النسخة ${id} قد استُعمل، ولا يعيد نسخة قد تعود مرتين. بقيت بياناتك كما كانت. أرسل السطر من جديد بعد قليل، فإن تكرّر هذا فأرسل «${SHOW_COPIES_AR}».`;
+const unreadableEn = (id: string) => `Nothing was brought back and Joe stopped nothing: Joe cannot read the record of the list he showed you right now (another program holds it, or the disk refuses it), so he cannot tell whether the line for copy ${id} was used, and he brings back no copy that could come back twice. Your data is as it was. Send the line again in a moment; if this happens again, send «${SHOW_COPIES_EN}».`;
 
 /** restoreRecoveryVersion's reasons, in Arabic when he reads Arabic. */
 const RESTORE_ERROR_AR: Array<[RegExp, string]> = [
@@ -556,6 +613,8 @@ export class ProjectDataRecoveryTool extends BaseTool {
         /* ── restore: every condition, or nothing is brought back (and the list is shown again) ── */
         const shown = readShown(key);
         const again = (a: string, e: string) => list([say(a, e)]);
+        //  Review 12, L2: a record Joe cannot read now is never «no list shown»: nothing is brought back, and the record is left as it is.
+        if (shown === UNREADABLE) return refuse('use_not_recorded', unreadableAr(lineId), unreadableEn(lineId));
         if (!turn) return again('لم يُعَد شيء: لا أستطيع التحقق من أن رسالتك جاءت بعد القائمة.', 'Nothing was brought back: Joe cannot tell that your message came after the list.');
         if (!shown || shown.project !== project || shown.workspaceId !== workspaceId) return again('لم يُعَد شيء: لم يعرض جو عليك قائمة نسخ لهذا التطبيق في هذه المحادثة بعد. هذه هي.', 'Nothing was brought back: Joe has not shown you a list of this app\'s copies in this chat yet. Here it is.');
         //  L3/H1 (review 10): a list whose line was used says so — never «no list shown yet».
@@ -569,39 +628,25 @@ export class ProjectDataRecoveryTool extends BaseTool {
         const listed = shown.copies[lineId];
         if (!listed) return again(`لم يُعَد شيء: النسخة ${lineId} ليست في آخر قائمة عُرضت عليك.`, `Nothing was brought back: copy ${lineId} is not in the latest list you were shown.`);
         /*
-         * Review 11, F1: the record says which copy the list showed — never where it goes. The copy is accepted only when
-         * the copies of this project NOW (its scope recomputed above) hold the same folder, run and version under that
-         * id, and its folder is taken from them. A folder that became another chat's project after the list, a recorded
-         * folder that moved, or a record changed on disk aims at nothing: nothing is stopped or written.
+         * Review 11, F1: the record says which copy the list showed — never where it goes. Review 12, L1: the copy is
+         * the one the copies of this project NOW (its scope recomputed above) hold in the same folder, run and version
+         * the list showed — found by what it is, never by its id, which shifts when an older copy of the same second is
+         * pruned — and its folder is taken from them. A copy pruned since the list, in a folder still his, is told «no
+         * longer kept». A folder that became another chat's project after the list, a recorded folder that moved, or
+         * a record changed on disk aims at nothing: nothing is stopped or written. The restore asks all of it again
+         * under the locks (review 12, L3).
          */
-        const current = choices.find(c => c.id === lineId);
-        if (current && samePath(current.root, listed.root) && current.runId === listed.runId && current.n === listed.n) {
-            const copy: ShownCopy = { root: current.root, runId: current.runId, n: current.n, at: current.at, files: current.files };
-            return this.restore({ workspaceId, sessionKey, shown, scope, copy, id: lineId, ar, logs, context });
-        }
-        //  A copy pruned since the list, in a folder that is still this project's: the restore says, truthfully, that it
-        //  is no longer kept (review 10) — its folder taken from the scope, never from the record.
-        const ownRoot = current ? undefined : roots.find(r => samePath(r, listed.root));
-        if (ownRoot && !inOtherProject(ownRoot, scope.exclude) && !versionKept(workspaceId, ownRoot, listed)) {
-            return this.restore({ workspaceId, sessionKey, shown, scope, copy: { ...listed, root: ownRoot }, id: lineId, ar, logs, context });
-        }
-        return refuse('copy_moved',
-            `لم يُعَد شيء ولم يوقف جو شيئًا: النسخة ${lineId} لم تعد حيث عرضتها القائمة — تغيّر مجلدها، أو صار مشروع محادثة أخرى. أرسل «${SHOW_COPIES_AR}» لترى نسخ تطبيقك كما هي الآن.`,
-            `Nothing was brought back and Joe stopped nothing: copy ${lineId} is no longer where the list showed it — its folder changed, or it is another chat's project now. Send «${SHOW_COPIES_EN}» to see your app's copies as they are now.`);
+        if (!matchListed(workspaceId, choices, scope, listed)) return refuse('copy_moved', movedAr(lineId), movedEn(lineId));
+        return this.restore({ workspaceId, sessionKey, project, shown, scope, id: lineId, ar, logs, context });
     }
 
     /** The restore itself: the lock, the ports checked, Joe's servers stopped, the file copy — and his app never left down untold. */
-    private async restore(a: { workspaceId: string; sessionKey: string; shown: ShownList; scope: RecoveryScope; copy: ShownCopy; id: string; ar: boolean; logs: string[]; context: any }): Promise<ToolExecutionResult> {
-        const { workspaceId, sessionKey, shown, scope, copy, id, ar, logs, context } = a;
-        const { roots, exclude } = scope;
+    private async restore(a: { workspaceId: string; sessionKey: string; project: string; shown: ShownList; scope: RecoveryScope; id: string; ar: boolean; logs: string[]; context: any }): Promise<ToolExecutionResult> {
+        const { workspaceId, sessionKey, project, shown, id, ar, logs, context } = a;
         const say = (x: string, y: string) => (ar ? x : y);
         //  H1 (review 10): every refusal and failure of a restore is final for the run.
         const refuse = (error: string, x: string, y: string, extra: Record<string, unknown> = {}) => ({ ok: false, error, output: { message: say(x, y), nonRecoverable: true, ...extra }, logs } as any);
         const seeAgain = say(`أرسل «${SHOW_COPIES_AR}» لترى القائمة من جديد.`, `Send «${SHOW_COPIES_EN}» to see the list again.`);
-        //  Review 11, F1: the folder written is one this restore locks, port-checks and stops the servers of — or nothing.
-        if (!roots.some(r => samePath(r, copy.root)) || inOtherProject(copy.root, exclude)) {
-            return refuse('copy_moved', `لم يُعَد شيء ولم يوقف جو شيئًا: النسخة ${id} ليست في مجلدات تطبيقك الآن. ${seeAgain}`, `Nothing was brought back and Joe stopped nothing: copy ${id} is not in your app's folders now. ${seeAgain}`);
-        }
         const { acquireVerifyLock, addressIsFree } = noTrace();
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const run = require('./ProjectRunTool') as typeof import('./ProjectRunTool');
@@ -609,19 +654,47 @@ export class ProjectDataRecoveryTool extends BaseTool {
         //  H1 (review 8): no check of this project runs while its data comes back, and none puts a snapshot back over it after.
         const locks: Array<{ release(): Promise<void> }> = [];
         const releaseAll = async () => { for (const l of locks.splice(0)) await l.release().catch(() => undefined); };
-        try {
-            for (const root of [...roots].sort()) {
+        const lockedRoots: string[] = [];
+        /** The verify lock of each folder not locked yet — false when one of Joe's checks holds one past the wait. */
+        const lockAll = async (folders: string[]): Promise<boolean> => {
+            const rf = realFolderResolver();
+            for (const root of [...folders].sort()) {
+                if (lockedRoots.some(l => rf(l) === rf(root))) continue;
                 const lock = await acquireVerifyLock(workspaceId, root, `restore-${Date.now().toString(36)}`, { waitMs: RESTORE_LOCK_WAIT_MS }).catch(() => null);
-                if (!lock) {
-                    return refuse('check_running', 'لم يُعَد شيء ولم يوقف جو شيئًا: فحص من فحوص جو لتطبيقك يعمل الآن. أرسل السطر من جديد بعد انتهائه.', 'Nothing was brought back and Joe stopped nothing: one of Joe\'s checks of your app is running now. Send the line again once it has finished.');
-                }
+                if (!lock) return false;
                 locks.push(lock);
+                lockedRoots.push(root);
             }
+            return true;
+        };
+        const checkRunning = () => refuse('check_running', 'لم يُعَد شيء ولم يوقف جو شيئًا: فحص من فحوص جو لتطبيقك يعمل الآن. أرسل السطر من جديد بعد انتهائه.', 'Nothing was brought back and Joe stopped nothing: one of Joe\'s checks of your app is running now. Send the line again once it has finished.');
+        try {
+            if (!(await lockAll(a.scope.roots))) return checkRunning();
             //  Under the lock: the line is still unused (two messages with it at once, in one Joe or two, bring it back once).
             const now = readShown(shown.key);
+            //  Review 12, L2: a record that cannot be read now is not «gone»: nothing is brought back.
+            if (now === UNREADABLE) return refuse('use_not_recorded', unreadableAr(id), unreadableEn(id));
             if (!sameList(now, shown) || !now!.copies[id]) {
                 return refuse('already_used', `لم يُعَد شيء: سطر النسخة ${id} استُعمل أو عُرضت بعده قائمة أحدث. ${seeAgain}`, `Nothing was brought back: the line for copy ${id} was used already, or a newer list was shown after it. ${seeAgain}`);
             }
+            /*
+             * Review 12, L3: the scope is asked again now that the locks are held — the wait for them lasts up to five
+             * seconds, and another chat may open one of his recorded folders in it. The session's project must still be
+             * the one the list was for; a folder of it that appeared meanwhile is locked too; the copy must still be in
+             * it, found by what it is (L1), and never inside another chat's project. Only this scope is port-checked,
+             * stopped and written.
+             */
+            const active = ((global as any).joeProjects || {})[sessionKey];
+            const dirNow = String(active?.dir || '').trim();
+            const scope = dirNow && fs.existsSync(dirNow) && projectIdOf(dirNow) === project ? projectRecoveryScope(active) : undefined;
+            if (!scope || !scope.roots.length) return refuse('copy_moved', movedAr(id), movedEn(id));
+            if (!(await lockAll(scope.roots))) return checkRunning();
+            const { roots, exclude } = scope;
+            const match = matchListed(workspaceId, await recoveryChoices(workspaceId, roots, process.env, exclude), scope, now!.copies[id]);
+            if (!match) return refuse('copy_moved', movedAr(id), movedEn(id));
+            const copy = match.copy;
+            //  Review 11, F1: the folder written is one this restore locks, port-checks and stops the servers of — or nothing.
+            if (!roots.some(r => samePath(r, copy.root)) || inOtherProject(copy.root, exclude)) return refuse('copy_moved', movedAr(id), movedEn(id));
             /**
              * Review 11, F3: the line is used ONCE, so its use is recorded before the copy is written — and when the
              * disk will take neither the «used» record nor the removal of the unused one (a full disk, a read-only
@@ -630,7 +703,10 @@ export class ProjectDataRecoveryTool extends BaseTool {
             const used = (): boolean => {
                 if (writeShown({ ...now!, used: { id, at: Date.now() } })) return true;
                 //  Memory holds the use now; the disk must not hold, for this Joe or another, a live line for this copy.
+                //  Review 12, L2: only a record that is not there (ENOENT) is gone; one that cannot be read now (EBUSY,
+                //  EPERM, EACCES…) may be read in a moment by another Joe, or by this one after a restart.
                 const left = readShownOnDisk(shown.key);
+                if (left === UNREADABLE) { SHOWN_MEMORY.set(shown.key, now!); return false; }
                 if (!left || left.used || !left.copies?.[id] || Date.now() - left.shownAt > RECOVERY_CONFIRM_TTL_MS) return true;
                 //  Not used after all: nothing is brought back, and the record says what is true — unused.
                 SHOWN_MEMORY.set(shown.key, now!);
@@ -638,6 +714,7 @@ export class ProjectDataRecoveryTool extends BaseTool {
             };
             //  The copy is still kept (pruning may have removed it): checked before anything is stopped.
             try {
+                if (!match.kept) throw new Error('not kept');
                 const st = fs.lstatSync(noTrace().recoveryVersionDir(workspaceId, copy.root, copy.runId, copy.n));
                 if (!st.isDirectory() || st.isSymbolicLink()) throw new Error('not kept');
             } catch {
@@ -697,8 +774,8 @@ export class ProjectDataRecoveryTool extends BaseTool {
             if (!used()) {
                 const { told, down } = await startAgain();
                 return refuse('use_not_recorded',
-                    `${told}لم يُعَد شيء: لم يستطع جو أن يسجّل أن سطر النسخة ${id} استُعمل (مجلد بيانات جو لا يقبل الكتابة الآن — ربما امتلأ القرص)، ولا يعيد نسخة قد تعود مرة ثانية بالسطر نفسه. بقيت بياناتك كما كانت. أفرغ مساحة ثم أرسل «${SHOW_COPIES_AR}».`,
-                    `${told}Nothing was brought back: Joe could not record that the line for copy ${id} was used (Joe's data folder takes no write now — the disk may be full), and he brings back no copy the same line could bring back a second time. Your data is as it was. Free some space, then send «${SHOW_COPIES_EN}».`,
+                    `${told}لم يُعَد شيء: لم يستطع جو أن يسجّل أن سطر النسخة ${id} استُعمل (مجلد بيانات جو لا يقبل الكتابة الآن، أو يمسك برنامج آخر بسجلّ القائمة — ربما امتلأ القرص أو يفحصه برنامج حماية)، ولا يعيد نسخة قد تعود مرة ثانية بالسطر نفسه. بقيت بياناتك كما كانت. أرسل السطر من جديد بعد قليل، أو أفرغ مساحة ثم أرسل «${SHOW_COPIES_AR}».`,
+                    `${told}Nothing was brought back: Joe could not record that the line for copy ${id} was used (Joe's data folder takes no write now, or another program holds the list's record — the disk may be full, or an antivirus may be reading it), and he brings back no copy the same line could bring back a second time. Your data is as it was. Send the line again in a moment, or free some space and send «${SHOW_COPIES_EN}».`,
                     { ...(down.length ? { serverDown: down } : {}) });
             }
             let done: Awaited<ReturnType<ReturnType<typeof recovery>['restoreRecoveryVersion']>>;

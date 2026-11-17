@@ -96,3 +96,75 @@ export function realFolderOf(dir: string): string {
 export function isWithinRealRoot(child: string, parent: string): boolean {
     return isWithinRoot(realFolderOf(child), realFolderOf(parent));
 }
+
+/**
+ * realFolderOf for many folders in one call (review 12, M1): the same answer, at about one lstat per folder instead of
+ * a realpath per folder and per missing part. A list or a restore compares the session's folders with the project of
+ * every chat Joe knows — on a server, every session since boot — and realFolderOf for each of them, three times over,
+ * held the whole process (every user on it) for seconds.
+ *
+ * Each answer is kept for the life of the resolver (one call: never across calls, so a link made later is seen), and
+ * a folder is resolved from its parent's answer — what each part is, read by one lstat, or from one listing of a
+ * folder asked about for a second child (many chats' projects sit side by side in one folder):
+ *   - a part that is not there keeps its spelling below its parent's answer (realFolderOf's own rule);
+ *   - a part that is a plain folder or file is its parent's answer joined with its name — the file system knows it
+ *     by no other path;
+ *   - a drive or share root, a link or junction (a mount point is one too), and on Windows a name that may be a second
+ *     spelling of another — an 8.3 short name («~»), a trailing dot or space, a stream («:»), a letter whose case
+ *     JavaScript and NTFS may fold differently — is asked of realpath itself (realFolderOf), and so is every part on
+ *     macOS, whose file systems may fold case and Unicode their own way;
+ *   - anything lstat cannot answer is asked of realFolderOf too: never a guess.
+ */
+export function realFolderResolver(): (dir: string) => string {
+    const path: typeof import('path') = require('path');
+    const fs: typeof import('fs') = require('fs');
+    const win = process.platform === 'win32';
+    const fold = (s: string) => (win ? s.toLowerCase() : s);
+    const askRealpath = process.platform === 'darwin'
+        ? () => true
+        : (name: string) => win && (/[~:]|[. ]$/u.test(name) || Array.from(name).some(ch => ch > '\x7f' && ch.toLowerCase() !== ch.toUpperCase()));
+    const memo = new Map<string, string>();
+    //  A folder asked about for a second child is listed once (readdir), and its children are answered from the list:
+    //  the projects of many chats sit side by side in one folder. On Windows any reparse point lists as a link.
+    const asks = new Map<string, number>();
+    const listed = new Map<string, Map<string, boolean> | null>();
+    const kindIn = (up: string, name: string): 'link' | 'plain' | 'none' | 'unknown' => {
+        const n = (asks.get(up) || 0) + 1;
+        asks.set(up, n);
+        if (n < 2) return 'unknown';
+        let list = listed.get(up);
+        if (list === undefined) {
+            list = null;
+            try {
+                list = new Map();
+                for (const e of fs.readdirSync(up, { withFileTypes: true })) list.set(fold(e.name), e.isSymbolicLink());
+            } catch { list = null; }
+            listed.set(up, list);
+        }
+        if (!list) return 'unknown';
+        const link = list.get(fold(name));
+        return link === undefined ? 'none' : link ? 'link' : 'plain';
+    };
+    const resolve = (resolved: string): string => {
+        const known = memo.get(resolved);
+        if (known !== undefined) return known;
+        const up = path.dirname(resolved);
+        const name = path.basename(resolved);
+        let out: string;
+        if (up === resolved || !name || askRealpath(name) || (win && /^[\\/]{2}[?.][\\/]/u.test(resolved))) {
+            out = realFolderOf(resolved);
+        } else {
+            let kind = kindIn(up, name);
+            if (kind === 'unknown') {
+                try {
+                    const st = fs.lstatSync(resolved, { throwIfNoEntry: false });
+                    kind = !st ? 'none' : st.isSymbolicLink() ? 'link' : 'plain';
+                } catch { kind = 'unknown'; }
+            }
+            out = kind === 'none' || kind === 'plain' ? path.join(resolve(up), fold(name)) : realFolderOf(resolved);
+        }
+        memo.set(resolved, out);
+        return out;
+    };
+    return (dir: string) => resolve(path.resolve(String(dir || '')));
+}

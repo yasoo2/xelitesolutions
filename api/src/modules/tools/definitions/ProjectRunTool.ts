@@ -2712,10 +2712,10 @@ export interface StoppedServer {
  * The folders a restore may touch: never a drive root, the home folder, or a folder above it (review 9, H2) — by its
  * spelling or as the file system knows it (review 11, F2) — each as the file system knows it.
  */
-function servingFolders(roots: string[]): string[] {
+function servingFolders(roots: string[], rf: (d: string) => string): string[] {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { isHomeDriveOrAbove, realFolderOf } = require('../path-containment');
-    return roots.map(r => String(r || '').trim()).filter(r => r && !isHomeDriveOrAbove(r) && !isHomeDriveOrAbove(realFolderOf(r))).map(r => realFolderOf(r));
+    const { isHomeDriveOrAbove } = require('../path-containment');
+    return roots.map(r => String(r || '').trim()).filter(r => r && !isHomeDriveOrAbove(r) && !isHomeDriveOrAbove(rf(r))).map(r => rf(r));
 }
 
 /**
@@ -2725,15 +2725,17 @@ function servingFolders(roots: string[]): string[] {
  */
 function servingTest(roots: string[], exclude: string[]): (cwd: unknown) => boolean {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { realFolderOf } = require('../path-containment');
+    const { realFolderResolver } = require('../path-containment');
     //  Review 11, F2: compared as the file system knows the folders — another chat's project known by a second
     //  spelling (a junction, a symlink, an 8.3 short name, a `subst` drive) is still that project, its server never stopped.
-    const folders = servingFolders(roots);
-    const others = exclude.map(e => String(e || '').trim()).filter(Boolean).map(e => realFolderOf(e));
+    //  Review 12, M1: one resolver for the test's life (one stop or one count), so a folder is resolved once.
+    const rf: (d: string) => string = realFolderResolver();
+    const folders = servingFolders(roots, rf);
+    const others = exclude.map(e => String(e || '').trim()).filter(Boolean).map(e => rf(e));
     return (cwd: unknown) => {
         const raw = String(cwd || '').trim();
         if (!raw) return false;
-        const c = realFolderOf(raw);
+        const c = rf(raw);
         return folders.some(r => isWithinRoot(c, r)) && !others.some(o => isWithinRoot(c, o));
     };
 }
