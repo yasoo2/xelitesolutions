@@ -46,7 +46,9 @@ function fromEnvelope(raw: string, step: number): ToolCall[] | null {
         const name = String(tc?.function?.name ?? tc?.name ?? '').trim();
         const args = argumentsText(tc?.function?.arguments ?? tc?.arguments);
         if (!name || args == null) return;
-        calls.push({ id: String(tc?.id || callId(step, i)), name, arguments: args });
+        //  Gemini 3 signs its calls and refuses the next request without the signature.
+        const extra = tc?.extra_content && typeof tc.extra_content === 'object' && !Array.isArray(tc.extra_content) ? tc.extra_content : undefined;
+        calls.push({ id: String(tc?.id || callId(step, i)), name, arguments: args, ...(extra ? { extra } : {}) });
     });
     return calls;
 }

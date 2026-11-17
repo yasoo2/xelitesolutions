@@ -165,7 +165,7 @@ function forManaged(messages: ChatMessage[]): unknown[] {
     return messages.map(m => {
         if (m.role === 'assistant') {
             return m.tool_calls?.length
-                ? { role: 'assistant', content: m.content || '', tool_calls: m.tool_calls }
+                ? { role: 'assistant', content: m.content || '', tool_calls: m.tool_calls.map(tc => ({ id: tc.id, type: tc.type, function: tc.function })) }
                 : { role: 'assistant', content: m.content || '' };
         }
         if (m.role === 'tool') return { role: 'tool', content: m.content || '(no output)', tool_call_id: m.tool_call_id };
@@ -268,12 +268,32 @@ export function routedModel(choice: ModelChoice, joe: any): EngineModel {
                 providerTimeoutMs: Math.max(30_000, deadlineAt - Date.now()),
                 runId: joe?.runId, traceId: joe?.traceId, sessionId: joe?.sessionId, userId: joe?.userId, workspaceId: joe?.workspaceId,
             };
-            const raw = await routeToModel(messages as any[], undefined, undefined, undefined, undefined, undefined, tools, context);
+            let raw: string;
+            try {
+                raw = await routeToModel(messages as any[], undefined, undefined, undefined, undefined, undefined, tools, context);
+            } catch (e: any) {
+                //  A prompt longer than the provider's window is folded and asked again (the loop's
+                //  RESOURCE_CONTEXT_OVERFLOW), not reported three times as the provider being down.
+                if (ROUTED_CONTEXT_OVERFLOW.test(String(e?.message || ''))) {
+                    throw Object.assign(new Error(`RESOURCE_CONTEXT_OVERFLOW: ${String(e.message).slice(0, 300)}`), { code: 'RESOURCE_CONTEXT_OVERFLOW', status: e?.status });
+                }
+                throw e;
+            }
             if (isProviderFailure(raw)) throw Object.assign(new Error(String(raw).slice(0, 300)), { code: 'PROVIDER_FAILURE' });
             return readModelTurn(String(raw ?? ''), toolNames(tools), calls, Date.now() - started);
         },
     };
 }
+
+/**
+ * A provider's words for a prompt longer than its window. Measured against
+ * the vendors' own wording: OpenRouter «This endpoint's maximum context
+ * length is 131072 tokens. However, you requested about 210000 tokens»,
+ * OpenAI «This model's maximum context length is …», Gemini «The input token
+ * count (…) exceeds the maximum number of tokens allowed (…)». Without this
+ * the 400 read as PROVIDER_DOWN and the run failed after three identical calls.
+ */
+const ROUTED_CONTEXT_OVERFLOW = /maximum context length|context (?:window|length) (?:is )?exceeded|prompt is too long|input token count[^.]{0,40}exceeds the maximum|too many (?:input )?tokens/i;
 
 /** The model a run drives and the plain-question reader its checks use, on the same route. */
 export interface EngineBrain {

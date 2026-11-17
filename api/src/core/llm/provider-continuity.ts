@@ -144,6 +144,18 @@ export function providerRetryAfterMs(error: unknown, now = Date.now()): number |
         const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(header)) - now;
         if (Number.isFinite(ms) && ms > 0) return Math.min(ms, Number.MAX_SAFE_INTEGER - now);
     }
+    //  OpenRouter says when its limit resets inside the error, not as a header:
+    //  error.metadata.headers['X-RateLimit-Reset'], a time in epoch milliseconds
+    //  (its errors page; free-models-per-min). Without it a one-minute limit
+    //  paused the route for the five-minute default.
+    const meta = raw?.error?.metadata?.headers;
+    const reset = meta && typeof meta === 'object'
+        ? meta[Object.keys(meta).find(k => k.toLowerCase() === 'x-ratelimit-reset') ?? ''] : undefined;
+    if (reset != null && /^\d+(?:\.\d+)?$/.test(String(reset).trim())) {
+        const at = Number(reset);
+        const ms = at > 1e12 ? at - now : at > 1e9 ? at * 1000 - now : NaN;
+        if (Number.isFinite(ms) && ms > 0) return Math.min(ms, Number.MAX_SAFE_INTEGER - now);
+    }
     const text = String(raw?.message || error || '');
     const seconds = text.match(/retry[-\s]?after\s*:?\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s)?/i);
     if (seconds) return Math.min(Number(seconds[1]) * 1000, Number.MAX_SAFE_INTEGER - now) || undefined;

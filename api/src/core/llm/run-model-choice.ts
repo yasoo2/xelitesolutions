@@ -116,6 +116,11 @@ export function providerErrorCode(status: number, message: string, timedOut = fa
     //  read, so the words arrive as «400 status code (no body)» (measured
     //  2026-11-02, both with no key and with a fake one).
     if (status === 400 && /^(?:gemini|google)$/i.test(provider) && /no body|api key|authori/i.test(text)) return 'PROVIDER_AUTH';
+    //  Every Gemini 429 says «You exceeded your current quota, please check your
+    //  plan and billing details», the per-minute limit included, and carries the
+    //  RetryInfo delay that ends it: a limit to wait out, never an empty account.
+    //  (OpenAI's 429 with the same words is insufficient_quota, and stays billing.)
+    if (status === 429 && /^(?:gemini|google)$/i.test(provider)) return 'PROVIDER_QUOTA';
     //  The status speaks first; the words decide only where it is silent or
     //  ambiguous (a 400 that is a refused key, a 429 that is an empty account).
     if (status === 402 || NO_CREDIT.test(text)) return 'PROVIDER_BILLING';
