@@ -39,6 +39,12 @@ export interface BuilderProofs {
     anonymousWrite?: { resource: string; status: number; outcome: 'refused' | 'invalid' | 'written' | 'no-answer' };
     /** A login with a password nobody holds. */
     badPassword?: { status: number; refused: boolean };
+    /**
+     * Measured on the no-write walk (design v13.3 §6, path 3): only `GET /api/health` was asked — no anonymous
+     * write, no delete, no login — because the server holds the owner's live data. The contract is «not
+     * measured», never failed; the owner is told `probeSkipped(builderProofs)`.
+     */
+    noWrite?: true;
 }
 
 interface Answer { status: number; json: any }
@@ -106,15 +112,20 @@ const idOf = (json: any) => json?.id ?? json?.data?.id ?? json?.row?.id ?? json?
  * attempted only against a server that declares the api_project contract,
  * whose writes require an account; a write that succeeds anyway (the
  * regression this exists to catch) is deleted again when the server says how.
+ *
+ * On the no-write walk (`noWrite`, design v13.3 §6: a change run whose server holds the owner's live data) only
+ * `GET /api/health` is asked; the result carries `noWrite: true`.
  */
-export async function measureBuilderProofs(baseUrl: string, opts: { timeoutMs: number; signal?: AbortSignal }): Promise<BuilderProofs> {
+export async function measureBuilderProofs(baseUrl: string, opts: { timeoutMs: number; signal?: AbortSignal; noWrite?: boolean }): Promise<BuilderProofs> {
     const empty: BuilderProofs = { health: false, contract: '', tables: {} };
     const base = loopbackBase(baseUrl);
-    if (!base) return empty;
+    if (!base) return opts.noWrite ? { ...empty, noWrite: true } : empty;
     const timeoutMs = Math.max(500, Number(opts.timeoutMs) || 2500);
     const health = await ask(base, 'GET', '/api/health', undefined, timeoutMs, opts.signal);
-    if (!(health.status >= 200 && health.status < 300 && health.json?.ok === true)) return empty;
+    if (!(health.status >= 200 && health.status < 300 && health.json?.ok === true)) return opts.noWrite ? { ...empty, noWrite: true } : empty;
     const proofs: BuilderProofs = { health: true, contract: String(health.json?.joe || ''), tables: countsFrom(health.json) };
+    //  Path 3: the health answer is read, nothing is written, deleted or signed in to (probeSkipped(builderProofs)).
+    if (opts.noWrite) return { ...proofs, noWrite: true };
     if (proofs.contract !== 'api_project') return proofs;
     const resource = typeof health.json?.resource === 'string' ? health.json.resource.replace(/[^a-zA-Z0-9_-]/g, '') : '';
     if (resource) {
@@ -150,6 +161,8 @@ export function regressedBuilderProofs(before: BuilderProofs, after: BuilderProo
         if (now === undefined) lost.push(`table «${table}» is no longer reported`);
         else if (now < count) lost.push(`table «${table}» had ${count} row(s) and now has ${now} after the restart`);
     }
+    //  A side measured without writing (path 3) asked no write and no login: those claims are not measured, never lost.
+    if (before.noWrite || after.noWrite) return lost;
     if (before.anonymousWrite?.outcome === 'refused' && after.anonymousWrite?.outcome !== 'refused') {
         lost.push(`an anonymous write to /api/${before.anonymousWrite.resource} was refused before the repair and now answers ${after.anonymousWrite?.status ?? 'nothing'}`);
     }
@@ -159,8 +172,14 @@ export function regressedBuilderProofs(before: BuilderProofs, after: BuilderProo
     return lost;
 }
 
-/** Did both measurements read the same builder contract, so its live claims were measured again? */
-export function builderClaimsRemeasured(before: BuilderProofs, after: BuilderProofs): boolean {
+/**
+ * Did both measurements read the same builder contract, so its live claims were measured again?
+ *
+ * `noWrite` (design v13.3 §6, path 3): the contract cannot be re-measured without writing, so when both healths
+ * hold the claims are «not measured», not failed — true, and the owner is told `probeSkipped(builderProofs)`.
+ */
+export function builderClaimsRemeasured(before: BuilderProofs, after: BuilderProofs, noWrite?: boolean): boolean {
+    if (noWrite) return before.health && after.health;
     return before.health && after.health && before.contract === 'api_project' && after.contract === 'api_project';
 }
 

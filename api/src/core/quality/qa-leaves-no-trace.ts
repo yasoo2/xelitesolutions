@@ -83,7 +83,14 @@ export interface AppDataRestore {
     tooLarge: string[];
 }
 
-function isData(rel: string): boolean {
+/**
+ * Whether a project-relative path is one of the app's data files, as the snapshot keeps them: a database file
+ * (`*.db|sqlite|sqlite3|db3` and its `-wal/-shm/-journal`) anywhere, any non-code file under a folder named
+ * `data|db|database|databases|storage|uploads?|var|records`, or a records file (`db|database|data|store|storage|
+ * records|items|entries .json`, `*.jsonl`, `*.ndjson`). The caller skips `NOT_DATA_DIRS` (the walk does). Exported for
+ * the 2T router (`qa-target.ts`, rule T4), which proves an app keeps nothing outside this list.
+ */
+export function isData(rel: string): boolean {
     const parts = rel.split(/[\\/]/u);
     const name = parts[parts.length - 1];
     if (DATABASE_FILE.test(name)) return true;
@@ -307,4 +314,665 @@ export function restoreLine(r: AppDataRestore): string {
     if (r.failed.length) parts.push(`could not be put back: ${r.failed.join(', ')}`);
     if (r.tooLarge.length) parts.push(`too large to keep a copy of, so left as the QA left them: ${r.tooLarge.map(f => path.basename(f)).join(', ')}`);
     return `the QA's own records are gone from the app: ${parts.join('; ') || 'nothing had changed'}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE RECOVERY COPY (design v13.3 §5b): every version of the owner's data the verification saw, kept outside
+// the project.
+//
+// On path 2T the verification walks the owner's live app as today and puts his data files back as today, whole.
+// A record he (or the app itself) wrote during that span is overwritten by the put-back — today's behaviour. So
+// from the snapshot to the end of the last put-back, every new version of every data file is copied, BEFORE
+// anything is put back, into Joe's own data folder:
+//
+//     <JOE_DATA_DIR>/qa-recovery/<workspaceId>/<projectKey>/<runId>/<n>/<path in the project>
+//
+// Never under the project: no git, no Pages copy, no deploy zip, no `express.static` of the project, no export
+// can reach it, and it sits beside `projects/`, outside every workspace root the model's file tools are rooted at.
+// Folders are made with mode 0700, files 0600. Bringing a version back is a file copy by Joe's code, never a read
+// into a prompt.
+//
+// Every change run uses it now (review 7, B1): whatever its path, the verification puts back what its checks
+// changed, so every version is kept first. A new build does not: nothing above this line changed for it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The folder name under Joe's data folder. */
+export const QA_RECOVERY = 'qa-recovery';
+
+/**
+ * How much the recovery copies may hold (§5b step 3). What the owner is told is what this keeps (review 7, B3): every
+ * run's copy for `keepDays`, however many runs there were, unless the space below fills first — then the oldest go
+ * first (`recoverySaved` says so).
+ */
+export interface RecoveryBudget {
+    /** Per project, every run and every flush included (512 MB). Over it, only the newest version of each file is kept, then the oldest runs go. */
+    projectBytes: number;
+    /** For the whole `qa-recovery` folder of this server (5 GB). Over it, the oldest runs of any project go first. */
+    serverBytes: number;
+    /** Nothing older than this many days is kept (14); nothing younger is removed but to make room. */
+    keepDays: number;
+}
+
+/** The design's numbers: 512 MB a project, 5 GB a server, 14 days. */
+export const RECOVERY_BUDGET: RecoveryBudget = Object.freeze({
+    projectBytes: 512 * 1024 * 1024,
+    serverBytes: 5 * 1024 * 1024 * 1024,
+    keepDays: 14,
+});
+
+/** At most this many watchers poll at their full rate on one server; the next ones poll every second (§5b step 1). */
+export const RECOVERY_FULL_RATE_WATCHERS = 8;
+
+/** Joe's own data folder: `JOE_DATA_DIR`, else `<cwd>/data` (as `budget.ts` and `process-ledger.ts` read it). */
+export function joeDataDir(env: NodeJS.ProcessEnv = process.env): string {
+    return path.resolve(String(env.JOE_DATA_DIR || '').trim() || path.join(process.cwd(), 'data'));
+}
+
+/** `<JOE_DATA_DIR>/qa-recovery`: the one place every recovery copy and verify lock of this server lives. */
+export function recoveryHome(env: NodeJS.ProcessEnv = process.env): string {
+    return path.join(joeDataDir(env), QA_RECOVERY);
+}
+
+/** A folder name made safe: no separator, no dot-only name, bounded. */
+function segment(s: string): string {
+    const clean = String(s ?? '').replace(/[^A-Za-z0-9_.-]/gu, '_').slice(0, 80);
+    return !clean || /^\.+$/u.test(clean) ? '_' : clean;
+}
+
+/** The real path, its case folded where the filesystem folds it. */
+function realOf(dir: string): string {
+    let real = path.resolve(dir);
+    try { real = fs.realpathSync.native(real); } catch { /* not there yet: its resolved path */ }
+    return process.platform === 'win32' ? real.toLowerCase() : real;
+}
+
+/** `sha256(realpath(projectRoot)).slice(0, 16)`: the project's folder name in the recovery home. */
+export function projectKeyOf(projectRoot: string): string {
+    return crypto.createHash('sha256').update(realOf(projectRoot)).digest('hex').slice(0, 16);
+}
+
+/** `<home>/<workspaceId>/<projectKey>`: one project's runs and its verify lock. */
+export function recoveryProjectDir(workspaceId: string, projectRoot: string, env: NodeJS.ProcessEnv = process.env): string {
+    return path.join(recoveryHome(env), segment(workspaceId), projectKeyOf(projectRoot));
+}
+
+/** `<home>/<workspaceId>/<projectKey>/<runId>`: what `watchAppData`'s `into` is for one verification. */
+export function recoveryRunDir(workspaceId: string, projectRoot: string, runId: string, env: NodeJS.ProcessEnv = process.env): string {
+    return path.join(recoveryProjectDir(workspaceId, projectRoot, env), segment(runId));
+}
+
+/** `<run>/<n>`: one kept version; its files sit at their paths in the project. */
+export function recoveryVersionDir(workspaceId: string, projectRoot: string, runId: string, n: number, env: NodeJS.ProcessEnv = process.env): string {
+    return path.join(recoveryRunDir(workspaceId, projectRoot, runId, env), String(Math.max(1, Math.floor(n))));
+}
+
+/** Whether `child` is `parent` or inside it (resolved, links followed where they exist, case folded on Windows). */
+export function isInsideFolder(child: string, parent: string): boolean {
+    const rel = path.relative(realOf(parent), realOf(child));
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/** The poll interval for a watcher of `files` files (§5b step 1): 50 ms up to 50, 250 ms up to 200, 1 s beyond; 1 s past the eighth watcher. */
+export function recoveryIntervalMs(files: number, watcherOrdinal = 1): number {
+    if (watcherOrdinal > RECOVERY_FULL_RATE_WATCHERS) return 1000;
+    if (files <= 50) return 50;
+    if (files <= 200) return 250;
+    return 1000;
+}
+
+/** The recovery watcher of one verification span (§5b steps 1–2). */
+export interface AppDataWatch {
+    /** Every change the poll saw, by project-relative path (forward slashes); `at` is the moment the poll saw it. */
+    changes(): Array<{ file: string; at: number }>;
+    /** Every version kept (still on disk), oldest first: its number, its files (project-relative), when, and its bytes. */
+    versions(): Array<{ n: number; files: string[]; at: number; bytes: number }>;
+    /**
+     * Takes one last version of every file that differs from its last copy. Call it inside `putQaRecordsBack`, after
+     * `project_stop` and `addressIsFree`, immediately before `restoreAppData`, so the server's shutdown writes are in it.
+     */
+    flush(why: string): Promise<void>;
+    /**
+     * Adds one version made of the given files (`rel` project-relative, `from` the copy to read): the version from
+     * before the checks of a file the put-back could not restore (review 7, M3). Resolves whether it was kept.
+     */
+    keep(entries: Array<{ rel: string; from: string }>, why: string): Promise<boolean>;
+    /** Stops polling (the copies stay; an empty run folder is removed). */
+    stop(): Promise<void>;
+    /** Whether the per-project cap was hit, so only the newest version of each file is kept (`recoveryOverBudget`). */
+    overBudget(): boolean;
+}
+
+/** The runs being written now, never pruned under a watcher. */
+const activeRuns = new Set<string>();
+let activeWatchers = 0;
+
+const RUN_INDEX = 'run.json';
+const RECOVERY_DATA_DIRS = ['data', 'db', 'database', 'databases', 'storage', 'uploads', 'upload', 'var', 'records'];
+
+async function mkdirPrivate(dir: string): Promise<void> {
+    await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+    if (process.platform !== 'win32') await fs.promises.chmod(dir, 0o700).catch(() => { });
+}
+
+async function writePrivate(file: string, data: Buffer | string): Promise<void> {
+    await fs.promises.writeFile(file, data, { mode: 0o600 });
+    if (process.platform !== 'win32') await fs.promises.chmod(file, 0o600).catch(() => { });
+}
+
+/** Bytes under a folder (links not followed). */
+async function bytesUnder(dir: string): Promise<number> {
+    let total = 0;
+    let entries: fs.Dirent[];
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return 0; }
+    for (const e of entries) {
+        const abs = path.join(dir, e.name);
+        if (e.isSymbolicLink()) continue;
+        if (e.isDirectory()) total += await bytesUnder(abs);
+        else if (e.isFile()) { try { total += (await fs.promises.stat(abs)).size; } catch { /* gone */ } }
+    }
+    return total;
+}
+
+interface RunEntry { dir: string; startedAt: number; bytes: number }
+
+/** The runs of one project folder, newest first. */
+async function runsOf(projectDir: string): Promise<RunEntry[]> {
+    let entries: fs.Dirent[];
+    try { entries = await fs.promises.readdir(projectDir, { withFileTypes: true }); } catch { return []; }
+    const runs: RunEntry[] = [];
+    for (const e of entries) {
+        if (!e.isDirectory() || e.isSymbolicLink()) continue;
+        const dir = path.join(projectDir, e.name);
+        let startedAt = NaN;
+        try { startedAt = Number(JSON.parse(await fs.promises.readFile(path.join(dir, RUN_INDEX), 'utf8'))?.startedAt); } catch { /* no index */ }
+        if (!Number.isFinite(startedAt)) { try { startedAt = (await fs.promises.stat(dir)).mtimeMs; } catch { continue; } }
+        runs.push({ dir, startedAt, bytes: await bytesUnder(dir) });
+    }
+    return runs.sort((a, b) => b.startedAt - a.startedAt);
+}
+
+/** Every project folder under the recovery home. */
+async function projectDirsOf(home: string): Promise<string[]> {
+    const out: string[] = [];
+    let spaces: fs.Dirent[];
+    try { spaces = await fs.promises.readdir(home, { withFileTypes: true }); } catch { return out; }
+    for (const ws of spaces) {
+        if (!ws.isDirectory() || ws.isSymbolicLink()) continue;
+        let keys: fs.Dirent[];
+        try { keys = await fs.promises.readdir(path.join(home, ws.name), { withFileTypes: true }); } catch { continue; }
+        for (const k of keys) if (k.isDirectory() && !k.isSymbolicLink()) out.push(path.join(home, ws.name, k.name));
+    }
+    return out;
+}
+
+const isActive = (dir: string) => activeRuns.has(path.resolve(dir));
+
+/** What a prune removed. */
+export interface RecoveryPrune { removedRuns: string[]; bytesFreed: number }
+
+/**
+ * Applies §5b step 3. With `projectDir`: that project's retention (nothing older than `keepDays`, at most
+ * `projectBytes`, the oldest runs first); without it: every project's. Then the server-wide cap (`serverBytes`, the
+ * oldest runs of any project first) over `recoveryHome(env)`. A run younger than `keepDays` is removed only to make
+ * room under a cap (`recoverySaved` tells exactly that). A run a watcher is writing is never removed.
+ * Called when `watchAppData` starts, at boot and hourly (`startRecoveryUpkeep`).
+ */
+export async function pruneRecovery(opts: { env?: NodeJS.ProcessEnv; budget?: RecoveryBudget; projectDir?: string; home?: string; now?: number } = {}): Promise<RecoveryPrune> {
+    const budget = opts.budget ?? RECOVERY_BUDGET;
+    const now = opts.now ?? Date.now();
+    const home = opts.home ?? recoveryHome(opts.env);
+    const out: RecoveryPrune = { removedRuns: [], bytesFreed: 0 };
+    //  Only ever inside a folder named qa-recovery: a wrong argument never sweeps anything else.
+    if (path.basename(path.resolve(home)) !== QA_RECOVERY) return out;
+    if (opts.projectDir && !isInsideFolder(opts.projectDir, home)) return out;
+    const drop = async (r: RunEntry) => {
+        await fs.promises.rm(r.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => { });
+        out.removedRuns.push(r.dir);
+        out.bytesFreed += r.bytes;
+    };
+    const projects = opts.projectDir ? [opts.projectDir] : await projectDirsOf(home);
+    for (const projectDir of projects) {
+        const runs = await runsOf(projectDir);
+        let total = runs.reduce((s, r) => s + r.bytes, 0);
+        const kept: RunEntry[] = [];
+        for (const r of runs) {
+            const tooOld = now - r.startedAt > budget.keepDays * 24 * 60 * 60 * 1000;
+            if (!isActive(r.dir) && tooOld) { await drop(r); total -= r.bytes; continue; }
+            kept.push(r);
+        }
+        for (let i = kept.length - 1; i >= 0 && total > budget.projectBytes; i--) {
+            if (isActive(kept[i].dir)) continue;
+            await drop(kept[i]);
+            total -= kept[i].bytes;
+        }
+        //  A project folder with nothing left in it goes too (a held lock keeps it).
+        try { if (!(await fs.promises.readdir(projectDir)).length) await fs.promises.rmdir(projectDir); } catch { /* not empty, or gone */ }
+    }
+    //  The server-wide cap: the oldest runs of any project first.
+    const all: RunEntry[] = [];
+    for (const projectDir of await projectDirsOf(home)) all.push(...await runsOf(projectDir));
+    let serverTotal = all.reduce((s, r) => s + r.bytes, 0);
+    for (const r of all.sort((a, b) => a.startedAt - b.startedAt)) {
+        if (serverTotal <= budget.serverBytes) break;
+        if (isActive(r.dir)) continue;
+        await drop(r);
+        serverTotal -= r.bytes;
+    }
+    return out;
+}
+
+/**
+ * The boot hook's one call (§5b steps 3 and 5): sweeps stale verify locks and prunes the whole recovery home now,
+ * then prunes every hour while Joe runs (the timer never holds the process open). `ready` settles after the first pass.
+ */
+export function startRecoveryUpkeep(opts: { env?: NodeJS.ProcessEnv; budget?: RecoveryBudget; everyMs?: number } = {}): { ready: Promise<void>; stop(): void } {
+    const pass = async () => {
+        await sweepStaleVerifyLocks(opts.env).catch(() => 0);
+        await pruneRecovery({ env: opts.env, budget: opts.budget }).catch(() => undefined);
+    };
+    const ready = pass();
+    const timer = setInterval(() => { void pass(); }, Math.max(1000, opts.everyMs ?? 60 * 60 * 1000));
+    timer.unref?.();
+    return { ready, stop: () => clearInterval(timer) };
+}
+
+/** The content hash of a family as kept: its members' names and hashes, `-shm` aside (SQLite rebuilds it). */
+function familyHash(members: Array<[string, string]>): string {
+    return members.filter(([f]) => !/-shm$/iu.test(f)).map(([f, h]) => `${path.basename(f).toLowerCase()}=${h}`).sort().join('|');
+}
+
+/**
+ * Watches the snapshot's data files (and the data folders, for files that appear) from the snapshot to the end of
+ * the last put-back, and copies every new version into `into` (§5b steps 1–3). `into` is the run's folder
+ * (`recoveryRunDir(workspaceId, projectRoot, runId)`); it must be outside the project — the watch refuses otherwise.
+ * It stats with `fs.promises` (the thread pool), on an interval scaled to the number of files watched. A SQLite
+ * family is copied consistently: with `node:sqlite`'s `backup()` into one `x.db` when a `-wal` exists, else
+ * byte-copied and re-copied until two stats of the family agree. A version identical to the last copy is not copied
+ * again. Over `budget.projectBytes`, only the newest version of each file is kept and `overBudget()` says so.
+ */
+export function watchAppData(s: AppDataSnapshot, opts: { into: string; budget: RecoveryBudget }): AppDataWatch {
+    const root = path.resolve(s.root);
+    const into = path.resolve(opts.into);
+    if (isInsideFolder(into, root)) throw new Error('the recovery copy must be kept outside the project folder');
+    if (isInsideFolder(root, into)) throw new Error('the recovery folder must not hold the project folder');
+    const budget = opts.budget ?? RECOVERY_BUDGET;
+    const projectDir = path.dirname(into);
+    const homeGuess = path.dirname(path.dirname(projectDir));
+    const home = path.basename(homeGuess) === QA_RECOVERY ? homeGuess : undefined;
+    activeRuns.add(into);
+    activeWatchers++;
+    const ordinal = activeWatchers;
+    const startedAt = Date.now();
+
+    const changes: Array<{ file: string; at: number }> = [];
+    const versions: Array<{ n: number; files: string[]; at: number; bytes: number; why: string }> = [];
+    const seen = new Map<string, string>();          // file → `mtime:size` as last stat
+    const content = new Map<string, string>();       // file → content hash as last read ('gone' when gone)
+    const lastCopy = new Map<string, string>();      // family → familyHash of the last copy (seeded with the snapshot)
+    const untouched = new Set(s.tooLarge.map(familyOf));
+    let seq = 0;
+    let runBytes = 0;
+    let otherBytes = 0;
+    let over = false;
+    let stopped = false;
+    let timer: NodeJS.Timeout | null = null;
+    let chain: Promise<void> = Promise.resolve();
+    const serial = (work: () => Promise<void>) => { chain = chain.then(work, work).catch(() => { }); return chain; };
+    const rel = (abs: string) => path.relative(root, abs).split(path.sep).join('/');
+    const stampOf = (st: fs.Stats) => `${Math.floor(st.mtimeMs)}:${st.size}`;
+
+    //  Seeds: the snapshot's own state, so a change made since the snapshot is seen on the first poll.
+    const families = new Map<string, Array<[string, string]>>();
+    for (const [file, k] of s.files) {
+        seen.set(file, `${Math.floor(k.mtime.getTime())}:${k.size}`);
+        content.set(file, k.hash);
+        families.set(familyOf(file), [...(families.get(familyOf(file)) || []), [file, k.hash]]);
+    }
+    for (const [fam, members] of families) lastCopy.set(fam, familyHash(members));
+
+    //  The folders listed each poll: the project root (its records files), every data folder a snapshot file sits
+    //  in or under, the folder beside each snapshot file (a journal that appears), and the usual data folder names.
+    const listed = new Map<string, boolean>();       // folder → recursive
+    listed.set(root, false);
+    for (const name of RECOVERY_DATA_DIRS) listed.set(path.join(root, name), true);
+    for (const file of s.files.keys()) {
+        if (!listed.has(path.dirname(file))) listed.set(path.dirname(file), false);
+        const parts = path.relative(root, path.dirname(file)).split(path.sep);
+        for (let i = 0; i < parts.length; i++) if (DATA_DIR.test(parts[i])) { listed.set(path.join(root, ...parts.slice(0, i + 1)), true); break; }
+    }
+
+    const currentFiles = async (): Promise<string[]> => {
+        const found = new Set<string>(s.files.keys());
+        const walk = async (dir: string, recursive: boolean, depth: number) => {
+            if (found.size >= MAX_FILES || depth > MAX_DEPTH) return;
+            let entries: fs.Dirent[];
+            try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+            for (const e of entries) {
+                if (found.size >= MAX_FILES) return;
+                if (e.isSymbolicLink()) continue;
+                const abs = path.join(dir, e.name);
+                if (e.isDirectory()) { if (recursive && !NOT_DATA_DIRS.has(e.name.toLowerCase())) await walk(abs, true, depth + 1); continue; }
+                if (e.isFile() && isData(path.relative(root, abs)) && !/-shm$/iu.test(e.name)) found.add(abs);
+            }
+        };
+        for (const [dir, recursive] of listed) {
+            const depth = path.relative(root, dir).split(path.sep).filter(Boolean).length;
+            await walk(dir, recursive, depth);
+        }
+        return [...found].filter(f => !untouched.has(familyOf(f)) && !/-shm$/iu.test(f));
+    };
+
+    const hashFile = async (file: string) => hashOf(await fs.promises.readFile(file));
+
+    /** Copies a family into `dest`, consistently; returns the files written (project-relative) and their bytes. */
+    const copyFamily = async (members: string[], dest: string): Promise<{ files: string[]; bytes: number }> => {
+        const exists = async (f: string) => { try { return (await fs.promises.stat(f)).isFile(); } catch { return false; } };
+        const present: string[] = [];
+        for (const m of members) if (!/-shm$/iu.test(m) && await exists(m)) present.push(m);
+        const main = present.find(f => !/-(?:wal|journal)$/iu.test(f));
+        const wal = present.find(f => /-wal$/iu.test(f));
+        if (main && wal && DATABASE_FILE.test(main)) {
+            //  A live WAL database: one consistent x.db, through SQLite's own backup.
+            const to = path.join(dest, path.relative(root, main));
+            try {
+                await mkdirPrivate(path.dirname(to));
+                const sqlite = require('node:sqlite') as typeof import('node:sqlite');
+                const db = new sqlite.DatabaseSync(main, { readOnly: true });
+                try { await sqlite.backup(db, to); } finally { db.close(); }
+                //  The copy is one file that opens on its own: out of WAL mode, so no -wal or -shm is ever beside it.
+                const check = new sqlite.DatabaseSync(to);
+                try { check.exec('PRAGMA journal_mode=DELETE'); check.prepare('SELECT count(*) AS n FROM sqlite_master').get(); } finally { check.close(); }
+                for (const extra of ['-wal', '-shm', '-journal']) await fs.promises.rm(to + extra, { force: true }).catch(() => { });
+                if (process.platform !== 'win32') await fs.promises.chmod(to, 0o600).catch(() => { });
+                return { files: [rel(main)], bytes: (await fs.promises.stat(to)).size };
+            } catch {
+                await fs.promises.rm(to, { force: true }).catch(() => { });
+                //  No node:sqlite, or the backup failed: byte copies below.
+            }
+        }
+        //  Byte copies, again until two stats of the family agree.
+        const stats = async () => (await Promise.all(present.map(async f => { try { return stampOf(await fs.promises.stat(f)); } catch { return 'gone'; } }))).join('|');
+        let written: { files: string[]; bytes: number } = { files: [], bytes: 0 };
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const before = await stats();
+            written = { files: [], bytes: 0 };
+            for (const f of present) {
+                let buf: Buffer;
+                try { buf = await fs.promises.readFile(f); } catch { continue; }
+                const to = path.join(dest, path.relative(root, f));
+                await mkdirPrivate(path.dirname(to));
+                await writePrivate(to, buf);
+                written.files.push(rel(f));
+                written.bytes += buf.length;
+            }
+            if ((await stats()) === before) break;
+        }
+        return written;
+    };
+
+    const writeIndex = async () => {
+        const index = { runId: path.basename(into), startedAt, overBudget: over, versions: versions.map(v => ({ n: v.n, at: v.at, why: v.why, files: v.files, bytes: v.bytes })) };
+        await writePrivate(path.join(into, RUN_INDEX), JSON.stringify(index, null, 2)).catch(() => { });
+    };
+
+    /** Over the cap: keep only the newest version of each file; then older runs of this project make room. */
+    const keepNewestOnly = async () => {
+        const newest = new Map<string, number>();
+        for (const v of versions) for (const f of v.files) newest.set(f, v.n);
+        for (const v of versions) {
+            const dropped = v.files.filter(f => newest.get(f) !== v.n);
+            for (const f of dropped) {
+                const abs = path.join(into, String(v.n), ...f.split('/'));
+                try { const size = (await fs.promises.stat(abs)).size; v.bytes -= size; runBytes -= size; } catch { /* gone */ }
+                await fs.promises.rm(abs, { force: true }).catch(() => { });
+            }
+            v.files = v.files.filter(f => newest.get(f) === v.n);
+        }
+        for (let i = versions.length - 1; i >= 0; i--) {
+            if (versions[i].files.length) continue;
+            await fs.promises.rm(path.join(into, String(versions[i].n)), { recursive: true, force: true }).catch(() => { });
+            versions.splice(i, 1);
+        }
+        if (otherBytes + runBytes > budget.projectBytes) {
+            const runs = (await runsOf(projectDir)).filter(r => !isActive(r.dir)).reverse();
+            for (const r of runs) {
+                if (otherBytes + runBytes <= budget.projectBytes) break;
+                await fs.promises.rm(r.dir, { recursive: true, force: true }).catch(() => { });
+                otherBytes -= r.bytes;
+            }
+        }
+    };
+
+    /** One version: every family in `fams` whose content differs from its last copy. */
+    const takeVersion = async (fams: Map<string, string[]>, why: string, isFlush: boolean) => {
+        const todo: Array<{ fam: string; members: string[]; hash: string }> = [];
+        for (const [fam, members] of fams) {
+            const hash = familyHash(members.map(m => [m, content.get(m) ?? 'gone'] as [string, string]));
+            if (lastCopy.get(fam) === hash) continue;
+            if (members.every(m => (content.get(m) ?? 'gone') === 'gone')) { lastCopy.set(fam, hash); continue; }   // gone: nothing to copy
+            todo.push({ fam, members, hash });
+        }
+        if (!todo.length) return;
+        let estimate = 0;
+        for (const t of todo) for (const m of t.members) { try { estimate += (await fs.promises.stat(m)).size; } catch { /* gone */ } }
+        if (otherBytes + runBytes + estimate > budget.projectBytes) over = true;
+        if (over && !isFlush) return;   // over the cap, only the versions taken before a put-back are kept
+        const n = ++seq;
+        const dest = path.join(into, String(n));
+        const version = { n, files: [] as string[], at: Date.now(), bytes: 0, why };
+        for (const t of todo) {
+            const got = await copyFamily(t.members, dest).catch(() => ({ files: [] as string[], bytes: 0 }));
+            if (!got.files.length) continue;
+            version.files.push(...got.files);
+            version.bytes += got.bytes;
+            lastCopy.set(t.fam, t.hash);
+        }
+        if (!version.files.length) { await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => { }); return; }
+        versions.push(version);
+        runBytes += version.bytes;
+        if (over) await keepNewestOnly();
+        await writeIndex();
+    };
+
+    /** One poll: stat, read what changed, copy every family that changed. */
+    const poll = async (why: string, isFlush: boolean) => {
+        const files = await currentFiles();
+        const changed = new Map<string, string[]>();
+        const at = Date.now();
+        const groupOf = (fam: string) => files.filter(x => familyOf(x) === fam);
+        for (const f of files) {
+            let stamp = 'gone';
+            try { stamp = stampOf(await fs.promises.stat(f)); } catch { /* gone */ }
+            if (seen.get(f) === stamp) continue;
+            seen.set(f, stamp);
+            let hash = 'gone';
+            if (stamp !== 'gone') { try { hash = await hashFile(f); } catch { continue; } }
+            if (content.get(f) === hash) continue;   // touched, not changed
+            content.set(f, hash);
+            changes.push({ file: rel(f), at });
+            changed.set(familyOf(f), groupOf(familyOf(f)));
+        }
+        //  A flush copies every family that differs from its last copy, whether or not this poll saw it change.
+        if (isFlush) for (const f of files) if (!changed.has(familyOf(f))) changed.set(familyOf(f), groupOf(familyOf(f)));
+        if (changed.size) await takeVersion(changed, why, isFlush);
+        return files.length;
+    };
+
+    const start = (async () => {
+        await mkdirPrivate(into);
+        if (home && process.platform !== 'win32') {
+            for (const d of [home, path.dirname(projectDir), projectDir]) await fs.promises.chmod(d, 0o700).catch(() => { });
+        }
+        await writeIndex();
+        //  Pruning only ever runs inside a real recovery home: a folder given by a test or by mistake is never swept.
+        if (home) await pruneRecovery({ budget, projectDir, home }).catch(() => undefined);
+        otherBytes = (await runsOf(projectDir)).filter(r => path.resolve(r.dir) !== into).reduce((sum, r) => sum + r.bytes, 0);
+        //  Files present now that the snapshot did not keep, when it did not see every data file: the baseline.
+        if (!s.complete) {
+            for (const f of await currentFiles()) {
+                if (s.files.has(f)) continue;
+                try { const st = await fs.promises.stat(f); seen.set(f, stampOf(st)); content.set(f, await hashFile(f)); } catch { /* gone */ }
+            }
+        }
+    })().catch(() => undefined);
+
+    const schedule = (files: number) => {
+        if (stopped) return;
+        timer = setTimeout(() => { void serial(async () => { const n = await poll('poll', false).catch(() => files); schedule(n); }); }, recoveryIntervalMs(files, ordinal));
+        timer.unref?.();
+    };
+    void start.then(() => schedule(s.files.size));
+
+    let stopping: Promise<void> | null = null;
+    return {
+        changes: () => changes.map(c => ({ ...c })),
+        versions: () => versions.map(v => ({ n: v.n, files: [...v.files], at: v.at, bytes: v.bytes })),
+        overBudget: () => over,
+        async flush(why: string) {
+            await start;
+            await serial(async () => { await poll(String(why || 'flush'), true).catch(() => 0); });
+        },
+        async keep(entries: Array<{ rel: string; from: string }>, why: string) {
+            await start;
+            let kept = false;
+            await serial(async () => {
+                const n = ++seq;
+                const dest = path.join(into, String(n));
+                const version = { n, files: [] as string[], at: Date.now(), bytes: 0, why: String(why || 'kept') };
+                for (const e of entries) {
+                    const relPath = String(e.rel || '').split(/[\\/]/u).filter(p => p && p !== '..' && p !== '.').join('/');
+                    if (!relPath || !isData(relPath)) continue;
+                    try {
+                        const buf = await fs.promises.readFile(e.from);
+                        const to = path.join(dest, ...relPath.split('/'));
+                        await mkdirPrivate(path.dirname(to));
+                        await writePrivate(to, buf);
+                        version.files.push(relPath);
+                        version.bytes += buf.length;
+                    } catch { /* that copy is gone */ }
+                }
+                if (!version.files.length) { await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => { }); return; }
+                versions.push(version);
+                runBytes += version.bytes;
+                await writeIndex();
+                kept = true;
+            });
+            return kept;
+        },
+        stop() {
+            if (stopping) return stopping;
+            stopped = true;
+            if (timer) clearTimeout(timer);
+            stopping = (async () => {
+                await start;
+                await chain;
+                activeWatchers = Math.max(0, activeWatchers - 1);
+                activeRuns.delete(into);
+                if (!versions.length) await fs.promises.rm(into, { recursive: true, force: true }).catch(() => { });
+                else await writeIndex();
+            })();
+            return stopping;
+        },
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE 2T VERIFICATION PER PROJECT AT A TIME (§5b step 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A lock older than this is stale whoever holds it: longer than the longest verification. */
+export const VERIFY_LOCK_STALE_MS = 20 * 60 * 1000;
+/** A second 2T verification waits at most this long (or the run's remaining deadline, if shorter), then runs as path 3. */
+export const VERIFY_LOCK_WAIT_MS = 60_000;
+/** When this process started, to tell its own locks from a dead process's whose pid was reused. */
+const PROCESS_START = Math.round(Date.now() - process.uptime() * 1000);
+
+/** What `verify.lock` holds. */
+export interface VerifyLockInfo { pid: number; processStart: number; runId: string; at: number }
+
+/** A held lock; `release()` in a `finally`. */
+export interface VerifyLock { file: string; info: VerifyLockInfo; release(): Promise<void> }
+
+/** `<home>/<workspaceId>/<projectKey>/verify.lock`. */
+export function verifyLockFile(workspaceId: string, projectRoot: string, env: NodeJS.ProcessEnv = process.env): string {
+    return path.join(recoveryProjectDir(workspaceId, projectRoot, env), 'verify.lock');
+}
+
+function pidAlive(pid: number): boolean {
+    try { process.kill(pid, 0); return true; } catch (e: any) { return e?.code === 'EPERM'; }
+}
+
+/** Stale: no pid, its pid is dead, it is this pid but another process start, or it is older than 20 minutes. */
+export function isVerifyLockStale(info: Partial<VerifyLockInfo> | null | undefined, now = Date.now()): boolean {
+    if (!info || !Number.isInteger(info.pid) || (info.pid as number) <= 0) return true;
+    if (!Number.isFinite(info.at) || now - (info.at as number) > VERIFY_LOCK_STALE_MS) return true;
+    if (info.pid === process.pid) return Math.abs(Number(info.processStart) - PROCESS_START) > 1000;
+    return !pidAlive(info.pid as number);
+}
+
+/** A lock file that cannot be read as a lock is being written, unless it is older than a few seconds. */
+async function lockIsStale(file: string, info: VerifyLockInfo | null): Promise<boolean> {
+    if (info) return isVerifyLockStale(info);
+    try { return Date.now() - (await fs.promises.stat(file)).mtimeMs > 5000; } catch { return true; }
+}
+
+async function readLock(file: string): Promise<{ text: string; info: VerifyLockInfo | null } | null> {
+    let text: string;
+    try { text = await fs.promises.readFile(file, 'utf8'); } catch { return null; }
+    try { return { text, info: JSON.parse(text) }; } catch { return { text, info: null }; }
+}
+
+/**
+ * Takes the project's verify lock for a 2T verification, waiting at most `waitMs` (pass
+ * `min(VERIFY_LOCK_WAIT_MS, the run's remaining deadline)`). A stale lock is taken over. `null`: another live
+ * verification held it the whole wait — run this one as path 3 and tell `lockBusy`.
+ */
+export async function acquireVerifyLock(workspaceId: string, projectRoot: string, runId: string, opts: { waitMs: number; env?: NodeJS.ProcessEnv; pollMs?: number }): Promise<VerifyLock | null> {
+    const file = verifyLockFile(workspaceId, projectRoot, opts.env);
+    await mkdirPrivate(path.dirname(file));
+    const deadline = Date.now() + Math.max(0, opts.waitMs);
+    for (;;) {
+        const info: VerifyLockInfo = { pid: process.pid, processStart: PROCESS_START, runId: String(runId), at: Date.now() };
+        const text = JSON.stringify(info);
+        try {
+            const fh = await fs.promises.open(file, 'wx', 0o600);
+            try { await fh.writeFile(text, 'utf8'); } finally { await fh.close(); }
+            let released = false;
+            return {
+                file, info,
+                async release() {
+                    if (released) return;
+                    released = true;
+                    const now = await readLock(file);
+                    if (now && now.text === text) await fs.promises.rm(file, { force: true }).catch(() => { });
+                },
+            };
+        } catch (e: any) {
+            if (e?.code !== 'EEXIST') throw e;
+        }
+        const held = await readLock(file);
+        if (!held) continue;   // released between the two calls
+        const left = deadline - Date.now();
+        if (await lockIsStale(file, held.info)) {
+            //  Taken over only if it is still the same stale lock (another waiter may have replaced it).
+            const again = await readLock(file);
+            let removed = false;
+            if (again && again.text === held.text) removed = await fs.promises.rm(file, { force: true }).then(() => true, () => false);
+            if (removed || !again || again.text !== held.text) continue;
+            if (left <= 0) return null;   // a stale lock that cannot be removed: wait like a held one
+        }
+        if (left <= 0) return null;
+        await new Promise(r => setTimeout(r, Math.min(left, opts.pollMs ?? 250)));
+    }
+}
+
+/** At boot: removes every stale verify lock under the recovery home. Returns how many. */
+export async function sweepStaleVerifyLocks(env: NodeJS.ProcessEnv = process.env): Promise<number> {
+    let n = 0;
+    for (const projectDir of await projectDirsOf(recoveryHome(env))) {
+        const file = path.join(projectDir, 'verify.lock');
+        const held = await readLock(file);
+        if (held && await lockIsStale(file, held.info)) { await fs.promises.rm(file, { force: true }).catch(() => { }); n++; }
+    }
+    return n;
 }

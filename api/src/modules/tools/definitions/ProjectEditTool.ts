@@ -1129,7 +1129,8 @@ export class ProjectEditTool extends BaseTool {
                 if (!engineChanged && bugReport && buildVerified === true && !input?.skipAudit) {
                     try {
                         const { auditBuiltApp, formatAudit } = require('../../../core/quality/app-audit');
-                        const a = await auditBuiltApp(path.join(dir, 'dist'));
+                        //  The door reads the folder (design v13.3 §2): a change the owner already has runs private.
+                        const a = await auditBuiltApp(path.join(dir, 'dist'), { projectRoot: dir });
                         if (a && !a.skipped) auditNote = '\n' + formatAudit(a, isAr);
                         logs.push(`bug report: audited the built app — ${a?.skipped ? `skipped (${a.skipped})` : `${a?.score}/100`}`);
                     } catch (e: any) { logs.push(`bug-report audit failed: ${String(e?.message || e).slice(0, 80)}`); }
@@ -2246,11 +2247,23 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 const auditSid = String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID;
                 try { broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any); } catch { /* UI optional */ }
                 try { await require('../../browser/wsHub').waitForPanelWatcher(auditSid, 15_000); } catch { /* audit reports visibility honestly */ }
+                /**
+                 * WHERE THE CHECK MAY WRITE (design v13.3 §2, §2.3, §8). No serveUrl here: the audit serves
+                 * dist/ itself, so a folder the owner already has is walked private and one Joe never
+                 * delivered runs as today. The owner's own panel id is the stream target (never the shared
+                 * constant), and one pin holds the first audit and every round of the loop to one way of checking.
+                 */
+                const streamTo = String(context?.browserSessionId || '').trim();
+                const { anchorPinOnFirstAudit, auditNotComparable } = require('../../../core/quality/improve-loop');
+                const qaPin: Record<string, unknown> = {};
+                const qaOptions = { projectRoot: dir, qaPin, ...(streamTo ? { streamTo } : {}) };
                 audit = await auditBuiltApp(path.join(dir, 'dist'), {
                     timeoutMs: 180_000,
                     watchSessionId: auditSid,
                     requireVisibleBrowser: true,
+                    ...qaOptions,
                 });
+                anchorPinOnFirstAudit(qaPin, audit);
                 logs.push(`self-QA after edit: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit?.score}/100`}`);
 
                 // A project continuation used to stop at the first browser
@@ -2285,6 +2298,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
                     const readings = new Map<any, any>();
                     improvement = await improveUntilItStops(firstMeasurement, {
                         maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
+                        language: isAr ? 'ar' : 'en',
                         say: (line: string) => logs.push(line),
                         snapshot: (label: string) => String(snapshotProject(dir, label)?.id || ''),
                         rollback: async (id: string) => {
@@ -2300,8 +2314,12 @@ This is a correct answer, not a failure. Changing something the user did not ask
                                 timeoutMs: 180_000,
                                 watchSessionId: auditSid,
                                 requireVisibleBrowser: true,
+                                ...qaOptions,
                             });
                             if (measured?.skipped) return { score: 0, findingIds: [], skipped: true };
+                            //  Checked another way than the loop's first audit (§2.3): rolled back through `skipped`.
+                            const notComparable = auditNotComparable(measured, qaPin);
+                            if (notComparable) return { score: 0, findingIds: [], skipped: true, notComparable };
                             const reading = refusingMeasurement(measured);
                             readings.set(reading, measured);
                             return reading;

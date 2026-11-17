@@ -45,6 +45,9 @@
  */
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { showsSignInForm, signInThroughPage, type SignInAccount } from './sign-in';
+import { createLiveDataGuard, isDeleteControl, type LiveDataGuard } from './live-data-guard';
+import { probeLaunchOptions, type ProbeBrowserProxy } from './role-probe';
+import type { QaPath } from './qa-target';
 
 export type InteractiveCapability = 'search' | 'filtering' | 'sorting' | 'product catalogue';
 export const INTERACTIVE_CAPABILITIES: readonly InteractiveCapability[] = ['search', 'filtering', 'sorting', 'product catalogue'];
@@ -63,6 +66,12 @@ export interface InteractionMeasurement {
     measured: boolean;
     results: InteractionEvidence[];
     error?: string;
+    /**
+     * On the no-write walk (design v13.3 §6, path 3): what was not pressed so that nothing is saved in the owner's
+     * live app («control: …», «link: …»), and how many of the page's requests the guard stopped. Absent elsewhere.
+     */
+    notTried?: string[];
+    blocked?: number;
 }
 
 interface Snapshot {
@@ -264,7 +273,7 @@ const PAGE_DOORS = `(() => {${PAGE_HELPERS}
     if (seen.has(key)) continue;
     seen.add(key);
     el.setAttribute('data-joe-door', String(out.length));
-    out.push({ index: out.length, label: text });
+    out.push({ index: out.length, label: text, href: el.getAttribute('href') || '' });
   }
   return out;
 })()`;
@@ -443,21 +452,42 @@ function searchTerms(items: string[]): string[] {
 export async function measureInteractions(
     url: string,
     wanted: InteractiveCapability[],
-    opts: { timeoutMs?: number; signal?: AbortSignal; signIn?: SignInAccount } = {},
+    opts: {
+        timeoutMs?: number; signal?: AbortSignal; signIn?: SignInAccount;
+        /**
+         * The verification's path (design v13.3 §6). On the no-write walk (path 3) the page runs under the guard
+         * (live-data-guard.ts): Joe types into boxes but never presses Enter, never presses an apply/submit button,
+         * skips chips and doors whose words or address delete, and signs in only through `guard.allowing`.
+         * Elsewhere the probe runs as before.
+         */
+        qaPath?: QaPath;
+        /** The verification's fence (§4.4): the probe's own Chromium reaches only the app's address through it. */
+        browserProxy?: ProbeBrowserProxy;
+    } = {},
 ): Promise<InteractionMeasurement> {
     const want = Array.from(new Set(wanted.filter(w => INTERACTIVE_CAPABILITIES.includes(w))));
     if (!want.length || !url) return { measured: false, results: [] };
     const deadline = Date.now() + Math.max(5_000, opts.timeoutMs ?? 60_000);
     const left = () => deadline - Date.now();
     const stopped = () => left() <= 0 || opts.signal?.aborted === true;
+    const noWrite = opts.qaPath === 'no-write';
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { chromium } = require('playwright');
     let browser: any;
     try {
-        browser = await chromium.launch({ ...getChromiumLaunchOptions(), headless: true });
+        browser = await chromium.launch(probeLaunchOptions({ ...getChromiumLaunchOptions(), headless: true }, opts.browserProxy));
     } catch (e: any) {
         return { measured: false, results: [], error: `the browser could not start: ${String(e?.message || e).slice(0, 200)}` };
     }
+    /** Path 3's guard, on the probe's own private context (W1, W2); null elsewhere. */
+    let guard: LiveDataGuard | null = null;
+    const skipped: string[] = [];
+    /** Path 3: something not pressed so that nothing is saved, listed once. */
+    const notTried = (label: string) => { if (!skipped.includes(label)) skipped.push(label); guard?.notTried(label); };
+    /** What the result says on path 3; nothing elsewhere. */
+    const noWriteFacts = (): Pick<InteractionMeasurement, 'notTried' | 'blocked'> => (noWrite
+        ? { notTried: Array.from(new Set([...skipped, ...(guard?.notTriedLabels || [])])), blocked: guard?.aborted().length || 0 }
+        : {});
     const found = new Map<InteractiveCapability, string>();
     const tried = new Map<InteractiveCapability, string[]>();
     /** The page opened on a sign-in form and no account was given to pass it (sign-in.ts, H01). */
@@ -467,19 +497,32 @@ export async function measureInteractions(
         if (!tried.has(cap)) tried.set(cap, []);
         tried.get(cap)!.push(what);
     };
+    let page: any = null;
     try {
-        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        if (noWrite) {
+            //  Path 3 (W1, W2): a private context with service workers blocked, so every request passes the guard.
+            const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
+            //  No fence that reads the traffic (none, or an https app): its workers are not created (W11, review 7 B2).
+            const holdWorkers = !opts.browserProxy?.server || !/^http:/i.test(String(url));
+            guard = await createLiveDataGuard(context, { ...(opts.signIn ? { signIn: { identity: String(opts.signIn.identity || ''), password: String(opts.signIn.password || '') } } : {}), ...(holdWorkers ? { holdWorkers } : {}) });
+            page = await context.newPage();
+        } else {
+            page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        }
         page.setDefaultTimeout(4_000);
         const open = async () => {
             await page.goto(url, { waitUntil: 'load', timeout: Math.min(15_000, Math.max(3_000, left())) });
             await page.waitForTimeout(500);
             if (!await showsSignInForm(page)) return;
             if (!opts.signIn) { signInWall = true; return; }
-            const signed = await signInThroughPage(page, opts.signIn, { timeoutMs: Math.min(12_000, Math.max(2_000, left())) });
+            const account = opts.signIn;
+            const signInOnce = () => signInThroughPage(page, account, { timeoutMs: Math.min(12_000, Math.max(2_000, left())) });
+            //  Path 3 (W7): the one sign-in request is the only write that passes.
+            const signed = guard ? await guard.allowing({ identity: String(account.identity || ''), password: String(account.password || '') }, signInOnce) : await signInOnce();
             if (!signed.ok) { signInFailed = signed.why; throw new Error(`signing in with the account task_finish gave failed: ${signed.why}`); }
         };
         try { await open(); } catch (e: any) {
-            return { measured: false, results: [], error: signInFailed ? `signing in with the account task_finish gave failed: ${signInFailed}` : `the page did not open: ${String(e?.message || e).slice(0, 200)}` };
+            return { measured: false, results: [], error: signInFailed ? `signing in with the account task_finish gave failed: ${signInFailed}` : `the page did not open: ${String(e?.message || e).slice(0, 200)}`, ...noWriteFacts() };
         }
         /** Where the page's other lists sit, as the last «mark» snapshot chose them. */
         let places: string[] = [];
@@ -555,6 +598,8 @@ export async function measureInteractions(
             let verdict = first.items.length > before.items.length ? '' : judge(before, first, noise) || elsewhere(before, first, judge);
             if (verdict) return verdict;
             const apply = String(await page.evaluate(`(${PAGE_APPLY})(${JSON.stringify(c.id)})`).catch(() => '') || '');
+            //  Path 3 (W6): an apply is its form's submit — never pressed on the owner's live app, listed «not tried».
+            if (apply && noWrite) { notTried(`control: ${apply}`); return ''; }
             if (apply) {
                 await page.locator('[data-joe-apply="1"]').first().click().catch(() => { });
                 await settle();
@@ -593,6 +638,8 @@ export async function measureInteractions(
                 const c = candidates.find(x => x.id === id);
                 if (!c) continue;
                 if (cap === 'filtering' && c.kind === 'chip' && PAGE_TURN.test(c.label.trim())) continue;
+                //  Path 3 (W5): a chip, a column header or a box to tick whose words delete is not pressed.
+                if (noWrite && (c.kind === 'chip' || c.kind === 'header' || c.kind === 'toggle') && isDeleteControl(c.label)) { notTried(`control: ${c.label}`); continue; }
                 note(cap, byLabel(c));
                 let verdict = '';
                 if (cap === 'sorting') {
@@ -615,7 +662,8 @@ export async function measureInteractions(
                         verdict = await attempt(c, async () => {
                             await at(c).fill(term);
                             await page.waitForTimeout(150);
-                            await at(c).press('Enter').catch(() => { });
+                            //  Path 3 (W6): typed, never sent — an Enter in a box sends its form.
+                            if (!noWrite) await at(c).press('Enter').catch(() => { });
                         }, (b, a, n) => typedChange(b, a, n));
                         if (verdict) verdict = `typing «${term}» into ${byLabel(c)}: ${verdict}`;
                         await at(c).fill('').catch(() => { });
@@ -661,9 +709,11 @@ export async function measureInteractions(
         //  from a fresh page and measured the same way, within the deadline.
         if (want.some(cap => !found.has(cap)) && !stopped()) {
             await open();
-            const doors: Array<{ index: number; label: string }> = await page.evaluate(PAGE_DOORS);
+            const doors: Array<{ index: number; label: string; href?: string }> = await page.evaluate(PAGE_DOORS);
             for (const d of doors) {
                 if (stopped() || want.every(cap => found.has(cap))) break;
+                //  Path 3 (W5): a door whose words or address delete is not opened.
+                if (noWrite && isDeleteControl(d.label, d.href || '')) { notTried(`${d.href ? 'link' : 'control'}: ${d.label}`); continue; }
                 door = d;
                 await openView();
                 candidates = await page.evaluate(PAGE_CANDIDATES);
@@ -673,11 +723,19 @@ export async function measureInteractions(
         }
     } catch (e: any) {
         // A page that broke mid-measurement leaves what was already seen.
-        if (!found.size) return { measured: false, results: [], error: `the page could not be operated: ${String(e?.message || e).slice(0, 200)}` };
+        if (!found.size) return { measured: false, results: [], error: `the page could not be operated: ${String(e?.message || e).slice(0, 200)}`, ...noWriteFacts() };
     } finally {
+        if (guard) {
+            //  Path 3 (W1): the page is sent to about:blank before its context closes.
+            await page?.goto('about:blank').catch(() => { });
+            await guard.remove().catch(() => { });
+        }
         await browser.close().catch(() => { });
     }
+    /** Path 3: what a capability that did not answer was not tried with, said beside what was. */
+    const unsent = noWrite ? ' (on your live app Joe typed and chose without pressing Enter or an apply button, so nothing was sent)' : '';
     return {
+        ...noWriteFacts(),
         measured: true,
         results: want.map(cap => {
             const ops = tried.get(cap) || [];
@@ -693,7 +751,7 @@ export async function measureInteractions(
                 tried: ops.length,
                 detail: (ops.length
                     ? `on the live page I operated ${ops.length} control(s) — ${ops.slice(0, 5).join(', ')} — and the data shown never ${cap === 'sorting' ? 'changed order' : 'changed'}`
-                    : `the live page has no control ${cap === 'search' ? 'to type a search into' : cap === 'sorting' ? 'that sorts' : 'that filters'} (no select, date, range, checkbox or text box${cap === 'sorting' ? ', no column header' : ''})`) + wall,
+                    : `the live page has no control ${cap === 'search' ? 'to type a search into' : cap === 'sorting' ? 'that sorts' : 'that filters'} (no select, date, range, checkbox or text box${cap === 'sorting' ? ', no column header' : ''})`) + wall + (ops.length ? unsent : ''),
             };
         }),
     };

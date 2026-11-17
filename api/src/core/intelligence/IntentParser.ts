@@ -11,6 +11,7 @@ import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicit
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
 import { isUndoRequest } from '../engine/select';
+import { isShowCopiesLine, restoreReplyCopyId } from '../engine/restore-reply';
 import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, isWebOrder, clearIntentCache, reportsAFaultOrOrdersAFix } from './intent-classifier';
 import { hasRequestedAction, withoutFileDenials } from './requested-action';
 import { hasTerminalExecutionDenial, boundedNoFileTerminalCommands, parseRuntimeDiagnosticFacts } from '../orchestrator/runtime-diagnostic-contract';
@@ -53,11 +54,41 @@ export class IntentParser {
         return null;
     }
 
+    /** The intent of the exact restore line: project_data_recovery decides, from its own records, what it restores. */
+    static restoreReplyIntent(raw: string): StructuredIntent {
+        return {
+            goal: raw,
+            complexity: 'low',
+            riskLevel: 'medium',
+            suggestedAgent: 'Dev',
+            requiredTools: ['project_data_recovery'],
+            constraints: ['Bring back the copy of the app\'s data files this exact line names, only if Joe\'s latest list showed it; never rebuild.'],
+            rawIntent: { primary: raw, dataRestoreReply: true, deterministic: true },
+        };
+    }
+
+    /** The intent of the exact show line («اعرض نسخ بياناتي» / «show my data copies»): the read-only list of his copies. */
+    static showCopiesIntent(raw: string): StructuredIntent {
+        return {
+            goal: raw,
+            complexity: 'low',
+            riskLevel: 'low',
+            suggestedAgent: 'Dev',
+            requiredTools: ['project_data_recovery'],
+            constraints: ["List the copies Joe keeps of the app's data files; restore nothing; never rebuild."],
+            rawIntent: { primary: raw, dataCopiesList: true, deterministic: true },
+        };
+    }
+
     /**
      * Parse raw user input into a sophisticated StructuredIntent
      * This is a core reasoning step in the runtime engine.
      */
     static async parse(userText: string, context: ConversationContext): Promise<StructuredIntent> {
+        //  The exact restore line is decided before anything else reads it, and never by a model (review 9).
+        if (restoreReplyCopyId(userText)) return IntentParser.restoreReplyIntent(String(userText).trim());
+        //  …and so is the exact line that shows his data copies (review 10, M3).
+        if (isShowCopiesLine(userText)) return IntentParser.showCopiesIntent(String(userText).trim());
         if (IntentParser.isProvidedKnowledgeQuestion(userText)) {
             return {
                 goal: userText,
@@ -464,6 +495,10 @@ Return ONLY a JSON object:
         // then put before its undo: Joe asked which files to review (live,
         // 2026-11-05). An undo names no capability; the planner's undo decides
         // whose history it is (the chat's project, or its page).
+        //  His whole message is the line Joe's list of his data copies told him to send back (restore-reply.ts):
+        //  no word of any other message is read as asking for a copy (review 9, H1 M1).
+        if (restoreReplyCopyId(raw)) return IntentParser.restoreReplyIntent(raw);
+        if (isShowCopiesLine(raw)) return IntentParser.showCopiesIntent(raw);
         if (isUndoRequest(raw)) {
             return {
                 goal: raw,

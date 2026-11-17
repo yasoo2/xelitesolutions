@@ -346,6 +346,8 @@ const sessions = new Map<string, SessionState>();
  * when a browser exists» — never «open one for me». See startStreaming.
  */
 const watched = new Set<string>();
+/** Panel ids whose own capture loop is paused while a private walk streams to them, with how many pauses hold it (pauseStreaming). */
+const streamPauses = new Map<string, number>();
 
 /** True when a browser session is live on a REAL page (not blank/about:blank) —
  *  i.e. the user is currently looking at a loaded site. Used by the planner to
@@ -1137,6 +1139,8 @@ export function startStreaming(sessionId: string) {
   const sid = String(sessionId || '').trim();
   if (!sid) return;
   watched.add(sid);
+  //  A private walk streams to this id right now (pauseStreaming): it stays watched, and its own loop waits.
+  if (streamPauses.has(sid)) return;
   void (async () => {
     const s = sessions.get(sid);
     if (!s || s.streaming) return;
@@ -1205,6 +1209,45 @@ export function liveBrowserSessionCount(): number { return sessions.size; }
 export function resumeStreamingIfWatched(sessionId: string) {
     const sid = String(sessionId || '').trim();
     if (sid && watched.has(sid)) startStreaming(sid);
+}
+
+/**
+ * ⛔ ONE STREAMER PER PANEL ID (design v13.3 §8).
+ *
+ * A change run's walk runs in a private browser of its own, never in the panel's page, and streams that
+ * private page's frames to the owner's panel id. Two loops sending `stream_frame` to one id paint two pages
+ * into one panel, frame by frame in turn. So while the walk streams, this session's own capture loop is
+ * PAUSED: its timer is cleared and `streaming` is false, the id stays watched (the panel is still open, and
+ * nothing is broadcast as idle), and a panel that attaches meanwhile does not restart it. The returned
+ * `resume()` starts the loop again if the id is still watched; it is idempotent, and pauses nest (the loop
+ * comes back when the last one resumes).
+ */
+export function pauseStreaming(sessionId: string): () => void {
+  const sid = String(sessionId || '').trim();
+  if (!sid) return () => { /* nothing was paused */ };
+  streamPauses.set(sid, (streamPauses.get(sid) || 0) + 1);
+  const s = sessions.get(sid);
+  if (s) {
+    s.streaming = false;
+    if (s.streamTimer) {
+      try { clearInterval(s.streamTimer); } catch { }
+      s.streamTimer = null;
+    }
+  }
+  let resumed = false;
+  return () => {
+    if (resumed) return;
+    resumed = true;
+    const left = (streamPauses.get(sid) || 1) - 1;
+    if (left > 0) { streamPauses.set(sid, left); return; }
+    streamPauses.delete(sid);
+    if (watched.has(sid)) startStreaming(sid);
+  };
+}
+
+/** Whether a private walk holds this id's stream (pauseStreaming): a second walk does not stream to it. */
+export function isStreamingPaused(sessionId: string): boolean {
+  return streamPauses.has(String(sessionId || '').trim());
 }
 
 /**

@@ -1,0 +1,62 @@
+{
+ "dev-concurrently-json-server": {
+  "db.json": "{\n \"orders\": [\n  {\n   \"id\": 1,\n   \"name\": \"real customer\"\n  }\n ]\n}",
+  "index.html": "<script type=module src=/src/main.js></script>",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"concurrently \\\"vite\\\" \\\"json-server --watch db.json --port 5000\\\"\"\n },\n \"devDependencies\": {\n  \"vite\": \"^6\",\n  \"json-server\": \"^1\",\n  \"concurrently\": \"^9\"\n }\n}",
+  "src/api.js": "export const API = 'http://localhost:5000';\nexport const save = o => fetch(`${API}/orders`, { method: 'POST', body: JSON.stringify(o) });"
+ },
+ "dev-is-the-server": {
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"node server.js\"\n }\n}",
+  "server.js": "const http=require('http'),fs=require('fs'),path=require('path');const F=path.join(__dirname,'data','orders.json');\nhttp.createServer((q,r)=>{if(q.method==='POST'){let b='';q.on('data',x=>b+=x);q.on('end',()=>{const a=fs.existsSync(F)?JSON.parse(fs.readFileSync(F)):[];a.push(b);fs.mkdirSync(path.dirname(F),{recursive:true});fs.writeFileSync(F,JSON.stringify(a));r.end('ok')});return}r.end('<form method=post><input name=n><button>Save</button></form>')}).listen(process.env.PORT||3000,process.env.HOST);"
+ },
+ "dev-node-watch": {
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"node --watch server/index.js\"\n }\n}",
+  "server/index.js": "const http=require('http'),fs=require('fs'),path=require('path');const F=path.join(__dirname,'data','orders.json');\nhttp.createServer((q,r)=>{if(q.method==='POST'){let b='';q.on('data',x=>b+=x);q.on('end',()=>{const a=fs.existsSync(F)?JSON.parse(fs.readFileSync(F)):[];a.push(b);fs.mkdirSync(path.dirname(F),{recursive:true});fs.writeFileSync(F,JSON.stringify(a));r.end('ok')});return}r.end('<form method=post><input name=n><button>Save</button></form>')}).listen(process.env.PORT||3000,process.env.HOST);"
+ },
+ "dev-nodemon-server": {
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"nodemon server.js\"\n },\n \"devDependencies\": {\n  \"nodemon\": \"^3\"\n }\n}",
+  "server.js": "const http=require('http'),fs=require('fs'),path=require('path');const F=path.join(__dirname,'data','orders.json');\nhttp.createServer((q,r)=>{if(q.method==='POST'){let b='';q.on('data',x=>b+=x);q.on('end',()=>{const a=fs.existsSync(F)?JSON.parse(fs.readFileSync(F)):[];a.push(b);fs.mkdirSync(path.dirname(F),{recursive:true});fs.writeFileSync(F,JSON.stringify(a));r.end('ok')});return}r.end('<form method=post><input name=n><button>Save</button></form>')}).listen(process.env.PORT||3000,process.env.HOST);"
+ },
+ "next-dev-api-route": {
+  "data/orders.json": "[]",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"next dev\"\n },\n \"dependencies\": {\n  \"next\": \"^15\",\n  \"react\": \"^19\"\n }\n}",
+  "pages/api/orders.js": "import fs from 'fs'; import path from 'path';\nexport default (req, res) => { const f = path.join(process.cwd(), 'data', 'orders.json'); const a = JSON.parse(fs.readFileSync(f)); a.push(req.body); fs.writeFileSync(f, JSON.stringify(a)); res.json({ ok: true }); };",
+  "pages/index.js": "export default () => <form action=\"/api/orders\" method=\"post\"><input name=\"n\"/><button>Save</button></form>"
+ },
+ "vite-api-in-config-module": {
+  "index.html": "<script type=module src=/src/main.js></script>",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"vite\"\n },\n \"devDependencies\": {\n  \"vite\": \"^6\"\n }\n}",
+  "src/config.js": "export const API_BASE = 'https://api.my-shop.sa/v1';",
+  "src/main.js": "import { API_BASE } from './config.js';\nfetch(API_BASE + '/orders', { method: 'POST', body: '{}' });",
+  "vite.config.js": "export default {};"
+ },
+ "vite-axios-create": {
+  "index.html": "<script type=module src=/src/main.js></script>",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"vite\"\n },\n \"dependencies\": {\n  \"axios\": \"^1\"\n },\n \"devDependencies\": {\n  \"vite\": \"^6\"\n }\n}",
+  "src/api.js": "import axios from 'axios';\nexport const api = axios.create({ baseURL: 'http://localhost:5000/api' });\nexport const save = o => api.post('/orders', o);",
+  "vite.config.js": "export default {};"
+ },
+ "vite-middleware-writes": {
+  "data/orders.ndjson": "{\"real\":\"order\"}\n",
+  "index.html": "<script type=module src=/src/main.js></script>",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"vite\"\n },\n \"devDependencies\": {\n  \"vite\": \"^6\"\n }\n}",
+  "vite.config.js": "import fs from 'fs';\nexport default { plugins: [{ name: 'api', configureServer(s) { s.middlewares.use('/api/orders', (q, r) => { let b=''; q.on('data', x => b += x); q.on('end', () => { fs.appendFileSync('data/orders.ndjson', b + '\\n'); r.end('ok'); }); }); } }] };"
+ },
+ "vite-proxy-in-other-file": {
+  "dev.server.config.js": "export default { proxy: { '/api': 'http://localhost:5000' } };",
+  "index.html": "<script type=module src=/src/main.js></script>",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"vite\"\n },\n \"devDependencies\": {\n  \"vite\": \"^6\"\n }\n}",
+  "vite.config.js": "import server from './dev.server.config.js';\nexport default { server };"
+ },
+ "vite-proxy-quoted-key": {
+  "index.html": "<script type=module src=/src/main.js></script>",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"vite\"\n },\n \"devDependencies\": {\n  \"vite\": \"^6\"\n }\n}",
+  "vite.config.js": "export default { server: { 'proxy': { '/api': 'http://localhost:5000' } } };"
+ },
+ "vite-proxy-shorthand": {
+  "index.html": "<script type=module src=/src/main.js></script>",
+  "package.json": "{\n \"scripts\": {\n  \"dev\": \"vite\"\n },\n \"devDependencies\": {\n  \"vite\": \"^6\"\n }\n}",
+  "src/main.js": "fetch('/api/orders', { method: 'POST', body: '{}' });",
+  "vite.config.js": "const proxy = { '/api': 'http://localhost:5000' };\nexport default { server: { proxy } };"
+ }
+}

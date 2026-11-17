@@ -34,6 +34,10 @@
  */
 import fs from 'fs';
 import path from 'path';
+import type { QaPath, QaPin, QaRecord } from './qa-target';
+
+/** Two measurements taken on two different ways of checking (design v13.3 §2.3): the path the loop pinned, the one this audit ran. */
+export interface NotComparable { from: string; to: string }
 
 export interface Measurement {
     score: number;
@@ -51,6 +55,12 @@ export interface Measurement {
     findings?: Array<{ id: string; evidence?: any[] }>;
     /** Set when the measurement could not be taken; never counted as 0. */
     skipped?: boolean;
+    /**
+     * Set (with `skipped: true`) when the audit ran on a stricter way of checking than the loop pinned
+     * (design v13.3 §2.3): its number is not compared with the loop's, the round is rolled back through
+     * the `skipped` branch, and the first measurement stands — told with `notComparable`.
+     */
+    notComparable?: NotComparable;
     /**
      * The TOLD finding ids the walk saw (they never open, feed or score a round), and the
      * status of the walk's inspection ('complete', 'partial: …', 'failed: …'). With both,
@@ -110,6 +120,8 @@ export interface ImproveRound {
     rolledBack: boolean;
     /** The observable rollback outcome; distinguishes no snapshot from failed undo. */
     rollback: 'none' | 'failed' | 'done';
+    /** The round's audit ran on another way of checking (§2.3), so it was rolled back and the earlier number stands. */
+    notComparable?: NotComparable;
 }
 
 export interface ImproveResult {
@@ -147,6 +159,8 @@ export interface ImproveOptions {
     target?: number;
     /** Hard ceiling on rounds. Default 4. */
     maxRounds?: number;
+    /** The reader's language for the `notComparable` line ('ar', 'en', 'fr', 'es', 'de', 'ru'). Default 'en'. */
+    language?: string;
 }
 
 const uniq = (a: string[]) => a.filter((v, i) => a.indexOf(v) === i);
@@ -293,13 +307,18 @@ export async function improveUntilItStops(
                 : rollbackState === 'failed'
                     ? 'حاولت التراجع لكنه فشل — rollback was attempted but failed; could NOT roll it back'
                     : 'تم التراجع بنجاح — rollback completed successfully; rolled it back';
+            //  An audit on another way of checking (§2.3) arrives as skipped: its number is never compared.
+            const notComparable = after.skipped && after.notComparable ? after.notComparable : undefined;
             rounds.push({
                 round, before: current.score, after: after.skipped ? undefined : after.score,
                 targeted: remaining, changed, fixed: [],
                 verdict: 'no_measured_gain', rolledBack: !!undone, rollback: rollbackState,
+                ...(notComparable ? { notComparable } : {}),
             });
             stoppedBecause = 'no_measured_gain';
-            say(after.skipped
+            say(notComparable
+                ? `improve: round ${round} — ${notComparableLine(opts.language, notComparable.from, notComparable.to)} — ${rollbackMessage}, stopping at ${current.score}/100`
+                : after.skipped
                 ? `improve: round ${round} could not be measured — ${rollbackMessage}, stopping at ${current.score}/100`
                 : brought.length
                     ? `improve: round ${round} measured ${current.score} → ${after.score} but the page now shows what it did not before: ${brought.join(', ')} — ${rollbackMessage}, stopping`
@@ -384,6 +403,9 @@ export function normaliseImproveResult(
                 verdict,
                 rolledBack: raw?.rolledBack === true,
                 rollback,
+                ...(raw?.notComparable && typeof raw.notComparable === 'object'
+                    ? { notComparable: { from: String(raw.notComparable.from || ''), to: String(raw.notComparable.to || '') } }
+                    : {}),
             };
         })
         : [];
@@ -405,6 +427,16 @@ export function normaliseImproveResult(
 /** The one-line story of the loop, for a delivery report. */
 export function improveSummary(r: ImproveResult, isAr: boolean): string {
     const paid = r.rounds.filter(x => x.verdict === 'improved');
+    //  A round rolled back because its audit checked another way (§2.3) did not «gain nothing»: say what happened.
+    const lastRound = r.rounds[r.rounds.length - 1];
+    const changedWay = r.stoppedBecause === 'no_measured_gain' && lastRound?.notComparable
+        ? notComparableLine(isAr ? 'ar' : 'en', lastRound.notComparable.from, lastRound.notComparable.to)
+        : '';
+    if (changedWay && !paid.length) {
+        return isAr
+            ? `🔁 دورة التحسين: ${r.first.score}/100 — ${changedWay}`
+            : `🔁 Improvement loop: ${r.first.score}/100 — ${changedWay}`;
+    }
     //  «Zero findings» is not «no gain» — the first is the goal reached, the
     //  second is a loop that could not move. They must never read the same.
     if (r.stoppedBecause === 'nothing_left' && !paid.length) {
@@ -426,10 +458,140 @@ export function improveSummary(r: ImproveResult, isAr: boolean): string {
         build_failed: isAr ? 'الجولة التالية كسرت البناء فتراجعتُ عنها' : 'the next round broke the build and was rolled back',
         improved: isAr ? 'بلغتُ سقف الجولات' : 'hit the round ceiling',
     }[r.stoppedBecause];
+    if (changedWay) {
+        return (isAr
+            ? `🔁 دورة التحسين: ${steps}/100 عبر ${paid.length} جولة مدفوعة — ${changedWay}`
+            : `🔁 Improvement loop: ${steps}/100 across ${paid.length} paid round(s) — ${changedWay}`)
+            + (r.fixed.length ? (isAr ? ` زالت فعلاً: ${r.fixed.join('، ')}.` : ` Actually gone: ${r.fixed.join(', ')}.`) : '');
+    }
     return (isAr
         ? `🔁 دورة التحسين: ${steps}/100 عبر ${paid.length} جولة مدفوعة — ${why}.`
         : `🔁 Improvement loop: ${steps}/100 across ${paid.length} paid round(s) — ${why}.`)
         + (r.fixed.length ? (isAr ? ` زالت فعلاً: ${r.fixed.join('، ')}.` : ` Actually gone: ${r.fixed.join(', ')}.`) : '');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE WAY OF CHECKING PER LOOP (design v13.3 §2.1, §2.3, §2.5)
+//
+// A loop that compares two audits must compare like with like. Its owner (the
+// repair tool, the pipeline, react_project) reads the delivery record ONCE and
+// chooses the path before its live start; every audit of the loop is handed the
+// same pin and runs the stricter of the pin and its own choice. An audit that
+// ran stricter than the pin is not comparable: the loop keeps its earlier
+// measurement and tells `notComparable`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `owner-lines13.json › notComparable`, the six languages. */
+export const NOT_COMPARABLE_LINES: Readonly<Record<string, string>> = {
+    ar: 'تغيّر طريق الفحص بين القياسين ({from} ← {to})، فبقي القياس الأول هو المعتمد.',
+    en: 'The way of checking changed between the two measurements ({from} → {to}), so the first measurement stands.',
+    es: 'La forma de comprobar cambió entre las dos mediciones ({from} → {to}), así que vale la primera medición.',
+    fr: 'La manière de vérifier a changé entre les deux mesures ({from} → {to}) ; la première mesure fait donc foi.',
+    de: 'Die Prüfweise hat sich zwischen den beiden Messungen geändert ({from} → {to}); deshalb gilt die erste Messung.',
+    ru: 'Способ проверки изменился между двумя измерениями ({from} → {to}), поэтому в силе остаётся первое измерение.',
+};
+
+/** The `notComparable({from}, {to})` line in the reader's language (English when the language has no line). */
+export function notComparableLine(language: string | undefined, from: string, to: string): string {
+    const lang = String(language || 'en').toLowerCase().slice(0, 2);
+    const line = NOT_COMPARABLE_LINES[lang] || NOT_COMPARABLE_LINES.en;
+    return line.replace('{from}', String(from || '?')).replace('{to}', String(to || '?'));
+}
+
+/**
+ * Whether one audit of a loop is NOT comparable with the loop's pin: the audit reports
+ * `qaPath.comparable === false` (it ran a stricter path than the pin). `from` is the pin's path,
+ * `to` the path the audit ran. An audit with no `qaPath` (as today) is comparable.
+ */
+export function auditNotComparable(audit: any, pin?: QaPin): NotComparable | undefined {
+    const qa = audit?.qaPath;
+    if (!qa || qa.comparable !== false) return undefined;
+    return { from: String(pin?.path || pin?.first?.path || ''), to: String(qa.path || '') };
+}
+
+/**
+ * The FIRST audit of a loop has nothing earlier to keep: when it ran stricter than the seed (the round
+ * itself is not in question, the folder simply needs the stricter path), the loop's pin moves to the path
+ * it ran, so the rounds after it compare with it. Returns true when the pin moved.
+ */
+export function anchorPinOnFirstAudit(pin: QaPin | undefined, audit: any): boolean {
+    const qa = audit?.qaPath;
+    if (!pin || !qa || qa.comparable !== false || !qa.path) return false;
+    pin.path = qa.path as QaPath;
+    return true;
+}
+
+/**
+ * The loop owner's pin (§2.5), seeded before its live start: the delivery record is read ONCE (from the
+ * project folder, then from the folder the server runs from), and the path is chosen on the folder the
+ * server runs from. A folder with no record is a new build: `as-today`, read in one stat, nothing else.
+ * Never throws: a pin that cannot be seeded is returned empty, and the loop's first audit seeds it.
+ */
+export async function seedLoopQaPin(input: {
+    projectRoot: string;
+    /** The folder the walked server runs from (a packaged API, project_run's cwd); defaults to projectRoot. */
+    serverRoot?: string;
+    hasServeUrl: boolean;
+    /** project_run's own kind when it is known; else `detectStart` reads the server root. */
+    startKind?: string;
+    /** For the imported-repository signal (`projectOriginFor`). */
+    sessionId?: string;
+}): Promise<QaPin> {
+    const pin: QaPin = {};
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const qa: typeof import('./qa-target') = require('./qa-target');
+        const projectRoot = String(input.projectRoot || '').trim();
+        const serverRoot = String(input.serverRoot || '').trim() || projectRoot;
+        if (!projectRoot && !serverRoot) return pin;
+        let origin: 'built' | 'imported' | undefined;
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            origin = require('../engine/run').projectOriginFor(input.sessionId, projectRoot || serverRoot);
+        } catch { origin = undefined; }
+        let record: QaRecord = '';
+        for (const root of Array.from(new Set([projectRoot, serverRoot].filter(Boolean)))) {
+            record = qa.hasDeliveryRecord(root, { origin });
+            if (record) break;
+        }
+        pin.record = record;
+        let kind = String(input.startKind || '');
+        if (record && input.hasServeUrl && !kind) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                kind = String((await require('../../modules/tools/definitions/ProjectRunTool').detectStart(serverRoot, 0))?.kind || '');
+            } catch { kind = ''; }
+        }
+        const choice = await qa.chooseQaPath(serverRoot, { kind, hasServeUrl: input.hasServeUrl, record });
+        pin.path = choice.path;
+        pin.first = choice;
+    } catch { /* an unseeded pin: the loop's first audit seeds it (pinnedPath) */ }
+    return pin;
+}
+
+/**
+ * After the live start (§2.5): the choice is taken again on the folder the server now runs from, with
+ * project_run's own kind, and the stricter of it and the pin is kept. The record is the pin's (read once).
+ */
+export async function repinAfterLiveStart(pin: QaPin, input: { serverRoot: string; startKind?: string; hasServeUrl: boolean }): Promise<QaPin> {
+    try {
+        if (!pin || pin.record === undefined) return pin;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const qa: typeof import('./qa-target') = require('./qa-target');
+        const serverRoot = String(input.serverRoot || '').trim();
+        if (!serverRoot) return pin;
+        let kind = String(input.startKind || '');
+        if (pin.record && input.hasServeUrl && !kind) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                kind = String((await require('../../modules/tools/definitions/ProjectRunTool').detectStart(serverRoot, 0))?.kind || '');
+            } catch { kind = ''; }
+        }
+        const choice = await qa.chooseQaPath(serverRoot, { kind, hasServeUrl: input.hasServeUrl, record: pin.record });
+        pin.path = qa.strictest(pin.path, choice.path);
+        if (!pin.first) pin.first = choice;
+    } catch { /* the pin stands as it was */ }
+    return pin;
 }
 
 /**

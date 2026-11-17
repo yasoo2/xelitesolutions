@@ -31,6 +31,8 @@ import https from 'https';
 import path from 'path';
 import crypto from 'crypto';
 import { hisWordsFor, requestedRecords, transliteratedOnly } from './request-coverage';
+import type { QaPath } from './qa-target';
+import type { QaWindows } from './qa-windows';
 
 export const ISOLATION_FILE = 'joe-isolation.json';
 
@@ -90,6 +92,31 @@ export interface IsolationResult {
     error?: string;
     /** What was asked and answered, step by step. */
     evidence: string[];
+    /**
+     * Not run (design v13.3 §6): on the no-write walk (path 3) the probe would register two accounts and create a
+     * record in the owner's live app, never deleted — so it sends nothing. The capability is «not proven», never
+     * failed, and the owner is told `probeSkipped(isolation)`.
+     */
+    skipped?: 'no-write';
+}
+
+/**
+ * Whether the probe may run on a verification of this path (§6): everywhere but the no-write walk, whose live app
+ * holds the owner's data. On path 1 the walked origin holds none of it; on 2T and on a new build the data is put
+ * back as today.
+ */
+export function isolationRunsOn(qaPath?: QaPath): boolean {
+    return qaPath !== 'no-write';
+}
+
+/** The result of a probe that was not run on path 3: nothing was sent. */
+export function isolationSkipped(): IsolationResult {
+    return {
+        ok: false,
+        skipped: 'no-write',
+        error: 'not run: it registers two accounts and creates a record, and these checks run on your live app without saving anything in it',
+        evidence: [],
+    };
 }
 
 /**
@@ -141,7 +168,15 @@ interface Session { label: string; token?: string; cookie?: string }
  * The measurement. `base` is the live address project_run confirmed; every
  * request stays on it.
  */
-export async function measureIsolation(base: string, decl: IsolationDeclaration, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<IsolationResult> {
+export async function measureIsolation(base: string, decl: IsolationDeclaration, opts: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    /** The verification's path (§6): on the no-write walk nothing is sent (`isolationSkipped`). */
+    qaPath?: QaPath;
+    /** The verification's windows (§5b step 4): each request it sends is one, so its writes are never «unexplained». */
+    windows?: QaWindows;
+} = {}): Promise<IsolationResult> {
+    if (!isolationRunsOn(opts.qaPath)) return isolationSkipped();
     const evidence: string[] = [];
     const origin = new URL(base);
     const url = (p: string) => {
@@ -151,7 +186,7 @@ export async function measureIsolation(base: string, decl: IsolationDeclaration,
     };
     //  node:http, as probeServedResources: the same transport in the API
     //  process and in tests, no redirect followed, and a hard bound per answer.
-    const call = (method: string, p: string, session?: Session, body?: unknown): Promise<{ status: number; text: string; json: any; cookie: string }> => new Promise((resolve, reject) => {
+    const send = (method: string, p: string, session?: Session, body?: unknown): Promise<{ status: number; text: string; json: any; cookie: string }> => new Promise((resolve, reject) => {
         const target = url(p);
         const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
         const headers: Record<string, string | number> = { accept: 'application/json' };
@@ -179,6 +214,10 @@ export async function measureIsolation(base: string, decl: IsolationDeclaration,
         req.on('error', e => { opts.signal?.removeEventListener('abort', onAbort); reject(e); });
         req.end(payload);
     });
+    //  Each request inside one of the verification's windows when it keeps them (§5b step 4); as before otherwise.
+    const call = (method: string, p: string, session?: Session, body?: unknown) => opts.windows
+        ? opts.windows.around(`isolation ${method} ${p}`, () => send(method, p, session, body))
+        : send(method, p, session, body);
     const fail = (error: string): IsolationResult => ({ ok: false, error, evidence });
 
     try {

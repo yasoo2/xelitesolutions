@@ -21,6 +21,8 @@ import { applyViewportSize } from './ui-inspection';
 import { showsSignInForm, signInThroughPage, type SignInAccount } from './sign-in';
 import { casesFor, fillValueFor, markupFieldOf, meaningOf, selectValueFor, type FieldCase, type QaField } from './qa-field-cases';
 import { intentOf, judgeIntent, readControlState, readFacts, type ControlState, type IntentRead, type PageFacts } from './qa-control-intent';
+import { isDeleteControl, SIGN_IN_WORDS, type LiveDataGuard } from './live-data-guard';
+import type { QaFence } from './qa-fence';
 
 /** What the strip over the outlined element calls it, in his language. */
 const KIND_AR: Record<string, string> = {
@@ -224,6 +226,58 @@ function observeHandoff(page: any) {
             try { page.off('request', onRequest); } catch { /* page may be gone */ }
         },
     };
+}
+
+/*
+ * ⛔ PATH 3, THE NO-WRITE WALK (design v13.3 §5.3): ON THE OWNER'S LIVE APP NOTHING THE WALK DOES IS SAVED.
+ *
+ * The walk is given the guard (`ProbeOptions.noWrite`, live-data-guard.ts) only on a change run of an app whose
+ * data Joe cannot put back. Then a control or link whose words or address delete (W5, W8) is not pressed and is
+ * listed «not tried»; no form is sent, whatever its method (W6: a GET form carries what was typed); a sign-in
+ * happens only through the one sign-in form, inside `guard.allowing` (W7); and a press whose own request the
+ * guard aborted, or the fence refused, and that changed nothing, is «not tried», never dead (W9b). Without the
+ * guard every line below behaves exactly as it did.
+ */
+
+/** The effect of a control that was not pressed (or whose press was stopped) so that nothing is saved: never judged. */
+export const NOT_TRIED_EFFECT = 'not tried';
+
+/**
+ * W5 on the element itself: whether pressing it would delete — its text, `aria-label`, `title` or `href` holds a
+ * delete word or icon; a lone «×» counts unless it closes the open dialog that holds it. `label` is the walk's
+ * own name for it; a control the page cannot be asked about is judged by that name and its href.
+ */
+async function deletesOnPress(page: any, sel: string, label: string, href?: string): Promise<boolean> {
+    const seen: { texts: string[]; href: string; dialogClose: boolean } | null = await page.evaluate((s: string) => {
+        const el = document.querySelector(s) as HTMLElement | null;
+        if (!el) return null;
+        const dialog = el.closest('[role="dialog"], dialog') as HTMLElement | null;
+        const open = !!dialog && (dialog.tagName !== 'DIALOG' || (dialog as HTMLDialogElement).open)
+            && dialog.getBoundingClientRect().width > 0 && dialog.getBoundingClientRect().height > 0;
+        const dialogClose = open && (el.matches('[aria-label*="close" i]') || (dialog!.tagName === 'DIALOG' && el.tagName === 'BUTTON'));
+        const value = el.tagName === 'INPUT' ? String((el as HTMLInputElement).value || '') : '';
+        return { texts: [String(el.innerText || ''), el.getAttribute('aria-label') || '', el.getAttribute('title') || '', value], href: el.getAttribute('href') || '', dialogClose };
+    }, sel).catch(() => null);
+    if (!seen) return isDeleteControl(label, href);
+    return [label, ...seen.texts].some(t => !!String(t || '').trim() && isDeleteControl(t, undefined, seen.dialogClose))
+        || isDeleteControl('', seen.href || href || '');
+}
+
+/**
+ * W7: a page on which a re-sign-in may happen on path 3 — exactly one visible password field, inside a form whose
+ * text or `aria-label` holds a sign-in word. A second password form (change password, register, delete account)
+ * is never submitted.
+ */
+async function showsOnlySignInForm(page: any): Promise<boolean> {
+    return page.evaluate((words: { source: string; flags: string }) => {
+        const re = new RegExp(words.source, words.flags);
+        const shown = (el: Element) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
+        const passwords = Array.from(document.querySelectorAll('input[type="password"]')).filter(shown);
+        if (passwords.length !== 1) return false;
+        const form = passwords[0].closest('form') as HTMLElement | null;
+        if (!form) return false;
+        return re.test(`${form.innerText || ''} ${form.getAttribute('aria-label') || ''}`);
+    }, { source: SIGN_IN_WORDS.source, flags: SIGN_IN_WORDS.flags }).catch(() => false);
 }
 
 /** Runs in the page: catalogue everything a visitor could press. */
@@ -3283,6 +3337,13 @@ export async function auditBehaviour(fileUrl: string, opts?: {
     kind?: string;
     watchSessionId?: string;
     onProgress?: (phase: string) => void;
+    /**
+     * Path 3 (§5.3): the guard installed on the context of the page this audit is given (a borrowed page).
+     * Its presses follow `ProbeOptions.noWrite`, and an error the block caused is not charged (`guard.drops`).
+     */
+    noWrite?: LiveDataGuard;
+    /** The fence the browser runs behind (§4.3): an error a refused request caused is not charged (`fence.drops`). */
+    fence?: Pick<QaFence, 'drops' | 'appRefusals'>;
 }): Promise<BehaviourAudit> {
     const empty: BehaviourAudit = { ran: false, skipped: '', score: 0, findings: [], controls: [], metrics: {} };
     if (String(process.env.JOE_BEHAVIOUR_AUDIT || '1') === '0') {
@@ -3339,9 +3400,19 @@ export async function auditBehaviour(fileUrl: string, opts?: {
             try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { /* viewport sync is best effort */ }
         }
         await page.addInitScript('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
+        //  An error the no-write guard's block or the fence's refusal caused is told, never charged (W9, §4.3).
+        const causedByABlock = (text: string, url?: string): boolean => {
+            try { return !!opts?.noWrite?.drops(text, url) || !!opts?.fence?.drops(text, url); } catch { return false; }
+        };
         //  What the page reads, writes and opens, from its first load (startWalkWatch); a request the QA's guard stopped is never the page's error.
         startWalkWatch(page);
-        const onPageError = (e: any) => { if (jsErrors.length < 6 && !causedByStoppedDelete(page, String(e?.message || e))) jsErrors.push(String(e?.message || e).slice(0, 140)); };
+        const onPageError = (e: any) => {
+            if (jsErrors.length >= 6) return;
+            const t = String(e?.message || e);
+            if (causedByStoppedDelete(page, t)) return;
+            if ((opts?.noWrite || opts?.fence) && causedByABlock(t)) return;
+            jsErrors.push(t.slice(0, 140));
+        };
         const onConsole = (m: any) => {
             if (m.type() !== 'error' || jsErrors.length >= 6) return;
             const t = String(m.text());
@@ -3351,6 +3422,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
             const where = (() => { try { return String(m.location()?.url || ''); } catch { return ''; } })();
             if (/favicon\.ico/i.test(t) || /favicon\.ico/i.test(where)) return;
             if (causedByStoppedDelete(page, `${t} ${where}`)) return;
+            if ((opts?.noWrite || opts?.fence) && causedByABlock(t, where || undefined)) return;
             jsErrors.push(t.slice(0, 140));
         };
         const onDialog = (d: any) => {
@@ -3381,7 +3453,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
         }
         await page.waitForTimeout(500);
 
-        const probe = await probeControls(page);
+        const probe = await probeControls(page, opts?.noWrite || opts?.fence ? { noWrite: opts.noWrite, fence: opts.fence } : undefined);
         //  The walk is over: the delete guard comes down (its delayed stops counted with the rest).
         const lateStops = await endWalkWatch(page);
         if (lateStops.length) probe.metrics.qaDeletesBlocked = Number(probe.metrics.qaDeletesBlocked || 0) + lateStops.length;
@@ -3506,6 +3578,19 @@ export interface ProbeOptions {
     /** Called before every visible pointer or input action in strict QA. */
     isEyeOpen?: () => boolean;
     onProgress?: (m: string) => void;
+    /**
+     * PATH 3, THE NO-WRITE WALK (design v13.3 §5.3): the guard on this page's context. Given, a control or link
+     * that deletes is not pressed (W5), no form is sent (W6 — submits are not pressed and probeForms lists every
+     * form «not tried»), each press is one action bracket (`begin`/`end`), a press the guard stopped and that
+     * changed nothing is «not tried» (W9b), and a re-sign-in happens only on the one sign-in form, inside
+     * `guard.allowing` (W7). Not given: today's walk, byte for byte.
+     */
+    noWrite?: LiveDataGuard;
+    /**
+     * The fence the walk's browser runs behind (§4, paths 1, 2T and 3): a press whose only consequence was a
+     * request the fence refused is «not tried», never dead (§4.3).
+     */
+    fence?: Pick<QaFence, 'drops' | 'appRefusals'>;
 }
 
 export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ controls: ControlResult[]; metrics: Record<string, any>; forms?: FormResult[] }> {
@@ -3519,6 +3604,30 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         if (!open) metrics.eyeLost = true;
         return open;
     };
+    /** Path 3's guard (§5.3); undefined on every other path, where nothing below changes. */
+    const guard = opts?.noWrite;
+    const fenceRefused = () => { try { return opts?.fence ? opts.fence.appRefusals().length : 0; } catch { return 0; } };
+    /** One press as one action bracket (W9b): what the guard stopped, and what the fence refused, while it ran. */
+    const pressBracket = () => {
+        const mark = guard ? guard.begin() : 0;
+        const refusedFrom = fenceRefused();
+        let closed = -1;
+        return {
+            /** Closes the bracket (once): how many of this press's requests were stopped or refused. */
+            close: () => {
+                if (closed < 0) closed = (guard ? Math.max(0, guard.end(mark)) : 0) + Math.max(0, fenceRefused() - refusedFrom);
+                return closed;
+            },
+        };
+    };
+    /** Listed «not tried» on path 3 (W5, W6, W9b): `link: …` for a link, `control: …` for everything else. */
+    const notTried = (c: { kind: string; label: string }) => guard?.notTried(`${c.kind === 'link' || c.kind === 'anchor' ? 'link' : 'control'}: ${c.label}`);
+    /** Path 3: a control the walk does not press — a submit (W6: no form is sent) or one that deletes (W5). */
+    const keptFromPress = async (c: { kind: string; label: string; href?: string }, sel: string): Promise<boolean> => {
+        if (!guard) return false;
+        return c.kind === 'submit' || deletesOnPress(page, sel, c.label, c.href);
+    };
+    if (guard) metrics.noWriteWalk = true;
     const eyes = opts?.eyes || new AuditEyes({ watchSessionId: opts?.watchSessionId });
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
     //  What the page reads, from the walk's first probe on (readIdsStore): the records that were there — only ever a veto on a delete.
@@ -3793,7 +3902,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             //  A product that lost its session on the reload is signed in to again (ProbeOptions.signIn).
             if (opts?.signIn) {
                 await page.waitForTimeout(300).catch(() => { });
-                if (await showsSignInForm(page)) await signInThroughPage(page, opts.signIn, { timeoutMs: 8_000 }).catch(() => undefined);
+                if (!guard) {
+                    if (await showsSignInForm(page)) await signInThroughPage(page, opts.signIn, { timeoutMs: 8_000 }).catch(() => undefined);
+                } else if (await showsOnlySignInForm(page)) {
+                    //  Path 3 (W7): only on the one sign-in form, and only the one sign-in request it sends.
+                    const account = opts.signIn;
+                    await guard.allowing({ identity: String(account.identity || ''), password: String(account.password || '') },
+                        () => signInThroughPage(page, account, { timeoutMs: 8_000 })).catch(() => undefined);
+                }
             }
             await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
@@ -3867,6 +3983,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             return samePage(after, unknown) ? 'dead' : 'worked';
         };
         const toRecheck = anchorTargets.map((a, i) => ({ a, i })).filter(x => !x.a.exists).slice(0, 16);
+        /** Path 3: the in-page links not pressed because they delete (W5): not judged dead. */
+        const anchorsNotTried = new Set<number>();
         if (toRecheck.length) {
             const credit = (i: number, effect: string) => {
                 anchorTargets[i].exists = true;
@@ -3892,6 +4010,13 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             const still: Array<{ a: typeof anchorTargets[number]; i: number }> = [];
             for (const { a, i } of toRecheck) {
                 if (opts?.isEyeOpen && !opts.isEyeOpen()) break;
+                //  Path 3 (W5): a link whose words or address delete is not pressed; it stays as it was read.
+                if (guard && isDeleteControl(a.label, `#${a.target}`)) {
+                    notTried({ kind: 'link', label: a.label });
+                    anchorsNotTried.add(i);
+                    anchorControls[i].effect = NOT_TRIED_EFFECT;
+                    continue;
+                }
                 if (a.present) {
                     //  A section in the page, hidden until its tab is pressed.
                     if (!await pressLink(a.target)) continue;
@@ -3908,7 +4033,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (await routes(a.target) === 'worked') credit(i, 'navigation');
             }
             await restoreProbeStart();
-            metrics.deadAnchors = anchorTargets.filter(a => !a.exists).length;
+            metrics.deadAnchors = anchorTargets.filter((a, k) => !a.exists && !anchorsNotTried.has(k)).length;
         }
         /**
          * Can a person press it here: in view, and the topmost thing at its
@@ -4060,6 +4185,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: gone || 'not found', instance: c.ordinal, href: c.href });
                     continue;
                 }
+                //  Path 3: a submit (W6) or a control that deletes (W5) is not pressed, listed «not tried», never judged.
+                if (guard && await keptFromPress(current, current.sel)) {
+                    notTried(c);
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: NOT_TRIED_EFFECT, instance: c.ordinal, href: c.href });
+                    continue;
+                }
                 // An empty form with required fields is BLOCKED by the browser, so
                 // nothing in the DOM changes and a naive check calls the submit
                 // button dead. Refusing to submit an empty form is the behaviour
@@ -4204,6 +4335,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 //  A save the server took, or a refusal it gave, is the control working even when the page shows nothing new.
                 const savedBeforePress = probeWrites.saved();
                 const refusedBeforePress = probeWrites.refused();
+                /** What the guard stopped or the fence refused during this press (W9b, §4.3); 0 off those paths. */
+                let stoppedInPress = 0;
                 //  …and a delete the guard stopped (guardDeletes, held for the whole walk): the control was held, never dead.
                 const stopsBeforePress = deleteGuardStops(page);
                 try {
@@ -4218,19 +4351,24 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         expectRefusal(page, 3000);
                         await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, docMark).catch(() => { });
                     }
-                    // Use Playwright's stability check. A forced coordinate click
-                    // can land on a different node while React is laying out.
-                    await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
-                        metrics.controlClickErrors = metrics.controlClickErrors || [];
-                        metrics.controlClickErrors.push({ label: c.label, message: String(error?.message || error).slice(0, 180) });
-                    });
-                    const settleDeadline = Math.min(deadline, Date.now() + 2500);
-                    do {
-                        await page.waitForTimeout(100);
-                        const after = await page.evaluate(snapshot).catch(() => null);
-                        effect = download.succeeded() ? 'download' : (await handoff.target()) ? 'handoff' : page.url() !== beforeUrl ? 'navigation'
-                            : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
-                    } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
+                    const bracket = guard || opts?.fence ? pressBracket() : null;
+                    try {
+                        // Use Playwright's stability check. A forced coordinate click
+                        // can land on a different node while React is laying out.
+                        await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
+                            metrics.controlClickErrors = metrics.controlClickErrors || [];
+                            metrics.controlClickErrors.push({ label: c.label, message: String(error?.message || error).slice(0, 180) });
+                        });
+                        const settleDeadline = Math.min(deadline, Date.now() + 2500);
+                        do {
+                            await page.waitForTimeout(100);
+                            const after = await page.evaluate(snapshot).catch(() => null);
+                            effect = download.succeeded() ? 'download' : (await handoff.target()) ? 'handoff' : page.url() !== beforeUrl ? 'navigation'
+                                : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
+                        } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
+                    } finally {
+                        if (bracket) stoppedInPress = bracket.close();
+                    }
                 } finally {
                     download.stop();
                     handoff.stop();
@@ -4238,8 +4376,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
                 else if (!effect && deleteGuardStops(page) > stopsBeforePress) effect = 'held';
-                if (effect) await noteTakenAway(countsBefore);
-                await judgeJob(c.label, current.sel, effect, job, factsBefore, stateBefore);
+                //  A press whose own request was stopped and that changed nothing is «not tried», never dead (W9b).
+                if (!effect && stoppedInPress > 0) { effect = NOT_TRIED_EFFECT; notTried(c); }
+                if (effect && effect !== NOT_TRIED_EFFECT) await noteTakenAway(countsBefore);
+                //  Its job is not judged on a press whose request was stopped: what it would have moved never came.
+                if (!stoppedInPress) await judgeJob(c.label, current.sel, effect, job, factsBefore, stateBefore);
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
                 //  …unless it took him to another view of the same document, or the server answered with another page (probeForms says why).
@@ -4271,7 +4412,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * shows a form the start did not show has that form tried there —
                  * its cases, its valid submit, its record — and the page is put back.
                  */
-                else if (effect && !['reload', 'download', 'handoff', 'not found'].includes(effect) && c.kind !== 'submit'
+                else if (effect && !['reload', 'download', 'handoff', 'not found', NOT_TRIED_EFFECT].includes(effect) && c.kind !== 'submit'
                     && opts?.fillForms !== false && Date.now() < formsDeadline - 4000 && eyeIsOpen()) {
                     const prints: string[] = await evalInPage(page, visibleFormPrints).catch(() => [] as string[]);
                     const fresh = prints.filter(p => !initialFormPrints.has(p) && !revealedPrints.has(p));
@@ -4280,6 +4421,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         const shown = await probeForms(page, {
                             eyes, budgetMs: Math.max(6000, Math.min(20_000, formsDeadline - Date.now())), seenForms: seenFormsHere,
                             formScope: opts?.formScope, formContext: opts?.formContext, isEyeOpen: eyeIsOpen,
+                            ...(guard ? { noWrite: guard } : {}),
                         }).catch(() => null);
                         if (shown && (shown.metrics.formsFilled || shown.metrics.fieldCasesTried)) {
                             revealedEarly.forms.push(...shown.forms);
@@ -4290,7 +4432,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     }
                 }
             } catch { /* the control itself is what is under test */ }
-            controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect, instance: c.ordinal, href: c.href });
+            controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload' && effect !== NOT_TRIED_EFFECT, effect, instance: c.ordinal, href: c.href });
         }
         metrics.budgetExhausted = budgetHit;
         phase('controls');
@@ -4338,6 +4480,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const r = await probeForms(page, {
                     eyes, budgetMs: Math.max(6000, formsDeadline - Date.now()), seenForms: seenFormsHere,
                     formScope: opts?.formScope, formContext: opts?.formContext, isEyeOpen: eyeIsOpen,
+                    ...(guard ? { noWrite: guard } : {}),
                 });
                 filled = r.forms;
                 Object.assign(metrics, r.metrics);
@@ -4436,6 +4579,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (!eyeIsOpen()) break;
                 let el = await page.$(candidate.sel);
                 if (!el) continue;
+                //  Path 3: a submit (W6) or a control that deletes (W5) is not pressed in any state; listed «not tried».
+                if (guard && await keptFromPress(candidate, candidate.sel)) { notTried(candidate); continue; }
                 await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
                 if (!eyeIsOpen()) break;
                 await eyes.lookAt(page, await boxOf(page, candidate.sel), {
@@ -4455,6 +4600,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 await handoff.arm();
                 const savedBeforePress = probeWrites.saved();
                 const refusedBeforePress = probeWrites.refused();
+                /** What the guard stopped or the fence refused during this press (W9b, §4.3); 0 off those paths. */
+                let stoppedInPress = 0;
+                const bracket = guard || opts?.fence ? pressBracket() : null;
                 //  …and a delete the guard stopped (guardDeletes, held for the whole walk): the control was held, never dead.
                 const stopsBeforePress = deleteGuardStops(page);
                 try {
@@ -4472,14 +4620,17 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         effect = download.succeeded() ? 'download' : (await handoff.target()) ? 'handoff' : changed(before, after);
                     } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
                 } finally {
+                    if (bracket) stoppedInPress = bracket.close();
                     download.stop();
                     handoff.stop();
                 }
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
                 else if (!effect && deleteGuardStops(page) > stopsBeforePress) effect = 'held';
-                if (effect) await noteTakenAway(countsBefore);
-                await judgeJob(candidate.label, candidate.sel, effect, job, factsBefore, stateBefore);
+                //  A press whose own request was stopped and that changed nothing is «not tried», never dead (W9b).
+                if (!effect && stoppedInPress > 0) { effect = NOT_TRIED_EFFECT; notTried(candidate); }
+                if (effect && effect !== NOT_TRIED_EFFECT) await noteTakenAway(countsBefore);
+                if (!stoppedInPress) await judgeJob(candidate.label, candidate.sel, effect, job, factsBefore, stateBefore);
                 if (effect === 'navigation') noteLanding(candidate);
                 if (effect === 'navigation' || effect === 'handoff') {
                     // Hash routers and replaceState do not reliably create a
@@ -4492,7 +4643,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (afterState) stateKeys.add(stateKey(afterState));
                 metrics.statesVisited = stateKeys.size;
                 metrics.exploratoryActions++;
-                const worked = !!effect && effect !== 'reload';
+                const worked = !!effect && effect !== 'reload' && effect !== NOT_TRIED_EFFECT;
                 controls.push({
                     label: candidate.label,
                     bare: candidate.label,
@@ -4512,6 +4663,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         const revealed = await probeForms(page, {
                             eyes, budgetMs: Math.max(6000, explorationDeadline - Date.now()), seenForms: seenFormsHere,
                             formScope: opts?.formScope, formContext: opts?.formContext, isEyeOpen: eyeIsOpen,
+                            ...(guard ? { noWrite: guard } : {}),
                         }).catch(() => null);
                         if (revealed && (revealed.metrics.formsFilled || revealed.metrics.fieldCasesTried)) {
                             filled.push(...revealed.forms);
@@ -4542,6 +4694,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     const style = getComputedStyle(node);
                     return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
                 }).catch(() => false);
+                //  Path 3 (W5): a disclosure whose words delete is not pressed.
+                if (visible && guard && isDeleteControl(String(await handleLabel(disclosureTriggers[index]) || ''))) {
+                    notTried({ kind: 'button', label: String(await handleLabel(disclosureTriggers[index]) || '') });
+                    continue;
+                }
                 if (visible) visibleIndexes.push(index);
             }
             if (visibleIndexes.length > 1) {
@@ -4599,7 +4756,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         }
 
         const calculator = await page.$('[data-qa-calculator]');
-        if (calculator && eyeIsOpen()) {
+        //  Path 3 (W5): the calculator's check ends on its Reset, a delete word: not run, listed «not tried».
+        if (calculator && guard) notTried({ kind: 'button', label: 'calculator' });
+        else if (calculator && eyeIsOpen()) {
             const select = await calculator.$('[data-calculator-service], select');
             const currencySelect = await calculator.$('[data-calculator-currency]');
             const input = await calculator.$('input[type="number"]');
@@ -4883,7 +5042,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 let movedTo = '';
                 if (boxKind === 'text') {
                     await box.fill(QUERY, { timeout: 2000 });
-                    if (clearing) await box.press('Enter').catch(() => { });
+                    //  Path 3 (W6): an Enter in a box sends its form; typed, never sent.
+                    if (clearing && !guard) await box.press('Enter').catch(() => { });
                 } else {
                     //  Moved as a person moves it: another option, another date, a box ticked.
                     const target: string = await page.evaluate(() => {
@@ -4937,19 +5097,26 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const hadSomething = heldAtPress !== null && (movedTo ? heldAtPress === movedTo : heldAtPress !== '');
                 if (!eyeIsOpen()) break;
                 await eyes.press(page);
-                await (await page.$(ready.sel))?.click({ timeout: 2500, noWaitAfter: true });
                 let effect = '';
-                const settleDeadline = Date.now() + 2500;
-                do {
-                    await page.waitForTimeout(100);
-                    effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
-                    if (!effect && clearing && hadSomething) {
-                        const value = await boxValue();
-                        if (value !== null && (movedTo ? value !== movedTo : value === '')) effect = 'cleared';
-                    }
-                } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
+                let stoppedInPress = 0;
+                const bracket = guard || opts?.fence ? pressBracket() : null;
+                try {
+                    await (await page.$(ready.sel))?.click({ timeout: 2500, noWaitAfter: true });
+                    const settleDeadline = Date.now() + 2500;
+                    do {
+                        await page.waitForTimeout(100);
+                        effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
+                        if (!effect && clearing && hadSomething) {
+                            const value = await boxValue();
+                            if (value !== null && (movedTo ? value !== movedTo : value === '')) effect = 'cleared';
+                        }
+                    } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
+                } finally {
+                    if (bracket) stoppedInPress = bracket.close();
+                }
                 //  A clear pressed on a box that held nothing of the QA's had nothing to undo: not a fair press.
-                if (!clearing || hadSomething) fairPress.add(`${quiet.kind}|${quiet.label}|${quiet.instance ?? 0}`);
+                //  …nor is a press whose own request was stopped (W9b): what it would have shown never came.
+                if ((!clearing || hadSomething) && !stoppedInPress) fairPress.add(`${quiet.kind}|${quiet.label}|${quiet.instance ?? 0}`);
                 metrics.secondLook.push({ label: quiet.label, after: movedTo ? `its ${boxKind} field moved to «${movedTo}»` : clearing ? `«${QUERY}» searched` : `«${QUERY}» typed`, effect });
                 if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
             } catch { /* the control under test keeps its first verdict */ }
@@ -5034,15 +5201,22 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     const before = await page.evaluate(snapshot).catch(() => null);
                     if (!eyeIsOpen()) break;
                     await eyes.press(page);
-                    await (await page.$(quietNow.sel))?.click({ timeout: 2500, noWaitAfter: true });
                     let effect = '';
-                    const settleDeadline = Date.now() + 2500;
-                    do {
-                        await page.waitForTimeout(100);
-                        effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
-                    } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
+                    let stoppedInPress = 0;
+                    const bracket = guard || opts?.fence ? pressBracket() : null;
+                    try {
+                        await (await page.$(quietNow.sel))?.click({ timeout: 2500, noWaitAfter: true });
+                        const settleDeadline = Date.now() + 2500;
+                        do {
+                            await page.waitForTimeout(100);
+                            effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
+                        } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
+                    } finally {
+                        if (bracket) stoppedInPress = bracket.close();
+                    }
                     metrics.secondLook.push({ label: quiet.label, after: mover.label, effect });
-                    fairPress.add(`${quiet.kind}|${quiet.label}|${quiet.instance ?? 0}`);
+                    //  A press whose own request was stopped is no fair press (W9b).
+                    if (!stoppedInPress) fairPress.add(`${quiet.kind}|${quiet.label}|${quiet.instance ?? 0}`);
                     if (!effect && left) q.testedElsewhere = true;
                     if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
                     if (effect) q.answered = true;
@@ -5152,7 +5326,11 @@ export function semanticTypeForField(tag: string, name: string): 'email' | 'tel'
  */
 export async function probeForms(
     page: any,
-    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string>; formScope?: string; formContext?: string; isEyeOpen?: () => boolean },
+    opts?: {
+        eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string>; formScope?: string; formContext?: string; isEyeOpen?: () => boolean;
+        /** Path 3 (§5.3, W6): no form is filled and sent on the owner's live app; each is listed «not tried: form: <label>». */
+        noWrite?: LiveDataGuard;
+    },
 ): Promise<{ forms: FormResult[]; metrics: Record<string, any> }> {
     const eyes = opts?.eyes || new AuditEyes({});
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
@@ -5191,6 +5369,15 @@ export async function probeForms(
         return { forms: out, metrics };
     }
     metrics.formsSeen = forms.length;
+    /*
+     * PATH 3 (W6): ON THE OWNER'S LIVE APP NO FORM IS SENT, WHATEVER ITS METHOD — a GET form carries what was typed.
+     * Every form is listed «not tried», never filled, never judged; the walk says so (`notMeasuredLive`).
+     */
+    if (opts?.noWrite) {
+        for (const planned of forms) opts.noWrite.notTried(`form: ${String(planned?.label || '').trim() || 'form'}`);
+        metrics.notMeasuredLive = forms.length;
+        return { forms: [], metrics };
+    }
     //  Each write the product's own origin took or refused while the forms are tried (watchWrites).
     const writes = watchWrites(page);
     //  …and what it reads, and what it showed before any form was touched: the records that were there (ownRowVerdict).
@@ -6626,9 +6813,12 @@ export async function probeForms(
 
 /* ---- judgement, on what actually happened ------------------------------ */
 
-/** Controls that were never pressed: unreachable, declined by the product, consumed by the walk. */
+/**
+ * Controls that were never pressed: unreachable, declined by the product, consumed by the walk — or, on the no-write
+ * walk (path 3), not pressed or stopped so that nothing is saved in the owner's live app («not tried», §5.1 W5/W9b).
+ */
 //  'held': its press sent a delete the QA's guard stopped (guardDeletes) — what it would have done is not known, never «dead».
-const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current', 'idle', 'held']);
+const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current', 'idle', 'held', NOT_TRIED_EFFECT]);
 
 /** The verdict, kept separate so both audits reach it by the same road. */
 export function judgeBehaviour(

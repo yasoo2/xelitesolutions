@@ -54,6 +54,7 @@ import { pythonTestCommand } from './python-test-runner';
 import { isJoeAppKitDir, isMachineStateDirectory } from '../../shared/utils/project-tree';
 import { closeOf, loopRoutes, routeTablesIn, topLevelParts, type RouteTable } from './loop-routes';
 import { unverifiedRecordText } from './delivery-verdict';
+import type { QaWindows } from './qa-windows';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -1266,7 +1267,14 @@ export async function probeServedResources(
     baseUrl: string,
     prefixes: string[],
     records: Array<{ key: string; ids: string[]; paths?: ProbePath[] }>,
-    opts: { signal?: AbortSignal; timeoutMs: number; details?: Record<string, string[]> },
+    opts: {
+        signal?: AbortSignal; timeoutMs: number; details?: Record<string, string[]>;
+        /**
+         * The verification's windows (design v13.3 §5b step 4): each GET this probe sends is one, so a change the
+         * server makes while answering is never told as «unexplained». It runs the same on every path (§6: GET only).
+         */
+        windows?: QaWindows;
+    },
 ): Promise<Record<string, ProbeResult>> {
     const base = String(baseUrl || '').replace(/\/+$/u, '');
     const result: Record<string, ProbeResult> = Object.fromEntries(records.map(r => [r.key, 'inconclusive' as ProbeResult]));
@@ -1276,7 +1284,11 @@ export async function probeServedResources(
     const note = (key: string, line: string) => { if (opts.details) (opts.details[key] ||= []).push(line); };
     // node:http, not fetch: the same transport in the API process and in tests,
     // no automatic redirect following, and a hard per-answer bound.
-    const getOnce = (url: string): Promise<{ status: number; type: string; location: string } | null> => new Promise(resolve => {
+    //  …each one inside one of the verification's windows when it keeps them (§5b step 4); as before otherwise.
+    const getOnce = (url: string): Promise<{ status: number; type: string; location: string } | null> => (opts.windows
+        ? opts.windows.around(`coverage GET ${url}`, () => sendGet(url))
+        : sendGet(url));
+    const sendGet = (url: string): Promise<{ status: number; type: string; location: string } | null> => new Promise(resolve => {
         if (opts.signal?.aborted) return resolve(null);
         let settled = false;
         const finish = (value: { status: number; type: string; location: string } | null) => {
