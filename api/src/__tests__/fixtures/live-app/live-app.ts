@@ -55,10 +55,21 @@ export function labShape(parent: string, name: string, app: string, flags: strin
     let code = fs.readFileSync(path.join(LIVE_APP_FIXTURES, `${app}.cjs`), 'utf8');
     //  The lab's «partner» origin on port+1 (the stand-in for an outside mail service) listens only when asked.
     code = code.replace(/\nhttp\.createServer\(async \(req, res\) => \{ const raw = await body\(req\); fs\.appendFileSync\(log, `X-ORIGIN/, m => '\nif (process.env.JOE_LAB_PARTNER) ' + m.slice(1));
+    /*
+     * The shape keeps its records under its own folder, as a built app does: the folder is `__dirname`, written in
+     * the code, never a start argument. Review 9 (M3): a folder read from `process.argv` is whatever the start passes
+     * — outside the project too — so Joe never covers it, even when the file sets that argument itself. The lab's
+     * shapes read it from argv[3]; here they read their own folder, so each test still walks the app it meant to
+     * (records in the project, 2T where the app allows it), not one Joe must refuse.
+     */
+    code = code
+        .replace(/const root = process\.argv\[3\];/u, 'const root = __dirname;')
+        .replace(/const \[portS, root, flagsS\] = process\.argv\.slice\(2\);/u, 'const [portS, , flagsS] = process.argv.slice(2); const root = __dirname;');
+    if (/process\.argv\[3\]|\[portS, root/u.test(code)) throw new Error(`the lab shape ${app} reads its folder from its arguments`);
     //  One file, as a built app's server is: project_run reads its listen before it starts it.
     fs.writeFileSync(path.join(dir, 'server.js'), [
         ...(opts.partner ? ["process.env.JOE_LAB_PARTNER = '1';"] : []),
-        `process.argv[2] = process.env.PORT; process.argv[3] = __dirname; process.argv[4] = ${JSON.stringify(flags === '-' ? '' : flags)};`,
+        `process.argv[2] = process.env.PORT; process.argv[4] = ${JSON.stringify(flags === '-' ? '' : flags)};`,
         code,
     ].join('\n'));
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({

@@ -2261,6 +2261,39 @@ Rules:
             ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
 
+        /**
+         * [DATA RESTORE REPLY] His whole typed message is the one line Joe's list of his data copies told him to send
+         * back («استعِد النسخة 20261117-002502» / «restore copy 20261117-002502», restore-reply.ts). It goes to
+         * project_data_recovery, first and with no model in the loop; the tool restores only when its own records say
+         * that copy was in the latest list of this session and project, shown in an earlier turn within thirty
+         * minutes, and not used yet. No word of any other message is read as asking for a copy (review 9, H1 M1):
+         * those go on exactly as on main, and the model may call the tool's read-only `list` when he asks about them.
+         */
+        {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { restoreReplyCopyId } = require('../engine/restore-reply');
+            //  What he TYPED — never a file's block, a picture's description, or a resumed goal (review 9, L1).
+            const typed: string = typeof context?.ownerText === 'string' ? context.ownerText : userGoal;
+            const id: string | undefined = restoreReplyCopyId(typed);
+            if (id) {
+                const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+                const active = ((global as any).joeProjects || {})[sessionKey];
+                return {
+                    id: `data_restore_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_data_recovery',
+                        description: 'إعادة نسخة من بيانات التطبيق بالسطر الذي أرسله المالك',
+                        tool: 'project_data_recovery',
+                        agent: 'Dev',
+                        input: { ...(active?.dir ? { projectDir: active.dir } : {}), action: 'restore', restore: id },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'medium' },
+                };
+            }
+        }
+
         // [ANSWER-ONLY FRONT-DOOR GUARD] Check for explicit answer-only / no-execution contracts
         // BEFORE any planning. This catches long quoted specifications that say
         // "Explain this without executing" or "Answer only" before they reach
@@ -3505,43 +3538,6 @@ Rules:
             // Version history: rollback/undo and the versions list belong to
             // the page's own tool (instant restore, no model call).
             || /(تراجع|استرجع|(ارجع|أرجع|رجّع)[^.\n]{0,20}نسخ|نسخ(ة|ه)\s*(السابق|القديم|رقم)|اعرض\s*النسخ|إصدار\s*سابق|\bundo\b|\brollback\b|\brevert\b|version\s*history)/i.test(probe);
-
-        /**
-         * [DATA RECOVERY FAST-PATH] «رجّع بيانات تطبيقي» (review 7, B3; review 8, B1). When Joe's checks put the owner's
-         * data files back, every version they saw is kept outside the project, and he is told to ask Joe in the chat
-         * for one. Only an UNMISTAKABLE ask lands here (`isDataRecoveryRequest`: a bring-back verb and a data noun as
-         * whole words, no fix, build or fault word) — anything else goes on exactly as on main. And it never restores
-         * from here on a guess: it lists the copies (each with its id), and only a later message of his that names
-         * one id and confirms («نعم، رجّع النسخة 20261117-020212») asks for that copy, with the token the list
-         * issued; the tool checks it all again against his own message. A number in a message never names a copy.
-         */
-        {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { isDataRecoveryRequest, recoveryCopyIdIn, confirmsRecovery } = require('../engine/select');
-            const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
-            const active = ((global as any).joeProjects || {})[sessionKey];
-            if (active?.dir && !longConstructionBrief && isDataRecoveryRequest(userGoal)) {
-                const named: string | undefined = recoveryCopyIdIn(userGoal);
-                // eslint-disable-next-line @typescript-eslint/no-var-requires
-                const { pendingRecoveryToken } = require('../../modules/tools/definitions/ProjectDataRecoveryTool');
-                const token: string | undefined = named && confirmsRecovery(userGoal)
-                    ? pendingRecoveryToken(context?.sessionId, active.dir)
-                    : undefined;
-                return {
-                    id: `data_recovery_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{
-                        id: 'project_data_recovery',
-                        description: token ? 'إعادة نسخة من بيانات التطبيق أكّدها المالك' : 'عرض نسخ بيانات التطبيق التي احتفظ بها جو',
-                        tool: 'project_data_recovery',
-                        agent: 'Dev',
-                        input: { projectDir: active.dir, ...(token ? { restore: named, confirmToken: token } : { list: true }), request: userGoal },
-                        dependsOn: [],
-                    }],
-                    metadata: { complexity: 'low', riskLevel: token ? 'medium' : 'low' },
-                };
-            }
-        }
 
         /**
          * [UNDO FAST-PATH] «تراجع» on a PROJECT goes to the project's own

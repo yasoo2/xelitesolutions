@@ -1,14 +1,15 @@
 /**
- * BRINGING HIS DATA BACK IS NEVER A GUESS (review 8: B1, H1, H2, M1, M3).
+ * BRINGING HIS DATA BACK IS NEVER A GUESS (review 8: B1, H1, H2, M1, M3; the design of review 9).
  *
  * Review 8 proved that «الخطأ رقم 1 في قاعدة البيانات، صلحه» («fix error number 1 in the database») stopped the clinic's
  * server and replaced today's three patients with an old copy holding a Joe QA record: the keyword reader sent any data
- * word plus any «recover» letters to project_data_recovery, and the planner took the «1» as the copy to restore. Now:
- *   B1  only an unmistakable ask for his data back reaches the copies; every other message (the review's twenty) goes
- *       on exactly as on main. A restore takes two turns: a list (stable ids, local time, records, Joe's marked
- *       records) issues a token; only a LATER message of his naming that id and confirming brings it back, once.
+ * word plus any «recover» letters to project_data_recovery, and the planner took the «1» as the copy to restore. Review
+ * 9 proved the next reader of words no better (his-data-comes-back-only-on-his-exact-line.test.ts). Now:
+ *   B1  no message's words reach the copies; every message (the review's twenty) goes on exactly as on main. The model
+ *       may list the copies (stable ids, local time, records, Joe's marked records); the list ends with one line, and
+ *       only his whole later message being exactly that line brings that copy back, once.
  *   H1  the restore holds the project's verify lock, stops every server of Joe's serving the project, and refuses while
- *       any port the app uses still answers.
+ *       any port the app names answers — before anything is stopped.
  *   H2  copies kept by the packaged API folder or a server folder below the project are found from the chat.
  *   M3  a folder that is not the session's project is refused.
  */
@@ -18,7 +19,8 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import { fork, type ChildProcess } from 'child_process';
-import { agentEngineRoute, isDataRecoveryRequest } from '../core/engine/select';
+import { agentEngineRoute } from '../core/engine/select';
+import { restoreReplyCopyId } from '../core/engine/restore-reply';
 import {
     acquireVerifyLock, discardSnapshot, RECOVERY_BUDGET, recoveryRunDir, restoreAppData, snapshotAppData, watchAppData,
 } from '../core/quality/qa-leaves-no-trace';
@@ -98,14 +100,13 @@ describe('B1 — ordinary work never reaches his data copies', () => {
         const sessionId = 'joe-r8-route';
         openProject(sessionId, { dir: folder('route', { 'data/store.json': '[{"id":1}]' }) });
         const { IntentParser } = require('../core/intelligence/IntentParser');
-        for (const text of ORDINARY) {
-            expect([text, isDataRecoveryRequest(text)]).toEqual([text, false]);
+        //  Not even the asks of review 8 are read from their words now: the model may list, and only the line restores.
+        for (const text of [...ORDINARY, 'رجّع بيانات تطبيقي', 'استرجع نسخة البيانات رقم 2', 'bring back my data copy', 'نعم، رجّع النسخة 20261117-020212']) {
+            expect([text, restoreReplyCopyId(text)]).toEqual([text, undefined]);
             const intent = IntentParser.quickIntent(text);
             expect([text, (intent?.requiredTools || []).includes('project_data_recovery')]).toEqual([text, false]);
         }
-        for (const ask of ['رجّع بيانات تطبيقي', 'استرجع نسخة البيانات رقم 2', 'bring back my data copy', 'restore the records Joe kept', 'نعم، رجّع النسخة 20261117-020212']) {
-            expect([ask, isDataRecoveryRequest(ask)]).toEqual([ask, true]);
-        }
+        expect(IntentParser.quickIntent('restore copy 20261117-020212')?.requiredTools).toEqual(['project_data_recovery']);
     });
 
     it('with the agent engine on, the fixes the review named are changes the engine makes, as on main', async () => {
@@ -128,23 +129,24 @@ describe('B1 — ordinary work never reaches his data copies', () => {
         const { IntentParser } = require('../core/intelligence/IntentParser');
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         for (const text of ['الخطأ رقم 1 في قاعدة البيانات، صلحه', 'استرجع نسخة البيانات رقم 1']) {
-            const plan = await PlanningEngine.generatePlan({ intent: IntentParser.quickIntent(text) || { goal: text } }, undefined, { sessionId, language: 'ar' });
+            const plan = await PlanningEngine.generatePlan({ intent: IntentParser.quickIntent(text) || { goal: text } }, undefined, { sessionId, language: 'ar', ownerText: text });
             for (const step of plan.steps || []) {
-                expect([text, step.tool === 'project_data_recovery' && !!(step.input?.restore || step.input?.version)]).toEqual([text, false]);
-                if (step.tool === 'project_data_recovery') {
-                    await new ProjectDataRecoveryTool().execute(step.input, { sessionId, workspaceId: 'ws-r8', language: 'ar', runId: 'turn-1', ownerMessage: text });
-                }
+                expect([text, step.tool === 'project_data_recovery']).toEqual([text, false]);
             }
             expect(read(F)).toBe(today);
         }
-        //  A copy number from anywhere in a message, handed to the tool, restores nothing.
-        const out: any = await new ProjectDataRecoveryTool().execute({ version: '1' }, { sessionId, workspaceId: 'ws-r8', language: 'ar', runId: 'turn-2', ownerMessage: 'الخطأ رقم 1 في قاعدة البيانات، صلحه' });
-        expect(out.output.restored).toBeUndefined();
+        //  A copy number from anywhere in a message, handed to the tool as a restore, restores nothing.
+        const tool = new ProjectDataRecoveryTool();
+        await tool.execute({ action: 'list' }, { sessionId, workspaceId: 'ws-r8', language: 'ar', runId: 'turn-1', ownerMessage: 'وش النسخ؟' });
+        for (const input of [{ version: '1' }, { action: 'restore', restore: '1' }, { action: 'restore' }]) {
+            const out: any = await tool.execute(input, { sessionId, workspaceId: 'ws-r8', language: 'ar', runId: 'turn-2', ownerMessage: 'الخطأ رقم 1 في قاعدة البيانات، صلحه' });
+            expect(out.output.restored).toBeUndefined();
+        }
         expect(read(F)).toBe(today);
     });
 });
 
-describe('B1 / M1 — two steps, two turns, one copy he named', () => {
+describe('B1 / M1 — a list, then his exact line in a later turn, for one copy it showed', () => {
     async function shop(name: string) {
         const root = folder(name, { 'data/store.json': JSON.stringify({ orders: [{ id: 1 }] }) });
         await oneRun('ws-r8', root, 'run-A', 'data/store.json', JSON.stringify({ orders: [{ id: 1 }, { id: 2, customer: 'Huda' }] }));
@@ -159,7 +161,7 @@ describe('B1 / M1 — two steps, two turns, one copy he named', () => {
         const root = await shop('listed');
         const sessionId = 'joe-r8-list';
         openProject(sessionId, { dir: root });
-        const listed: any = await tool.execute({ list: true }, turn(sessionId, 'turn-1', 'restore my data'));
+        const listed: any = await tool.execute({ action: 'list' }, turn(sessionId, 'turn-1', 'restore my data'));
         const choices = await recoveryChoices('ws-r8', root);
         expect(choices.map(c => c.id)).toEqual(choices.map(c => recoveryCopyId(c.at)));
         const msg: string = listed.output.message;
@@ -170,47 +172,39 @@ describe('B1 / M1 — two steps, two turns, one copy he named', () => {
         expect(bLine).toMatch(/records Joe's checks marked/u);
         const aLine = msg.split('\n').find(l => l.includes(choices.find(c => c.runId === 'run-A')!.id))!;
         expect(aLine).not.toMatch(/marked/u);
-        expect(typeof listed.output.confirmToken).toBe('string');
-        expect(msg).toMatch(/send in a new message: «yes, restore copy \d{8}-\d{6}»/u);
+        expect(listed.output.confirmToken).toBeUndefined();
+        expect(msg.split('\n').pop()).toMatch(/^restore copy \d{8}-\d{6}$/u);
         expect(msg).not.toMatch(/number 1/u);
     });
 
-    it('brings back nothing in the same turn, without his confirmation, with another token, or for a copy he did not name; then exactly once', async () => {
+    it('brings back nothing in the same turn, on words that are not the line, or for a copy the line does not name; then exactly once', async () => {
         const root = await shop('confirmed');
         const F = path.join(root, 'data', 'store.json');
         const now = read(F);
         const sessionId = 'joe-r8-confirm';
         openProject(sessionId, { dir: root });
-        const listed: any = await tool.execute({ list: true }, turn(sessionId, 'turn-1', 'restore my data'));
-        const token = listed.output.confirmToken;
+        await tool.execute({ action: 'list' }, turn(sessionId, 'turn-1', 'restore my data'));
         const a = (await recoveryChoices('ws-r8', root)).find(c => c.runId === 'run-A')!;
         const b = (await recoveryChoices('ws-r8', root)).find(c => c.runId === 'run-B')!;
-        //  The model restores in the very turn that listed: refused.
-        let r: any = await tool.execute({ restore: a.id, confirmToken: token }, turn(sessionId, 'turn-1', `yes, restore copy ${a.id}`));
+        //  The model restores in the very turn that listed: refused (and the list is shown again, in turn 1).
+        let r: any = await tool.execute({ action: 'restore', restore: a.id }, turn(sessionId, 'turn-1', `restore copy ${a.id}`));
         expect(r.output.restored).toBeUndefined();
         expect(read(F)).toBe(now);
-        //  The same-turn refusal showed the list again: its token is the one a later turn may use.
-        const t2 = r.output.confirmToken;
-        //  His later message names it without confirming.
-        r = await tool.execute({ restore: a.id, confirmToken: t2 }, turn(sessionId, 'turn-2', `restore copy ${a.id}`));
-        expect(r.ok).toBe(false);
-        expect(read(F)).toBe(now);
-        //  Another token.
-        r = await tool.execute({ restore: a.id, confirmToken: token }, turn(sessionId, 'turn-2', `yes, restore copy ${a.id}`));
+        //  His later message confirms in words, but is not the line.
+        r = await tool.execute({ action: 'restore', restore: a.id }, turn(sessionId, 'turn-2', `yes, restore copy ${a.id}`));
         expect(r.output.restored).toBeUndefined();
         expect(read(F)).toBe(now);
-        const t3 = r.output.confirmToken;
-        //  The model asks for B while he confirmed A.
-        r = await tool.execute({ restore: b.id, confirmToken: t3 }, turn(sessionId, 'turn-3', `yes, restore copy ${a.id}`));
-        expect(r.ok).toBe(false);
+        //  The model asks for B while his line names A.
+        r = await tool.execute({ action: 'restore', restore: b.id }, turn(sessionId, 'turn-3', `restore copy ${a.id}`));
+        expect(r.output.restored).toBeUndefined();
         expect(read(F)).toBe(now);
-        //  He confirms A in a later turn, with the token of the list he saw: A comes back.
-        r = await tool.execute({ restore: a.id, confirmToken: t3 }, turn(sessionId, 'turn-4', `yes, restore copy ${a.id}`));
+        //  His line for A, in a later turn than the latest list (turn 3 showed it again): A comes back.
+        r = await tool.execute({ action: 'restore', restore: a.id }, turn(sessionId, 'turn-4', `restore copy ${a.id}`));
         expect(r.ok).toBe(true);
         expect(JSON.parse(read(F)).orders).toContainEqual({ id: 2, customer: 'Huda' });
         //  Used once.
         const after = read(F);
-        r = await tool.execute({ restore: b.id, confirmToken: t3 }, turn(sessionId, 'turn-5', `yes, restore copy ${b.id}`));
+        r = await tool.execute({ action: 'restore', restore: b.id }, turn(sessionId, 'turn-5', `restore copy ${b.id}`));
         expect(r.output.restored).toBeUndefined();
         expect(read(F)).toBe(after);
         //  The ids did not move: A and B are named as before, and the files as they were just before are a copy of their own.
@@ -220,39 +214,38 @@ describe('B1 / M1 — two steps, two turns, one copy he named', () => {
         expect(again.length).toBe(3);
     });
 
-    it('a token older than thirty minutes brings back nothing', async () => {
+    it('a line from a list older than thirty minutes brings back nothing', async () => {
         const root = await shop('expired');
         const F = path.join(root, 'data', 'store.json');
         const now = read(F);
         const sessionId = 'joe-r8-expired';
         openProject(sessionId, { dir: root });
-        const listed: any = await tool.execute({ list: true }, turn(sessionId, 'turn-1', 'restore my data'));
+        await tool.execute({ action: 'list' }, turn(sessionId, 'turn-1', 'restore my data'));
         const a = (await recoveryChoices('ws-r8', root)).find(c => c.runId === 'run-A')!;
         const real = Date.now;
         const spy = jest.spyOn(Date, 'now').mockImplementation(() => real() + 31 * 60 * 1000);
         try {
-            const r: any = await tool.execute({ restore: a.id, confirmToken: listed.output.confirmToken }, turn(sessionId, 'turn-2', `yes, restore copy ${a.id}`));
+            const r: any = await tool.execute({ action: 'restore', restore: a.id }, turn(sessionId, 'turn-2', `restore copy ${a.id}`));
             expect(r.output.restored).toBeUndefined();
         } finally { spy.mockRestore(); }
         expect(read(F)).toBe(now);
     });
 
-    it('the planner lists first, and asks for the copy only on his later confirmation naming its id, with the list\'s token', async () => {
+    it('the planner sends only his exact line to the copies, as a restore of the copy it names', async () => {
         const root = await shop('planned');
         const F = path.join(root, 'data', 'store.json');
         const sessionId = 'joe-r8-planned';
         openProject(sessionId, { dir: root });
         const { IntentParser } = require('../core/intelligence/IntentParser');
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
-        const plan = (text: string) => PlanningEngine.generatePlan({ intent: IntentParser.quickIntent(text) }, undefined, { sessionId, language: 'ar' });
-        const first = await plan('رجّع بيانات تطبيقي');
-        expect(first.steps.map((s: any) => [s.tool, s.input.list, s.input.restore])).toEqual([['project_data_recovery', true, undefined]]);
-        const listed: any = await tool.execute(first.steps[0].input, turn(sessionId, 'turn-1', 'رجّع بيانات تطبيقي', 'ar'));
-        expect(listed.output.message).toMatch(/أرسل في رسالة جديدة: «نعم، رجّع النسخة \d{8}-\d{6}»/u);
+        const plan = (text: string) => PlanningEngine.generatePlan({ intent: IntentParser.quickIntent(text) || { goal: text } }, undefined, { sessionId, language: 'ar', ownerText: text });
+        //  The model lists when he asks; the list ends with the Arabic line.
+        const listed: any = await tool.execute({ action: 'list' }, turn(sessionId, 'turn-1', 'رجّع بيانات تطبيقي', 'ar'));
+        expect(listed.output.message.split('\n').pop()).toMatch(/^استعِد النسخة \d{8}-\d{6}$/u);
         const a = (await recoveryChoices('ws-r8', root)).find(c => c.runId === 'run-A')!;
-        const ask = `نعم، رجّع النسخة ${a.id}`;
+        const ask = `استعِد النسخة ${a.id}`;
         const second = await plan(ask);
-        expect(second.steps.map((s: any) => [s.tool, s.input.restore, s.input.confirmToken])).toEqual([['project_data_recovery', a.id, listed.output.confirmToken]]);
+        expect(second.steps.map((s: any) => [s.tool, s.input.action, s.input.restore])).toEqual([['project_data_recovery', 'restore', a.id]]);
         const r: any = await tool.execute(second.steps[0].input, turn(sessionId, 'turn-2', ask, 'ar'));
         expect(r.ok).toBe(true);
         expect(r.output.message).toContain(`أعاد جو نسخة البيانات ${a.id}`);
@@ -268,12 +261,12 @@ describe('H1 — never under a running server, never during a check', () => {
         await oneRun('ws-r8', root, 'run-L', 'data/store.json', '{"v":"customer-order"}');
         const sessionId = 'joe-r8-locked';
         openProject(sessionId, { dir: root });
-        const listed: any = await tool.execute({ list: true }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
+        await tool.execute({ action: 'list' }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
         const id = (await recoveryChoices('ws-r8', root))[0].id;
         const lock = await acquireVerifyLock('ws-r8', root, 'a-running-check', { waitMs: 0 });
         expect(lock).not.toBeNull();
         try {
-            const r: any = await tool.execute({ restore: id, confirmToken: listed.output.confirmToken }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: `yes, restore copy ${id}` });
+            const r: any = await tool.execute({ action: 'restore', restore: id }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: `restore copy ${id}` });
             expect(r.ok).toBe(false);
             expect(r.error).toBe('check_running');
         } finally { await lock!.release(); }
@@ -290,11 +283,11 @@ describe('H1 — never under a running server, never during a check', () => {
         const sessionId = 'joe-r8-foreign';
         openProject(sessionId, { dir: root });
         try {
-            const listed: any = await tool.execute({ list: true }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
+            await tool.execute({ action: 'list' }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
             const id = (await recoveryChoices('ws-r8', root))[0].id;
-            const r: any = await tool.execute({ restore: id, confirmToken: listed.output.confirmToken }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: `yes, restore copy ${id}` });
+            const r: any = await tool.execute({ action: 'restore', restore: id }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: `restore copy ${id}` });
             expect(r.ok).toBe(false);
-            expect(r.error).toBe('port_still_answering');
+            expect(r.error).toBe('port_answers');
             expect(r.output.message).toContain(String(port));
             expect(read(path.join(root, 'data', 'store.json'))).toBe('{"v":"owner-now"}');
         } finally { await new Promise<void>(r => srv.close(() => r())); }
@@ -317,13 +310,13 @@ describe('H1 — never under a running server, never during a check', () => {
         _runningServers.set('joe-r8-joes-ws', { pid: child.pid, port, cwd: root, command: 'node holder.cjs', startedAt: Date.now() });
         const sessionId = 'joe-r8-joes';
         openProject(sessionId, { dir: root });
-        const listed: any = await tool.execute({ list: true }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
+        await tool.execute({ action: 'list' }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
         const id = (await recoveryChoices('ws-r8', root))[0].id;
         //  As every tool runs in a run: inside the execution firewall's context (Joe's own process tools need it).
         const { executionFirewall } = require('../orchestration/AgentExecutionFirewall');
-        const r: any = await executionFirewall.runInContext('joe-r8-joes-turn-2', () => tool.execute({ restore: id, confirmToken: listed.output.confirmToken }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: `yes, restore copy ${id}` }));
+        const r: any = await executionFirewall.runInContext('joe-r8-joes-turn-2', () => tool.execute({ action: 'restore', restore: id }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: `restore copy ${id}` }));
         expect([r.ok, r.error]).toEqual([true, undefined]);
-        expect(r.output.message).toMatch(/Joe stopped your app's server for it/u);
+        expect(r.output.message).toMatch(new RegExp(`Joe stopped your app's server on port ${port} for it`, 'u'));
         expect(read(path.join(root, 'data', 'store.json'))).toBe('{"v":"customer-order"}');
         expect(_runningServers.has('joe-r8-joes-ws')).toBe(false);
         const answers = await new Promise<boolean>(res => { const s = net.connect({ host: '127.0.0.1', port }); s.once('connect', () => { s.destroy(); res(true); }); s.once('error', () => res(false)); });
@@ -345,7 +338,7 @@ describe('H2 / M3 — every folder of his project, and only his project', () => 
         await oneRun('ws-r8', server, 'pipeline-s1', 'data/tasks.json', '[{"id":5}]');
         const sessionId = 'joe-r8-packaged';
         openProject(sessionId, { dir: web, type: 'react', packagedInto: api, linkedApiDir: api });
-        const out: any = await tool.execute({ list: true }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
+        const out: any = await tool.execute({ action: 'list' }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
         expect(out.output.versions.map((v: any) => v.files[0]).sort()).toEqual(['data/orders.json', 'data/tasks.json']);
         expect(out.output.message).not.toMatch(/keeps no copy/u);
     });
@@ -356,11 +349,11 @@ describe('H2 / M3 — every folder of his project, and only his project', () => 
         await oneRun('ws-r8', theirs, 'run-T', 'data/store.json', '{"v":"theirs-old"}');
         const sessionId = 'joe-r8-mine';
         openProject(sessionId, { dir: mine });
-        const listed: any = await tool.execute({ projectDir: theirs, list: true }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
+        const listed: any = await tool.execute({ projectDir: theirs, action: 'list' }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-1', ownerMessage: 'restore my data' });
         expect(listed.ok).toBe(false);
         expect(listed.error).toBe('outside_project');
         expect(listed.output.versions).toBeUndefined();
-        const r: any = await tool.execute({ projectDir: theirs, version: '1' }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: 'yes' });
+        const r: any = await tool.execute({ projectDir: theirs, action: 'restore', restore: '1' }, { sessionId, workspaceId: 'ws-r8', language: 'en', runId: 'turn-2', ownerMessage: 'yes' });
         expect(r.ok).toBe(false);
         expect(read(path.join(theirs, 'data', 'store.json'))).toBe('{"v":"theirs-now"}');
     });

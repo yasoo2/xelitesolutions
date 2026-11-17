@@ -10,7 +10,8 @@ import { readModelJsonObject } from '../../shared/utils/json';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseQuotedTextWriteRequest, hasGlobalExplicitReadDenial } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
-import { isDataRecoveryRequest, isUndoRequest } from '../engine/select';
+import { isUndoRequest } from '../engine/select';
+import { restoreReplyCopyId } from '../engine/restore-reply';
 import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, isWebOrder, clearIntentCache, reportsAFaultOrOrdersAFix } from './intent-classifier';
 import { hasRequestedAction, withoutFileDenials } from './requested-action';
 import { hasTerminalExecutionDenial, boundedNoFileTerminalCommands, parseRuntimeDiagnosticFacts } from '../orchestrator/runtime-diagnostic-contract';
@@ -53,11 +54,26 @@ export class IntentParser {
         return null;
     }
 
+    /** The intent of the exact restore line: project_data_recovery decides, from its own records, what it restores. */
+    static restoreReplyIntent(raw: string): StructuredIntent {
+        return {
+            goal: raw,
+            complexity: 'low',
+            riskLevel: 'medium',
+            suggestedAgent: 'Dev',
+            requiredTools: ['project_data_recovery'],
+            constraints: ['Bring back the copy of the app\'s data files this exact line names, only if Joe\'s latest list showed it; never rebuild.'],
+            rawIntent: { primary: raw, dataRestoreReply: true, deterministic: true },
+        };
+    }
+
     /**
      * Parse raw user input into a sophisticated StructuredIntent
      * This is a core reasoning step in the runtime engine.
      */
     static async parse(userText: string, context: ConversationContext): Promise<StructuredIntent> {
+        //  The exact restore line is decided before anything else reads it, and never by a model (review 9).
+        if (restoreReplyCopyId(userText)) return IntentParser.restoreReplyIntent(String(userText).trim());
         if (IntentParser.isProvidedKnowledgeQuestion(userText)) {
             return {
                 goal: userText,
@@ -464,18 +480,9 @@ Return ONLY a JSON object:
         // then put before its undo: Joe asked which files to review (live,
         // 2026-11-05). An undo names no capability; the planner's undo decides
         // whose history it is (the chat's project, or its page).
-        //  His data files' copies (review 7, B3): the chat brings one back, the code's undo is not asked.
-        if (isDataRecoveryRequest(raw)) {
-            return {
-                goal: raw,
-                complexity: 'low',
-                riskLevel: 'low',
-                suggestedAgent: 'Dev',
-                requiredTools: ['project_data_recovery'],
-                constraints: ['List or bring back a copy Joe kept of the app\'s data files; never rebuild.'],
-                rawIntent: { primary: raw, dataRecoveryRequest: true, deterministic: true },
-            };
-        }
+        //  His whole message is the line Joe's list of his data copies told him to send back (restore-reply.ts):
+        //  no word of any other message is read as asking for a copy (review 9, H1 M1).
+        if (restoreReplyCopyId(raw)) return IntentParser.restoreReplyIntent(raw);
         if (isUndoRequest(raw)) {
             return {
                 goal: raw,

@@ -249,11 +249,6 @@ function callArgs(text: string, open: number): string[] {
     return args;
 }
 
-/** Whether the code itself sets `process.argv[slot]` to its own folder (`__dirname`, `process.cwd()`, `'.'`) — the project. */
-function argvIsTheProject(slot: number, text: string): boolean {
-    return new RegExp(`\\bprocess\\s*\\.\\s*argv\\s*\\[\\s*${slot}\\s*\\]\\s*=(?!=)\\s*(?:__dirname|process\\s*\\.\\s*cwd\\s*\\(\\s*\\)|(['"])\\.\\/?\\1)\\s*[;\\n]`, 'u').test(text);
-}
-
 /**
  * What one file expression names, read through the file's own constants (three deep): the string parts in order,
  * or `unresolved` when a part comes from something the file does not define (a parameter, an import, the env).
@@ -267,14 +262,11 @@ function fileNameOf(expr: string, text: string, depth = 0): { parts: string[]; r
     if (/\bprocess\.env\b|\bimport\.meta\.env\b/u.test(expr)) unresolved = true;
     /*
      * A folder the app is STARTED with (`process.argv[3]`) is whatever the start says — any folder, outside the project
-     * too (review 8, H3). It is the project only when the app's own code sets that very slot to its folder
-     * (`process.argv[3] = __dirname`) before it reads it; else it is not read to the end, so not covered: never 2T.
+     * too (review 8, H3). Nothing in the file makes it the project: review 9 (M3) proved that `process.argv[3] =
+     * __dirname` may be only a default (`if (!process.argv[3]) …`) or come after the read, and the start then passes
+     * an outside folder. A name read from the arguments is not read to the end, so not covered: never 2T.
      */
-    const slot = /^\s*process\s*\.\s*argv\s*\[\s*(\d+)\s*\]/u.exec(expr);
-    if (slot) return argvIsTheProject(Number(slot[1]), text)
-        ? { parts: [], raw: [], unresolved: false, climbs: 0, fileBased: false }
-        : { parts: [], raw: [], unresolved: true, climbs: 0, fileBased: false };
-    if (/\bprocess\s*\.\s*argv\b/u.test(expr)) unresolved = true;
+    if (/\bprocess\s*\.\s*argv\b/u.test(expr)) return { parts: [], raw: [], unresolved: true, climbs: 0, fileBased: false };
     //  In source order: a template literal (its text, then each ${…}), a quoted string, a name (or a member read).
     const TOKEN = /`((?:\\[\s\S]|[^`\\])*)`|(['"])((?:\\.|(?!\2)[^\\])*)\2|([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)/gu;
     for (const m of expr.matchAll(TOKEN)) {
@@ -297,13 +289,6 @@ function fileNameOf(expr: string, text: string, depth = 0): { parts: string[]; r
         //  any folder, outside the project too (review 8, H3). It is not read to the end, so not covered: never 2T.
         const unpacked = new RegExp(`\\b(?:const|let|var)\\s*[\\[{][^\\]}=;]*(?<![\\w$])${esc}(?![\\w$])[^\\]}=;]*[\\]}]\\s*=\\s*([^;\\n]+)`, 'u').exec(text);
         if (unpacked && !/\bprocess\s*\.\s*argv\b/u.test(unpacked[1])) { follow(unpacked[1]); continue; }
-        if (unpacked) {
-            //  `const [port, root] = process.argv.slice(2)`: `root` is slot 3 — the project only if the code sets it so.
-            const from = /^\s*process\s*\.\s*argv\s*\.\s*slice\s*\(\s*(\d+)\s*\)\s*$/u.exec(unpacked[1]);
-            const names = /^[^[]*\[([^\]]*)\]/u.exec(unpacked[0])?.[1]?.split(',').map(x => x.trim().replace(/\s*=.*$/u, '')) || [];
-            const at = names.indexOf(name);
-            if (from && at >= 0 && argvIsTheProject(Number(from[1]) + at, text)) continue;
-        }
         unresolved = true;
     }
     //  How far above its base the name climbs («..»): above the project is outside what the snapshot keeps.

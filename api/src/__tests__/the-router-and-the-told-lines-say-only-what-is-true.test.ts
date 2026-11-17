@@ -2,8 +2,8 @@
  * THE ROUTER AND THE TOLD LINES SAY ONLY WHAT IS TRUE (review 8: H3, M2, M4, L4, L5).
  *
  *   H3  a store whose folder comes from the start's arguments (`const [port, root] = process.argv.slice(2)`), or whose
- *       name climbs out of the project, is not one the snapshot keeps: never 2T — unless the app's own code sets that
- *       argument to its own folder (`process.argv[3] = __dirname`), which is the project.
+ *       name climbs out of the project, is not one the snapshot keeps: never 2T — even when the app's own code sets
+ *       that argument (`process.argv[3] = __dirname`), which may be only a default or come after the read (review 9, M3).
  *   M2  on 2T, when the server would not stop, the chat says it in one line and the certificate never says «put back».
  *   M4  project_repair handed a server it did not start walks it on path 3 and writes nothing back under it.
  *   L4  a page opened once more never waits past what is left of the walk's budget.
@@ -61,11 +61,14 @@ describe('H3 — a store outside the project, or named by the start, is never 2T
         expect(c.reasons.map(r => r.key)).toContain('outsidePath');
     });
 
-    it('the app\'s own code setting the argument to its own folder is the project, as before', async () => {
+    it('the app\'s own code setting the argument to its own folder is still a folder from the arguments: never 2T (review 9, M3)', async () => {
         const dir = shop('own-folder', 'node server.js', ['process.argv[2] = process.env.PORT; process.argv[3] = __dirname;', HEAD, 'const port = Number(process.argv[2]); const root = process.argv[3];', "const FILE = path.join(root, 'data', 'orders.json');", POSTS]);
-        expect((await chooseQaPath(dir, { kind: 'node-entry', hasServeUrl: true, record: 'history' })).path).toBe('2t');
+        expect((await chooseQaPath(dir, { kind: 'node-entry', hasServeUrl: true, record: 'history' })).path).toBe('no-write');
         const unpacked = shop('own-folder-unpacked', 'node server.js', ['process.argv[3] = __dirname;', HEAD, 'const [port, root] = process.argv.slice(2);', "const FILE = path.join(root, 'data', 'orders.json');", POSTS]);
-        expect((await chooseQaPath(unpacked, { kind: 'node-entry', hasServeUrl: true, record: 'history' })).path).toBe('2t');
+        expect((await chooseQaPath(unpacked, { kind: 'node-entry', hasServeUrl: true, record: 'history' })).path).toBe('no-write');
+        //  The same store named from the code's own folder is the project: 2T, as it always was.
+        const own = shop('own-dirname', 'node server.js', [HEAD, 'const port = Number(process.env.PORT);', "const FILE = path.join(__dirname, 'data', 'orders.json');", POSTS]);
+        expect((await chooseQaPath(own, { kind: 'node-entry', hasServeUrl: true, record: 'history' })).path).toBe('2t');
     });
 });
 

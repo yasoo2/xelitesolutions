@@ -4,8 +4,9 @@
  * He is told: «Joe kept your app's data files as they were before each put-back … To bring one back, ask Joe in the
  * chat». Review 7 found no code path that could bring one back, and copies pruned after five runs while he was told
  * «14 days». Now:
- *   - his ask in the chat routes to `project_data_recovery` (no menu, button, tab or panel), which lists the copies and
- *     brings back the one he numbers — his files as they were just before are kept as a copy of their own;
+ *   - his ask in the chat reaches `project_data_recovery` (no menu, button, tab or panel): the model lists the copies,
+ *     and the one line the list ends with, sent back by him as his whole message, brings that copy back (review 9) —
+ *     his files as they were just before are kept as a copy of their own;
  *   - every run's copy is kept for the 14 days he is told, however many runs there were; only the space caps remove a
  *     younger one, the oldest first, and the told line says exactly that;
  *   - a file the put-back could not restore keeps its version from before the checks among the copies (M3), and the
@@ -15,7 +16,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { listRecoveryVersions, qaPathLines } from '../core/engine/verify';
-import { isDataRecoveryRequest, isUndoRequest } from '../core/engine/select';
+import { isUndoRequest } from '../core/engine/select';
+import { restoreReplyCopyId } from '../core/engine/restore-reply';
 import {
     discardSnapshot, pruneRecovery, RECOVERY_BUDGET, recoveryProjectDir, recoveryRunDir, snapshotAppData, watchAppData,
 } from '../core/quality/qa-leaves-no-trace';
@@ -45,17 +47,17 @@ async function project(name: string, files: Record<string, string>): Promise<str
 }
 
 describe('B3 — his ask in the chat reaches the copies', () => {
-    it('the words he uses route to the data copies, never to the code\'s undo or a build', () => {
-        for (const ask of ['رجّع بيانات تطبيقي', 'استرجع نسخة البيانات رقم 2', 'رجّع بياناتي اللي احتفظ فيها جو', 'bring back my data copy', 'restore the records Joe kept']) {
-            expect([ask, isDataRecoveryRequest(ask)]).toEqual([ask, true]);
+    it('no words of his are read as a restore (review 9): only the exact line is, and the code\'s undo stays the undo', () => {
+        for (const ask of ['رجّع بيانات تطبيقي', 'استرجع نسخة البيانات رقم 2', 'رجّع بياناتي اللي احتفظ فيها جو', 'bring back my data copy', 'restore the records Joe kept',
+            'تراجع عن آخر تعديل', 'أضف ميزة نسخة احتياطية للبيانات', 'Build a data dashboard', 'غيّر لون الزر', 'undo the last change']) {
+            expect([ask, restoreReplyCopyId(ask)]).toEqual([ask, undefined]);
         }
-        for (const ask of ['تراجع عن آخر تعديل', 'أضف ميزة نسخة احتياطية للبيانات', 'Build a data dashboard', 'غيّر لون الزر', 'undo the last change']) {
-            expect([ask, isDataRecoveryRequest(ask)]).toEqual([ask, false]);
-        }
+        expect(restoreReplyCopyId('استعِد النسخة 20261117-002502')).toBe('20261117-002502');
+        expect(restoreReplyCopyId('restore copy 20261117-002502')).toBe('20261117-002502');
         expect(isUndoRequest('تراجع عن آخر تعديل')).toBe(true);
     });
 
-    it('the planner answers «رجّع بيانات تطبيقي» with project_data_recovery on the session\'s project, and «… رقم 1» with the list — never a copy taken from a number (review 8)', async () => {
+    it('the planner sends his exact line to project_data_recovery on the session\'s project, and «رجّع بيانات تطبيقي» or «… رقم 1» never (review 9)', async () => {
         const root = await project('planned', { 'data/store.json': '[]' });
         const sessionId = 'joe-r7-recovery-plan';
         const { writeJoeProject } = require('../api/page-store');
@@ -64,21 +66,20 @@ describe('B3 — his ask in the chat reaches the copies', () => {
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         writeJoeProject(previewKey(sessionId), { dir: root, type: 'agent', updatedAt: Date.now() }, 'run-earlier');
         try {
-            const plan = async (text: string): Promise<any> => {
-                const intent = IntentParser.quickIntent(text);
-                expect([text, intent?.requiredTools]).toEqual([text, ['project_data_recovery']]);
-                return PlanningEngine.generatePlan({ intent }, undefined, { sessionId, language: 'ar' });
-            };
-            const listed = await plan('رجّع بيانات تطبيقي من النسخ التي احتفظ بها جو');
-            expect(listed.steps.map((s: any) => [s.tool, s.input.projectDir, s.input.list])).toEqual([['project_data_recovery', root, true]]);
-            const one = await plan('رجّع نسخة البيانات رقم 1');
-            expect(one.steps.map((s: any) => [s.tool, s.input.list, s.input.version, s.input.restore])).toEqual([['project_data_recovery', true, undefined, undefined]]);
+            const plan = async (text: string): Promise<any> => PlanningEngine.generatePlan({ intent: IntentParser.quickIntent(text) || { goal: text } }, undefined, { sessionId, language: 'ar', ownerText: text });
+            const line = await plan('استعِد النسخة 20261117-002502');
+            expect(line.steps.map((s: any) => [s.tool, s.input.projectDir, s.input.action, s.input.restore])).toEqual([['project_data_recovery', root, 'restore', '20261117-002502']]);
+            for (const text of ['رجّع نسخة البيانات رقم 1']) {
+                expect([text, (IntentParser.quickIntent(text)?.requiredTools || []).includes('project_data_recovery')]).toEqual([text, false]);
+                const other = await plan(text);
+                expect([text, (other.steps || []).some((s: any) => s.tool === 'project_data_recovery')]).toEqual([text, false]);
+            }
         } finally {
             delete (global as any).joeProjects?.[previewKey(sessionId)];
         }
     });
 
-    it('lists the kept versions, brings the numbered one back with the server stopped, and keeps his current files as a copy of their own', async () => {
+    it('lists the kept versions, brings back the one his line names, and keeps his current files as a copy of their own', async () => {
         const root = await project('shop', { 'data/store.json': JSON.stringify({ orders: [{ id: 1 }] }) });
         const snap = await snapshotAppData(root);
         const into = recoveryRunDir('ws-r7', root, 'run-1', env);
@@ -102,12 +103,12 @@ describe('B3 — his ask in the chat reaches the copies', () => {
         const sessionId = 'joe-r7-recovery-tool';
         writeJoeProject(previewKey(sessionId), { dir: root, type: 'agent', updatedAt: Date.now() }, 'run-earlier');
         const turn = (runId: string, ownerMessage: string) => ({ sessionId, workspaceId: 'ws-r7', language: 'ar', runId, ownerMessage });
-        const listed: any = await tool.execute({ projectDir: root, list: true }, turn('t1', 'رجّع بيانات تطبيقي'));
+        const listed: any = await tool.execute({ projectDir: root, action: 'list' }, turn('t1', 'رجّع بيانات تطبيقي'));
         expect(listed.ok).toBe(true);
         expect(listed.output.message).toMatch(new RegExp(`^• ${choices[0].id} — .*data/store\.json`, 'mu'));
-        expect(listed.output.message).toMatch(/«نعم، رجّع النسخة \d{8}-\d{6}»/u);
+        expect(listed.output.message.split('\n').pop()).toBe(`استعِد النسخة ${choices[0].id}`);
         const id = choices[0].id;
-        const back: any = await tool.execute({ restore: id, confirmToken: listed.output.confirmToken }, turn('t2', `نعم، رجّع النسخة ${id}`));
+        const back: any = await tool.execute({ action: 'restore', restore: id }, turn('t2', `استعِد النسخة ${id}`));
         expect(back.ok).toBe(true);
         expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'store.json'), 'utf8')).orders).toContainEqual({ id: 2, customer: 'real customer' });
         expect(back.output.message).toMatch(new RegExp(`أعاد جو نسخة البيانات ${id}`, 'u'));
@@ -115,8 +116,8 @@ describe('B3 — his ask in the chat reaches the copies', () => {
         const after = await recoveryChoices('ws-r7', root, env);
         expect(after[0].files).toEqual(['data/store.json']);
         expect(after.length).toBe(choices.length + 1);
-        const relisted: any = await tool.execute({ list: true }, turn('t3', 'رجّع بياناتي'));
-        const undo: any = await tool.execute({ restore: after[0].id, confirmToken: relisted.output.confirmToken }, turn('t4', `نعم، رجّع النسخة ${after[0].id}`));
+        await tool.execute({ action: 'list' }, turn('t3', 'رجّع بياناتي'));
+        const undo: any = await tool.execute({ action: 'restore', restore: after[0].id }, turn('t4', `استعِد النسخة ${after[0].id}`));
         expect(undo.ok).toBe(true);
         expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'store.json'), 'utf8')).orders).toEqual([{ id: 1 }]);
         delete (global as any).joeProjects?.[previewKey(sessionId)];

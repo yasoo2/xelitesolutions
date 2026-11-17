@@ -50,3 +50,17 @@ export function isWithinRoot(child: string, parent: string): boolean {
     const p = fold(path.resolve(parent));
     return c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep);
 }
+
+/**
+ * Is `dir` a drive root, the home folder, or a folder above the home folder (review 9, H2)?
+ *
+ * Such a folder holds every project of every chat on the machine — and the home folder's own `.joe` (the browser's
+ * profiles) made one look like a delivered project. A restore of one chat's data that took it for «this project»
+ * stopped the servers of every other chat. It is never one project's folder.
+ */
+export function isHomeDriveOrAbove(dir: string, home: string = require('os').homedir()): boolean {
+    const path: typeof import('path') = require('path');
+    const d = path.resolve(String(dir || ''));
+    if (!String(dir || '').trim() || path.dirname(d) === d) return true;
+    return !!home && isWithinRoot(path.resolve(home), d);
+}

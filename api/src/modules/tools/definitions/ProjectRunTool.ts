@@ -343,7 +343,8 @@ export function canAdoptRecordedLive(record: any, expectedCwd: string): boolean 
 }
 
 function runKey(context?: any): string {
-    return String(context?.workspaceId || context?.sessionId || 'default');
+    //  A server a restore stopped is started again under the key it had (startServersAgain).
+    return String(context?.restartKey || context?.workspaceId || context?.sessionId || 'default');
 }
 
 export function liveProjectRecord(previous: Record<string, any>, projectCwd: string, live: { url: string; port: number; pid: number; identity?: string }, at = Date.now()): Record<string, any> {
@@ -2666,28 +2667,64 @@ export function forgetRecordedLive(sessionKey: string | undefined, pid: number):
     try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
 }
 
+/** One server of Joe's a restore stopped, with what it takes to start it again (review 9, M2). */
+export interface StoppedServer {
+    pid: number;
+    port: number;
+    /** The folder it ran from. */
+    cwd: string;
+    /** Its start command, when Joe started it with one he can give again. */
+    command?: string;
+    /** Its key among the running servers (RUNNING). */
+    key?: string;
+    /** The session that recorded it, and that session's record of it as its live server. */
+    sessionKey?: string;
+    sessionId?: string;
+    live?: Record<string, any>;
+}
+
+/** The folders a restore may touch: never a drive root, the home folder, or a folder above it (review 9, H2). */
+function servingFolders(roots: string[]): string[] {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { isHomeDriveOrAbove } = require('../path-containment');
+    return roots.map(r => String(r || '').trim()).filter(r => r && !isHomeDriveOrAbove(r));
+}
+
 /**
- * EVERY SERVER OF JOE'S THAT SERVES A PROJECT, STOPPED (review 8, H1).
+ * EVERY SERVER OF JOE'S THAT SERVES A PROJECT, STOPPED (review 8, H1; scoped in review 9, H2).
  *
  * Bringing a copy of the owner's data back under a running server is no restore: the server writes the copy it holds
  * in memory over it at its next request, and a database file is replaced under an open handle. project_stop knows
  * one server, this session's project_run. Joe starts more: a pipeline's or another session's project_run (all in
  * RUNNING), react_project's packaged API and project_repair's revived server (recorded as the session's `live`).
- * Each whose folder is inside one of `roots` is stopped; a recorded pid is killed only while it is still that
- * process (its start time, or the listener of its recorded port), so a reused pid is never touched. What would not
- * stop is returned, and the caller refuses.
+ * Each whose WORKING FOLDER is inside one of `roots` — the project's own folders, never a drive root, the home folder
+ * or a folder above it, which would reach every other chat's server (review 9, H2) — is stopped; a recorded pid is
+ * killed only while it is still that process (its start time, or the listener of its recorded port), so a reused pid
+ * is never touched. What would not stop is returned, and the caller refuses — and starts again what it stopped.
  */
 export async function stopServersServing(roots: string[], sessionKey: string | undefined, logs: string[]): Promise<{
-    stopped: Array<{ pid: number; port: number }>;
+    stopped: StoppedServer[];
     stillRunning: Array<{ pid: number; port: number }>;
 }> {
-    const out = { stopped: [] as Array<{ pid: number; port: number }>, stillRunning: [] as Array<{ pid: number; port: number }> };
-    const folders = roots.map(r => String(r || '').trim()).filter(Boolean);
+    const out = { stopped: [] as StoppedServer[], stillRunning: [] as Array<{ pid: number; port: number }> };
+    const folders = servingFolders(roots);
     const inside = (cwd: unknown) => { const c = String(cwd || '').trim(); return !!c && folders.some(r => isWithinRoot(c, r)); };
     for (const [key, server] of Array.from(RUNNING.entries())) {
         if (!inside(server.cwd)) continue;
+        //  What it takes to start it again, read before the stop forgets it.
+        const owner = server.sessionKey ? (global as any).joeProjects?.[server.sessionKey] : undefined;
+        const live = owner?.live && Number(owner.live.pid) === Number(server.pid) ? { ...owner.live } : undefined;
         const { stopped, released } = await stopServer(key, logs);
-        (stopped && released ? out.stopped : out.stillRunning).push({ pid: server.pid, port: server.port });
+        if (stopped && released) {
+            out.stopped.push({
+                pid: server.pid, port: server.port, cwd: server.cwd, command: server.command, key,
+                ...(server.sessionKey ? { sessionKey: server.sessionKey } : {}),
+                ...(server.sessionId ? { sessionId: server.sessionId } : {}),
+                ...(live ? { live } : {}),
+            });
+        } else {
+            out.stillRunning.push({ pid: server.pid, port: server.port });
+        }
     }
     const entry = sessionKey ? (global as any).joeProjects?.[sessionKey] : undefined;
     const live = entry?.live;
@@ -2703,11 +2740,13 @@ export async function stopServersServing(roots: string[], sessionKey: string | u
                 ? (await pidIdentity.read(pid).catch(() => '')) === live.identity
                 : Number.isInteger(port) && port > 0 && (await portListener.read(port, 1).catch(() => 0)) === pid;
             if (ours) {
+                const was = { ...live };
                 await killTree(pid);
                 const released = await portReleased(port, [{ pid, ...(live?.identity ? { identity: live.identity } : {}) }]);
                 logs.push(`stopped the recorded server pid=${pid} port=${port}${released ? '' : ' (its port is still held)'}`);
                 forgetRecordedLive(sessionKey, pid);
-                (released ? out.stopped : out.stillRunning).push({ pid, port });
+                if (released) out.stopped.push({ pid, port, cwd: String(was.cwd || was.projectCwd || ''), sessionKey, live: was });
+                else out.stillRunning.push({ pid, port });
             } else {
                 logs.push(`the recorded server pid=${pid} is not the process Joe recorded any more: not killed`);
             }
@@ -2716,15 +2755,80 @@ export async function stopServersServing(roots: string[], sessionKey: string | u
     return out;
 }
 
-/** The ports of Joe's servers whose folder is inside one of `roots` (RUNNING, and the session's recorded `live`). */
+/** The ports of Joe's servers whose working folder is inside one of `roots` (RUNNING, and the session's recorded `live`). */
 export function portsOfServersServing(roots: string[], sessionKey: string | undefined): number[] {
-    const folders = roots.map(r => String(r || '').trim()).filter(Boolean);
+    const folders = servingFolders(roots);
     const inside = (cwd: unknown) => { const c = String(cwd || '').trim(); return !!c && folders.some(r => isWithinRoot(c, r)); };
     const ports = new Set<number>();
     for (const server of RUNNING.values()) if (inside(server.cwd) && server.port > 0) ports.add(server.port);
     const live = sessionKey ? (global as any).joeProjects?.[sessionKey]?.live : undefined;
     if (live && inside(live.cwd || live.projectCwd) && Number(live.port) > 0) ports.add(Number(live.port));
     return Array.from(ports);
+}
+
+/**
+ * THE SERVERS A RESTORE STOPPED, STARTED AGAIN WHEN IT BRINGS NOTHING BACK (review 9, M2).
+ *
+ * A restore that stopped his app's servers and then could not go on (one would not stop, a port stayed held, the
+ * copy could not be written) must not leave his app down. Each is started again by project_run, from its own folder,
+ * on its own port, with its own start command when Joe gave it one — under its own key among the running servers,
+ * and, when it was a session's live server, recorded there again as it was, so that chat's preview keeps its
+ * address (the session's project folder is never moved by it). What could not start is said, by the caller.
+ */
+export async function startServersAgain(stopped: StoppedServer[], context: any, logs: string[]): Promise<Array<{ port: number; started: boolean; url?: string }>> {
+    const out: Array<{ port: number; started: boolean; url?: string }> = [];
+    for (const s of stopped) {
+        if (!s.cwd || !fs.existsSync(s.cwd)) { out.push({ port: s.port, started: false }); continue; }
+        const command = s.command && !/^(?:adopted at start|node static-preview)$/u.test(s.command) ? s.command : undefined;
+        const key = s.key || `restart-${s.sessionKey || 'server'}-${s.port}`;
+        //  No session here: project_run must not take this server for the start of the chat's project and move its
+        //  folder. `restart` keeps it from adopting anything; `restartKey` puts it back under its own key.
+        const ctx = {
+            restartKey: key,
+            language: context?.language,
+            ...(context?.runId ? { runId: context.runId } : {}),
+            ...(context?.isCancelled ? { isCancelled: context.isCancelled } : {}),
+            ...(context?.cancellation ? { cancellation: context.cancellation } : {}),
+        };
+        let result: any;
+        try {
+            result = await new ProjectRunTool().execute({ cwd: s.cwd, restart: true, ...(command ? { command } : {}), ...(s.port > 0 ? { port: s.port } : {}) }, ctx);
+        } catch (e: any) {
+            result = { ok: false, error: String(e?.message || e) };
+        }
+        const url = String(result?.output?.url || '');
+        const port = Number(result?.output?.port) || s.port;
+        const started = !!result?.ok && result?.output?.ready !== false;
+        logs.push(`started again ${s.cwd} on port ${port}: ${started ? 'up' : `not started (${String(result?.error || 'no answer').slice(0, 160)})`}`);
+        if (started) {
+            //  The record project_run just made (with its pid's identity) names the session it served again.
+            const server = RUNNING.get(key);
+            if (server && s.sessionKey) {
+                server.sessionKey = s.sessionKey;
+                if (s.sessionId) server.sessionId = s.sessionId;
+            }
+            //  The chat's record of its live server, as it was, on the server that runs now.
+            const entry = s.sessionKey ? (global as any).joeProjects?.[s.sessionKey] : undefined;
+            if (entry && s.live) {
+                const now = RUNNING.get(key);
+                const live = {
+                    ...s.live,
+                    pid: now?.pid || Number(result?.output?.pid) || s.live.pid,
+                    port,
+                    ...(url ? { url } : {}),
+                    at: Date.now(),
+                    ...(now?.identity ? { identity: now.identity } : {}),
+                    ...(now?.listener ? { listener: now.listener } : {}),
+                };
+                if (!now?.identity) delete (live as any).identity;
+                if (!now?.listener) delete (live as any).listener;
+                writeJoeProject(String(s.sessionKey), { ...entry, live }, entry.pipelineRunId ?? null);
+                try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
+            }
+        }
+        out.push({ port, started, ...(url ? { url } : {}) });
+    }
+    return out;
 }
 
 export class ProjectStopTool implements ToolDefinition {

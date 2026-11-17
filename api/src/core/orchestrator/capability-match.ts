@@ -318,8 +318,9 @@ let declaredOptions: Record<string, any> = {};
 export function toolProfiles(force = false): Profile[] {
     if (cached && !force) return cached;
     cached = (registeredTools as any[])
-        // The agent engine's own tools are its alone (modules/tools/engine-tools.ts).
-        .filter(t => t && typeof t.name === 'string' && !NEUTRAL.has(t.name) && !isEngineTool(t.name))
+        // The agent engine's own tools are its alone (modules/tools/engine-tools.ts). A tool that says words never
+        // name it (`matchedByWords = false`: project_data_recovery, review 9 M1) is the model's or its route's to call.
+        .filter(t => t && typeof t.name === 'string' && !NEUTRAL.has(t.name) && !isEngineTool(t.name) && t.matchedByWords !== false)
         .map(t => {
             const nameTerms = new Set(terms(String(t.name).replace(/[_-]+/g, ' ')));
             const escaped = String(t.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
