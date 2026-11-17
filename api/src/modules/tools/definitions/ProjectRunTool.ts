@@ -45,7 +45,12 @@ export interface RunningServer {
     identity?: string;
     /** The process listening on the port, when it is not the launched pid: what outlives a launcher. */
     listener?: { pid: number; identity: string };
-    /** The environment Joe started it with, beyond the inherited one (review 10, L5): a restart gives it again. */
+    /**
+     * The environment project_run passed it on top of Joe's own (review 10, L5; review 11, F5: what that really is) —
+     * today PORT, HOST, BROWSER and CI, which every start sets anyway. A restart gives it again; an environment the
+     * server needs from outside Joe (a variable set in the shell that started it by hand) was never Joe's to record, so a
+     * server that needs one does not come back by a restart, and the restore says so («شغّل المشروع»).
+     */
     env?: Record<string, string>;
 }
 const RUNNING: Map<string, RunningServer> = new Map();
@@ -347,7 +352,7 @@ export function canAdoptRecordedLive(record: any, expectedCwd: string): boolean 
 /**
  * The environment a restart carries (review 10, L5): only on a restart Joe's own code asked for (`restartKey`, set by
  * startServersAgain — a model's input never reaches the context), only string values, and never the port, which the
- * run sets itself.
+ * run sets itself. It is what project_run passed that server (RunningServer.env) and nothing more (review 11, F5).
  */
 function carriedEnv(context?: any): Record<string, string> {
     const env = context?.restartKey ? context?.restartEnv : undefined;
@@ -1928,7 +1933,8 @@ export class ProjectRunTool implements ToolDefinition {
             return { ok: false, error: message, logs };
         }
         const [launcher, launcherArgs] = parsedLauncher;
-        //  A server a restore stopped is started again with the environment Joe gave it (startServersAgain, review 10 L5).
+        //  A server a restore stopped is started again with what project_run passed it before (startServersAgain, review 10
+        //  L5) — today the same four values set here, so nothing more (review 11, F5).
         const launchEnv: Record<string, string> = { ...carriedEnv(context), PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' };
         const managed = ExecutionGateway.startManaged(launcher, launcherArgs, {
             cwd,
@@ -2698,15 +2704,18 @@ export interface StoppedServer {
     sessionKey?: string;
     sessionId?: string;
     live?: Record<string, any>;
-    /** The environment Joe started it with (RunningServer.env), given again when it is started again. */
+    /** What project_run passed it (RunningServer.env, review 11 F5: nothing from outside Joe), given again when it is started again. */
     env?: Record<string, string>;
 }
 
-/** The folders a restore may touch: never a drive root, the home folder, or a folder above it (review 9, H2). */
+/**
+ * The folders a restore may touch: never a drive root, the home folder, or a folder above it (review 9, H2) — by its
+ * spelling or as the file system knows it (review 11, F2) — each as the file system knows it.
+ */
 function servingFolders(roots: string[]): string[] {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { isHomeDriveOrAbove } = require('../path-containment');
-    return roots.map(r => String(r || '').trim()).filter(r => r && !isHomeDriveOrAbove(r));
+    const { isHomeDriveOrAbove, realFolderOf } = require('../path-containment');
+    return roots.map(r => String(r || '').trim()).filter(r => r && !isHomeDriveOrAbove(r) && !isHomeDriveOrAbove(realFolderOf(r))).map(r => realFolderOf(r));
 }
 
 /**
@@ -2715,11 +2724,17 @@ function servingFolders(roots: string[]): string[] {
  * by a restore here.
  */
 function servingTest(roots: string[], exclude: string[]): (cwd: unknown) => boolean {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { realFolderOf } = require('../path-containment');
+    //  Review 11, F2: compared as the file system knows the folders — another chat's project known by a second
+    //  spelling (a junction, a symlink, an 8.3 short name, a `subst` drive) is still that project, its server never stopped.
     const folders = servingFolders(roots);
-    const others = exclude.map(e => String(e || '').trim()).filter(Boolean);
+    const others = exclude.map(e => String(e || '').trim()).filter(Boolean).map(e => realFolderOf(e));
     return (cwd: unknown) => {
-        const c = String(cwd || '').trim();
-        return !!c && folders.some(r => isWithinRoot(c, r)) && !others.some(o => isWithinRoot(c, o));
+        const raw = String(cwd || '').trim();
+        if (!raw) return false;
+        const c = realFolderOf(raw);
+        return folders.some(r => isWithinRoot(c, r)) && !others.some(o => isWithinRoot(c, o));
     };
 }
 
@@ -2817,8 +2832,9 @@ export async function startServersAgain(stopped: StoppedServer[], context: any, 
         //  folder. `restart` keeps it from adopting anything; `restartKey` puts it back under its own key.
         const ctx = {
             restartKey: key,
-            //  The environment Joe started it with (review 10, L5). One started before this Joe, or by another
-            //  launcher, has none recorded: when it does not come back, the caller says so («شغّل المشروع»).
+            //  What project_run passed it on top of Joe's own environment (review 10, L5) — never an environment it
+            //  needed from outside Joe (review 11, F5). One started before this Joe, or by another launcher, has none
+            //  recorded. When it does not come back, the caller says so («شغّل المشروع»).
             ...(s.env ? { restartEnv: { ...s.env } } : {}),
             language: context?.language,
             ...(context?.runId ? { runId: context.runId } : {}),

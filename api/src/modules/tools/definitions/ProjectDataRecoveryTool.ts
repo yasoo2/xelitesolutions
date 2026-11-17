@@ -20,7 +20,9 @@
  *            or a model's words, never a repair step's or a re-run's) IS that line for a copy the most recent list of
  *            this session and project showed, in an earlier turn, within thirty minutes, once. The planner routes
  *            exactly that message here; nothing the model passes can make any other message restore, and there is no
- *            token for it to see or pass. Then: the project's verify lock; every port the app names that is not one
+ *            token for it to see or pass. The copy is the one the project's copies hold NOW under that id, in the
+ *            same folder, run and version the list showed — its folder taken from them, never from the record (review
+ *            11, F1) — and its use is recorded before it is written, or nothing is (F3). Then: the project's verify lock; every port the app names that is not one
  *            of Joe's servers checked BEFORE anything is stopped; Joe's own servers of the project (and only of it:
  *            never a drive root, the home folder, a folder above the project, or another chat's project) stopped;
  *            what each file is now kept aside; the copy written. When a step after the stop fails, the servers Joe
@@ -35,7 +37,7 @@ import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { isArabicReply } from '../../../shared/reply-language';
-import { isHomeDriveOrAbove, isWithinRoot } from '../path-containment';
+import { isHomeDriveOrAbove, isWithinRealRoot, isWithinRoot, realFolderOf } from '../path-containment';
 import { restoreLine, restoreReplyCopyId, SHOW_COPIES_AR, SHOW_COPIES_EN } from '../../../core/engine/restore-reply';
 
 /** verify.ts, read when used: it imports the pipeline and the run tools, which the registry imports too. */
@@ -113,12 +115,18 @@ export function pickRecoveryChoice(choices: RecoveryChoice[], id: unknown): Reco
  */
 export function recoveryRoots(dir: string): string[] {
     const at = path.resolve(String(dir || ''));
-    return String(dir || '').trim() && !isHomeDriveOrAbove(at) ? [at] : [];
+    return String(dir || '').trim() && !homeDriveOrAbove(at) ? [at] : [];
 }
+/** A drive root, the home folder or above — by its spelling or as the file system knows it (review 11, F2: a junction to the home folder is the home folder). */
+const homeDriveOrAbove = (d: string) => isHomeDriveOrAbove(d) || isHomeDriveOrAbove(realFolderOf(d));
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.joe', '.joe-versions', '.joe-qa', 'dist', 'build', 'coverage', '.cache', '.next', '.vite', 'public', 'static', 'assets']);
 const SERVER_MARK = /^(?:package\.json|server\.(?:c?js|mjs|ts)|app\.(?:c?js|mjs|ts)|index\.(?:c?js|mjs)|main\.py|app\.py|manage\.py)$/iu;
-const inOtherProject = (p: string, exclude: string[]) => exclude.some(o => isWithinRoot(p, o));
+/**
+ * Inside one of `exclude` — compared as the file system knows the folders (review 11, F2): another chat's project known
+ * by a second spelling (a junction, a symlink, an 8.3 short name, a `subst` drive) is still that project.
+ */
+const inOtherProject = (p: string, exclude: string[]) => exclude.some(o => isWithinRealRoot(p, o));
 /**
  * The folders below the project (two deep) a server runs from: where a pipeline keys its copies (`serverRoot`). Another
  * chat's project inside it is never walked into, and a folder that holds one is not a server folder of this project
@@ -136,7 +144,7 @@ function serverFoldersBelow(root: string, exclude: string[] = []): string[] {
             if (!e.isDirectory() || e.isSymbolicLink() || SKIP_DIRS.has(e.name.toLowerCase()) || e.name.startsWith('.')) continue;
             const sub = path.join(dir, e.name);
             if (inOtherProject(sub, exclude)) continue;
-            const holdsOther = exclude.some(o => isWithinRoot(o, sub));
+            const holdsOther = exclude.some(o => isWithinRealRoot(o, sub));
             if (!holdsOther) { try { if (fs.readdirSync(sub).some(f => SERVER_MARK.test(f))) out.push(sub); } catch { /* unreadable */ } }
             walk(sub, depth + 1);
         }
@@ -169,29 +177,37 @@ export function projectRecoveryScope(
 ): RecoveryScope {
     const base = recoveryRoots(project.dir)[0];
     if (!base) return { base: '', roots: [], exclude: [] };
-    const exclude = others.filter(o => !samePath(o, base) && isWithinRoot(o, base));
-    const out = new Set<string>([base]);
+    //  Review 11, F2: every comparison here is of the folders as the file system knows them (realFolderOf), so a second
+    //  spelling of another chat's project — a junction, a symlink, an 8.3 short name, a `subst` drive — is that project.
+    const realBase = realFolderOf(base);
+    const realOthers = others.map(o => ({ o, real: realFolderOf(o) }));
+    const exclude = realOthers.filter(({ real }) => real !== realBase && isWithinRoot(real, realBase)).map(({ o }) => o);
+    const realExclude = exclude.map(o => realFolderOf(o));
+    //  One root per folder, whatever its spelling: the first spelling met is kept.
+    const out = new Map<string, string>([[realBase, base]]);
+    const add = (d: string, real = realFolderOf(d)) => { if (!out.has(real)) out.set(real, d); };
     const isDir = (p: string) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
     const related = (d: string, o: string) => isWithinRoot(o, d) || isWithinRoot(d, o);
     const recorded = (p: unknown) => {
         const s = String(p || '').trim();
         if (!s) return;
         const d = path.resolve(s);
-        if (!isDir(d) || isHomeDriveOrAbove(d)) return;
+        if (!isDir(d) || homeDriveOrAbove(d)) return;
+        const real = realFolderOf(d);
         //  Under the project: its own — unless it is, holds or sits in another chat's project inside it.
-        if (isWithinRoot(d, base)) { if (!exclude.some(o => related(d, o))) out.add(d); return; }
+        if (isWithinRoot(real, realBase)) { if (!realExclude.some(o => related(real, o))) add(d, real); return; }
         //  Above the project: never.
-        if (isWithinRoot(base, d)) return;
+        if (isWithinRoot(realBase, real)) return;
         //  Outside it: never another chat's project, a folder holding one, or a folder inside one.
-        if (others.some(o => related(d, o))) return;
-        out.add(d);
+        if (realOthers.some(({ real: o }) => related(real, o))) return;
+        add(d, real);
     };
     recorded(project.packagedInto);
     recorded(project.linkedApiDir);
     recorded(project.live?.cwd);
     recorded(project.live?.projectCwd);
-    for (const sub of serverFoldersBelow(base, exclude)) out.add(sub);
-    return { base, roots: Array.from(out), exclude };
+    for (const sub of serverFoldersBelow(base, exclude)) add(sub);
+    return { base, roots: Array.from(out.values()), exclude };
 }
 
 /** The folders of projectRecoveryScope. */
@@ -202,7 +218,8 @@ export function projectRecoveryRoots(
     return projectRecoveryScope(project, others).roots;
 }
 
-const samePath = (a: string, b: string) => isWithinRoot(a, b) && isWithinRoot(b, a);
+/** One folder, whatever its spelling (review 11, F2). */
+const samePath = (a: string, b: string) => realFolderOf(a) === realFolderOf(b);
 /** The project folders of the other chats Joe knows, but not this one's. */
 function otherChatsProjects(dir: string): string[] {
     const mine = path.resolve(String(dir || ''));
@@ -310,23 +327,41 @@ const shownHome = () => path.join(noTrace().joeDataDir(), SHOWN_DIR);
 const shownFile = (key: string) => path.join(shownHome(), `${crypto.createHash('sha256').update(key).digest('hex').slice(0, 32)}.json`);
 let lastSweep = 0;
 
-function readShown(key: string): ShownList | undefined {
+function readShownOnDisk(key: string): ShownList | undefined {
     try {
         const v = JSON.parse(fs.readFileSync(shownFile(key), 'utf8')) as ShownList;
         if (v && v.key === key && v.copies && typeof v.copies === 'object') return v;
     } catch { /* none on disk */ }
-    return SHOWN_MEMORY.get(key);
+    return undefined;
 }
-function writeShown(v: ShownList): void {
+/**
+ * The latest record of this session and project. Review 11, F3: memory holds one only when the disk refused it, so
+ * a disk copy never wins over a newer memory one — a list shown later, or the same list with its line used.
+ */
+function readShown(key: string): ShownList | undefined {
+    const disk = readShownOnDisk(key);
+    const memory = SHOWN_MEMORY.get(key);
+    if (!memory) return disk;
+    if (!disk) return memory;
+    if (disk.shownAt !== memory.shownAt || disk.turn !== memory.turn) return disk.shownAt > memory.shownAt ? disk : memory;
+    return memory.used || !disk.used ? memory : disk;
+}
+/** Writes the record; true only when the disk took it. When it did not, memory holds it and the older disk record is removed. */
+function writeShown(v: ShownList): boolean {
     const file = shownFile(v.key);
+    let kept = false;
+    const tmp = `${file}.${process.pid}.${Date.now().toString(36)}.tmp`;
     try {
         fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-        const tmp = `${file}.${process.pid}.${Date.now().toString(36)}.tmp`;
         fs.writeFileSync(tmp, JSON.stringify(v), { mode: 0o600 });
         try { fs.renameSync(tmp, file); } catch { fs.writeFileSync(file, JSON.stringify(v), { mode: 0o600 }); fs.rmSync(tmp, { force: true }); }
         SHOWN_MEMORY.delete(v.key);
+        kept = true;
     } catch {
         SHOWN_MEMORY.set(v.key, v);
+        try { fs.rmSync(tmp, { force: true }); } catch { /* none */ }
+        //  Review 11, F3: an older record left on disk must not speak for this one — in this Joe or another.
+        try { fs.rmSync(file, { force: true }); } catch { /* the disk refuses this too: the caller decides */ }
     }
     //  Records older than a day name lines long dead: swept at most hourly.
     if (Date.now() - lastSweep > 60 * 60 * 1000) {
@@ -338,6 +373,7 @@ function writeShown(v: ShownList): void {
             }
         } catch { /* no folder */ }
     }
+    return kept;
 }
 function forgetShown(key: string): void {
     SHOWN_MEMORY.delete(key);
@@ -378,6 +414,14 @@ export function appDeclaredPorts(roots: string[]): number[] {
         }
     }
     return Array.from(ports);
+}
+
+/** Whether Joe still keeps that version of the copies of `root` (a folder, not a link). */
+function versionKept(workspaceId: string, root: string, copy: { runId: string; n: number }): boolean {
+    try {
+        const st = fs.lstatSync(noTrace().recoveryVersionDir(workspaceId, root, copy.runId, copy.n));
+        return st.isDirectory() && !st.isSymbolicLink();
+    } catch { return false; }
 }
 
 /** restoreRecoveryVersion's reasons, in Arabic when he reads Arabic. */
@@ -522,9 +566,28 @@ export class ProjectDataRecoveryTool extends BaseTool {
         }
         if (Date.now() - shown.shownAt > RECOVERY_CONFIRM_TTL_MS) return again('لم يُعَد شيء: مضى على عرض القائمة أكثر من ثلاثين دقيقة، فهذه هي من جديد.', 'Nothing was brought back: the list was shown more than thirty minutes ago, so here it is again.');
         if (!shown.turn || shown.turn === turn) return again('لم يُعَد شيء: السطر يُرسَل في رسالة منك بعد أن ترى القائمة.', 'Nothing was brought back: the line is sent in a message of yours after you have seen the list.');
-        const copy = shown.copies[lineId];
-        if (!copy) return again(`لم يُعَد شيء: النسخة ${lineId} ليست في آخر قائمة عُرضت عليك.`, `Nothing was brought back: copy ${lineId} is not in the latest list you were shown.`);
-        return this.restore({ workspaceId, sessionKey, shown, scope, copy, id: lineId, ar, logs, context });
+        const listed = shown.copies[lineId];
+        if (!listed) return again(`لم يُعَد شيء: النسخة ${lineId} ليست في آخر قائمة عُرضت عليك.`, `Nothing was brought back: copy ${lineId} is not in the latest list you were shown.`);
+        /*
+         * Review 11, F1: the record says which copy the list showed — never where it goes. The copy is accepted only when
+         * the copies of this project NOW (its scope recomputed above) hold the same folder, run and version under that
+         * id, and its folder is taken from them. A folder that became another chat's project after the list, a recorded
+         * folder that moved, or a record changed on disk aims at nothing: nothing is stopped or written.
+         */
+        const current = choices.find(c => c.id === lineId);
+        if (current && samePath(current.root, listed.root) && current.runId === listed.runId && current.n === listed.n) {
+            const copy: ShownCopy = { root: current.root, runId: current.runId, n: current.n, at: current.at, files: current.files };
+            return this.restore({ workspaceId, sessionKey, shown, scope, copy, id: lineId, ar, logs, context });
+        }
+        //  A copy pruned since the list, in a folder that is still this project's: the restore says, truthfully, that it
+        //  is no longer kept (review 10) — its folder taken from the scope, never from the record.
+        const ownRoot = current ? undefined : roots.find(r => samePath(r, listed.root));
+        if (ownRoot && !inOtherProject(ownRoot, scope.exclude) && !versionKept(workspaceId, ownRoot, listed)) {
+            return this.restore({ workspaceId, sessionKey, shown, scope, copy: { ...listed, root: ownRoot }, id: lineId, ar, logs, context });
+        }
+        return refuse('copy_moved',
+            `لم يُعَد شيء ولم يوقف جو شيئًا: النسخة ${lineId} لم تعد حيث عرضتها القائمة — تغيّر مجلدها، أو صار مشروع محادثة أخرى. أرسل «${SHOW_COPIES_AR}» لترى نسخ تطبيقك كما هي الآن.`,
+            `Nothing was brought back and Joe stopped nothing: copy ${lineId} is no longer where the list showed it — its folder changed, or it is another chat's project now. Send «${SHOW_COPIES_EN}» to see your app's copies as they are now.`);
     }
 
     /** The restore itself: the lock, the ports checked, Joe's servers stopped, the file copy — and his app never left down untold. */
@@ -535,6 +598,10 @@ export class ProjectDataRecoveryTool extends BaseTool {
         //  H1 (review 10): every refusal and failure of a restore is final for the run.
         const refuse = (error: string, x: string, y: string, extra: Record<string, unknown> = {}) => ({ ok: false, error, output: { message: say(x, y), nonRecoverable: true, ...extra }, logs } as any);
         const seeAgain = say(`أرسل «${SHOW_COPIES_AR}» لترى القائمة من جديد.`, `Send «${SHOW_COPIES_EN}» to see the list again.`);
+        //  Review 11, F1: the folder written is one this restore locks, port-checks and stops the servers of — or nothing.
+        if (!roots.some(r => samePath(r, copy.root)) || inOtherProject(copy.root, exclude)) {
+            return refuse('copy_moved', `لم يُعَد شيء ولم يوقف جو شيئًا: النسخة ${id} ليست في مجلدات تطبيقك الآن. ${seeAgain}`, `Nothing was brought back and Joe stopped nothing: copy ${id} is not in your app's folders now. ${seeAgain}`);
+        }
         const { acquireVerifyLock, addressIsFree } = noTrace();
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const run = require('./ProjectRunTool') as typeof import('./ProjectRunTool');
@@ -555,7 +622,20 @@ export class ProjectDataRecoveryTool extends BaseTool {
             if (!sameList(now, shown) || !now!.copies[id]) {
                 return refuse('already_used', `لم يُعَد شيء: سطر النسخة ${id} استُعمل أو عُرضت بعده قائمة أحدث. ${seeAgain}`, `Nothing was brought back: the line for copy ${id} was used already, or a newer list was shown after it. ${seeAgain}`);
             }
-            const used = () => writeShown({ ...now!, used: { id, at: Date.now() } });
+            /**
+             * Review 11, F3: the line is used ONCE, so its use is recorded before the copy is written — and when the
+             * disk will take neither the «used» record nor the removal of the unused one (a full disk, a read-only
+             * file), nothing is brought back: an unused record left on disk would bring the same copy back again.
+             */
+            const used = (): boolean => {
+                if (writeShown({ ...now!, used: { id, at: Date.now() } })) return true;
+                //  Memory holds the use now; the disk must not hold, for this Joe or another, a live line for this copy.
+                const left = readShownOnDisk(shown.key);
+                if (!left || left.used || !left.copies?.[id] || Date.now() - left.shownAt > RECOVERY_CONFIRM_TTL_MS) return true;
+                //  Not used after all: nothing is brought back, and the record says what is true — unused.
+                SHOWN_MEMORY.set(shown.key, now!);
+                return false;
+            };
             //  The copy is still kept (pruning may have removed it): checked before anything is stopped.
             try {
                 const st = fs.lstatSync(noTrace().recoveryVersionDir(workspaceId, copy.root, copy.runId, copy.n));
@@ -613,8 +693,14 @@ export class ProjectDataRecoveryTool extends BaseTool {
                     `${told}Nothing was brought back: a program answers on port ${join(held)}, which your app uses; I can't tell whose — stop it and send the line again.`,
                     { ports: held, ...(down.length ? { serverDown: down } : {}) });
             }
-            //  Used once, from here on, whatever happens next.
-            used();
+            //  Used once, from here on, whatever happens next — or nothing is brought back.
+            if (!used()) {
+                const { told, down } = await startAgain();
+                return refuse('use_not_recorded',
+                    `${told}لم يُعَد شيء: لم يستطع جو أن يسجّل أن سطر النسخة ${id} استُعمل (مجلد بيانات جو لا يقبل الكتابة الآن — ربما امتلأ القرص)، ولا يعيد نسخة قد تعود مرة ثانية بالسطر نفسه. بقيت بياناتك كما كانت. أفرغ مساحة ثم أرسل «${SHOW_COPIES_AR}».`,
+                    `${told}Nothing was brought back: Joe could not record that the line for copy ${id} was used (Joe's data folder takes no write now — the disk may be full), and he brings back no copy the same line could bring back a second time. Your data is as it was. Free some space, then send «${SHOW_COPIES_EN}».`,
+                    { ...(down.length ? { serverDown: down } : {}) });
+            }
             let done: Awaited<ReturnType<ReturnType<typeof recovery>['restoreRecoveryVersion']>>;
             try {
                 done = await recovery().restoreRecoveryVersion(workspaceId, copy.root, copy.runId, copy.n, process.env, {

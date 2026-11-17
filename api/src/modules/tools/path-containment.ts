@@ -64,3 +64,35 @@ export function isHomeDriveOrAbove(dir: string, home: string = require('os').hom
     if (!String(dir || '').trim() || path.dirname(d) === d) return true;
     return !!home && isWithinRoot(path.resolve(home), d);
 }
+
+/**
+ * A folder as the file system knows it (review 11, F2): resolved, links and junctions followed, Windows 8.3 short
+ * names and `subst` drives expanded (realpath's native call), case folded on Windows. A part that does not exist yet
+ * keeps its resolved spelling below the nearest part that does.
+ *
+ * isWithinRoot compares spellings: one folder known by two of them — a junction, a symlink, «R11-AL~1», a `subst`
+ * drive — is two folders to it. Where the question is «is this another chat's project», that is the wrong answer.
+ */
+export function realFolderOf(dir: string): string {
+    const path: typeof import('path') = require('path');
+    const fs: typeof import('fs') = require('fs');
+    const fold = (s: string) => (process.platform === 'win32' ? s.toLowerCase() : s);
+    const resolved = path.resolve(String(dir || ''));
+    const below: string[] = [];
+    let at = resolved;
+    for (;;) {
+        try {
+            const real = fs.realpathSync.native(at);
+            return fold(below.length ? path.join(real, ...below.slice().reverse()) : real);
+        } catch { /* not there (yet): one folder up */ }
+        const up = path.dirname(at);
+        if (up === at) return fold(resolved);
+        below.push(path.basename(at));
+        at = up;
+    }
+}
+
+/** isWithinRoot on the folders as the file system knows them (realFolderOf): a second spelling is the same folder. */
+export function isWithinRealRoot(child: string, parent: string): boolean {
+    return isWithinRoot(realFolderOf(child), realFolderOf(parent));
+}

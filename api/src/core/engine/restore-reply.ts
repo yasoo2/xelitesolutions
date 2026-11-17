@@ -17,7 +17,8 @@
  * tolerated (a space before it too, review 10 L1). Quotes around it, a word before or after it, a question mark, a
  * second line — anything else is not it, and does nothing. What is forgiven is only what the eye cannot see or the
  * keyboard changes on its own: the marks of direction a copy from a right-to-left chat carries, Arabic diacritics and
- * tatweel, Arabic-Indic digits, the case of the English letters (a phone capitalises the first one; ASCII only, so no
+ * tatweel, Arabic-Indic digits, the yeh and kaf of a Persian keyboard («ی», «ک») and the final «ى» an Egyptian or phone
+ * keyboard types for «ي» (review 11, F4), the case of the English letters (a phone capitalises the first one; ASCII only, so no
  * other letter folds into them), the hamza on the first alif («إستعد», «أستعد», «أعرض»), the long «ي» of «استعيد»,
  * «ه» for the final «ة», and the width of the spaces between the words. Whether the copy the restore line names is
  * one the most recent list of his showed is decided by the tool, from its own records (ProjectDataRecoveryTool) —
@@ -59,6 +60,11 @@ function folded(text: unknown): string {
         .replace(/[۰-۹]/gu, d => String(PERSIAN_DIGITS.indexOf(d)))
         //  Diacritics (U+064B–U+065F, U+0670) and tatweel — after the digits, which sit just above them.
         .replace(/[ً-ٰٟـ]/gu, '')
+        //  Review 11, F4: the keyboards' own yeh and kaf. A Persian keyboard types «ی» (U+06CC) and «ک» (U+06A9) for
+        //  «ي» and «ك»; an Egyptian or phone keyboard types the final «ى» (U+0649) for «ي» — at a word's end only.
+        .replace(/\u06CC/gu, '\u064A')
+        .replace(/\u06A9/gu, '\u0643')
+        .replace(/\u0649(?=$|[ \t\u00A0])/gu, '\u064A')
         //  The case of the English letters, and only theirs: «ſ» or the Kelvin sign never become «s» or «k».
         .replace(/[A-Z]/gu, c => c.toLowerCase());
 }

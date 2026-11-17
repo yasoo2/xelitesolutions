@@ -16,7 +16,7 @@
  *   L1  The common spellings of the verb, and a space before the final «.», are his line; nothing else folds in.
  *   L3  Which list was shown lives on disk: a restart of Joe does not refuse his real line.
  *   L4  With no typed text the doors stay shut — never a fallback to the goal.
- *   L5  A server started again gets the environment Joe started it with.
+ *   L5  A server started again gets the environment project_run passed it (RunningServer.env) — only that (review 11, F5).
  */
 jest.mock('../modules/services/ToolService', () => ({
     ...jest.requireActual('../modules/services/ToolService'), executeTool: jest.fn(),
@@ -400,8 +400,8 @@ describe('L1 — the common spellings of his restore line, and nothing more', ()
     });
 });
 
-describe('L5 — a server started again gets the environment Joe started it with', () => {
-    it('the environment rides from the running server to the stop to the start, and the server that needs it answers again', async () => {
+describe('L5 — a server started again gets the environment project_run passed it', () => {
+    it('the recorded environment rides from the running server to the stop to the start (seeded here: project_run records only PORT/HOST/BROWSER/CI)', async () => {
         //  This server does not start without NEEDS=1 in its environment.
         const NEEDY = "if(process.env.NEEDS!=='1')process.exit(3);require('http').createServer((q,s)=>s.end('needy')).listen(Number(process.env.PORT||process.argv[2]),'127.0.0.1',()=>process.send&&process.send('up'));";
         const root = folder('needy', { 'needy.cjs': NEEDY, 'data/orders.json': '[]' });
