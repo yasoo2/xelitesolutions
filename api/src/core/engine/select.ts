@@ -10,7 +10,7 @@
  * without a rebuild.
  */
 import { FoldedRegExp } from '../design/request-lists';
-import { restoreReplyCopyId } from './restore-reply';
+import { isDataCopiesLine } from './restore-reply';
 
 export type EngineName = 'agent' | 'legacy';
 
@@ -115,10 +115,11 @@ export async function agentEngineRoute(
     const work = require('./device-work');
     //  Joe asked the owner on a device and waits for his answer (device-work.ts pendingQuestion).
     const waiting = work.pendingQuestion(context?.sessionId);
-    //  His whole message is the one line Joe's list of his data copies told him to send back (restore-reply.ts): the
-    //  planner hands it to project_data_recovery, which restores only what its own records say he was shown. No word
-    //  of any other message decides a restore (review 9, H1 M1).
-    if (restoreReplyCopyId(own)) {
+    //  His whole message is one of the two exact lines of his data copies (restore-reply.ts): «اعرض نسخ بياناتي» /
+    //  «show my data copies», or the restore line a list told him to send back. The planner hands it to
+    //  project_data_recovery, which lists, or restores only what its own records say he was shown. No word of any other
+    //  message decides either (review 9, H1 M1; review 10, M3).
+    if (isDataCopiesLine(own)) {
         if (waiting) work.answeredQuestion(context?.sessionId);
         return null;
     }

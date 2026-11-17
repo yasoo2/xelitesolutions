@@ -11,7 +11,7 @@ import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicit
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
 import { isUndoRequest } from '../engine/select';
-import { restoreReplyCopyId } from '../engine/restore-reply';
+import { isShowCopiesLine, restoreReplyCopyId } from '../engine/restore-reply';
 import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, isWebOrder, clearIntentCache, reportsAFaultOrOrdersAFix } from './intent-classifier';
 import { hasRequestedAction, withoutFileDenials } from './requested-action';
 import { hasTerminalExecutionDenial, boundedNoFileTerminalCommands, parseRuntimeDiagnosticFacts } from '../orchestrator/runtime-diagnostic-contract';
@@ -67,6 +67,19 @@ export class IntentParser {
         };
     }
 
+    /** The intent of the exact show line («اعرض نسخ بياناتي» / «show my data copies»): the read-only list of his copies. */
+    static showCopiesIntent(raw: string): StructuredIntent {
+        return {
+            goal: raw,
+            complexity: 'low',
+            riskLevel: 'low',
+            suggestedAgent: 'Dev',
+            requiredTools: ['project_data_recovery'],
+            constraints: ["List the copies Joe keeps of the app's data files; restore nothing; never rebuild."],
+            rawIntent: { primary: raw, dataCopiesList: true, deterministic: true },
+        };
+    }
+
     /**
      * Parse raw user input into a sophisticated StructuredIntent
      * This is a core reasoning step in the runtime engine.
@@ -74,6 +87,8 @@ export class IntentParser {
     static async parse(userText: string, context: ConversationContext): Promise<StructuredIntent> {
         //  The exact restore line is decided before anything else reads it, and never by a model (review 9).
         if (restoreReplyCopyId(userText)) return IntentParser.restoreReplyIntent(String(userText).trim());
+        //  …and so is the exact line that shows his data copies (review 10, M3).
+        if (isShowCopiesLine(userText)) return IntentParser.showCopiesIntent(String(userText).trim());
         if (IntentParser.isProvidedKnowledgeQuestion(userText)) {
             return {
                 goal: userText,
@@ -483,6 +498,7 @@ Return ONLY a JSON object:
         //  His whole message is the line Joe's list of his data copies told him to send back (restore-reply.ts):
         //  no word of any other message is read as asking for a copy (review 9, H1 M1).
         if (restoreReplyCopyId(raw)) return IntentParser.restoreReplyIntent(raw);
+        if (isShowCopiesLine(raw)) return IntentParser.showCopiesIntent(raw);
         if (isUndoRequest(raw)) {
             return {
                 goal: raw,

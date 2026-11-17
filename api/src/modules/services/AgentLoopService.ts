@@ -762,6 +762,10 @@ export class AgentLoopService {
                     //  his files' block. An answer to Joe's waiting question is read on these
                     //  words, and the chat so far leaves them out once (select.ts, 2026-11-08).
                     ownerText: String(options.ownerText ?? goal).trim() || undefined,
+                    //  …and whether it IS what he typed. Without it the words above are the goal (a resumed run, a
+                    //  caller that passed none): read for his answer to Joe's question as before, but never as his own
+                    //  line for his data copies — that door stays shut (review 10, L4).
+                    ownerTyped: typeof options.ownerText === 'string',
                     //  Written from the Joe app on one of his phones (api/routes/run.ts): «this phone» is it.
                     ...(options.fromPhone ? { fromPhone: options.fromPhone } : {}),
                     modelConfig,

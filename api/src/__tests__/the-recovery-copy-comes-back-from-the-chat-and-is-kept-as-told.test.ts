@@ -157,8 +157,8 @@ describe('B3 — kept as long as he is told', () => {
     it('the line says what pruning does: 14 days, unless the space fills first, the oldest first — and that the chat brings one back', () => {
         const q = { path: '2t' as const, blocked: 0, notTried: [], skippedProbes: [], walked: true, origin: 'http://127.0.0.1:1', recovery: { versions: 2, bytes: 10, unexplained: [], overBudget: false, keptDays: 14 } };
         const en = qaPathLines(q, 'en').join('\n');
-        expect(en).toMatch(/for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first\. To bring one back, ask Joe in the chat\./u);
-        expect(qaPathLines(q, 'ar').join('\n')).toMatch(/لمدة 14 يومًا، ما لم تمتلئ المساحة .* فتُحذف الأقدم أولًا\. لاسترجاع نسخة، اطلب ذلك من جو في المحادثة\./u);
+        expect(en).toMatch(/for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first\. To see them, send a message that is nothing but «show my data copies»; the list ends with the line that brings one back\./u);
+        expect(qaPathLines(q, 'ar').join('\n')).toMatch(/لمدة 14 يومًا، ما لم تمتلئ المساحة .* فتُحذف الأقدم أولًا\. لترى النسخ أرسل رسالة ليس فيها إلا «اعرض نسخ بياناتي»، وفي آخر القائمة السطر الذي يعيد إحداها\./u);
     });
 });
 
@@ -179,7 +179,7 @@ describe('M3 — the version from before of a file not put back is where the lin
         const dirOf = (n: number) => path.join(recoveryRunDir('ws-r7', root, 'run-failed', env), String(n), 'data', 'store.json');
         expect(run.versions.some(v => fs.readFileSync(dirOf(v.n), 'utf8').includes('before'))).toBe(true);
         const q = (before: 'copies' | 'snapshot') => ({ path: 'no-write' as const, blocked: 0, notTried: [], skippedProbes: [], putBackFailed: ['data/store.json (EBUSY)'], putBackFailedBefore: before });
-        expect(qaPathLines(q('copies'), 'en').join('\n')).toMatch(/their version from before the checks and their last version are among the copies Joe keeps outside your project — ask Joe in the chat/u);
+        expect(qaPathLines(q('copies'), 'en').join('\n')).toMatch(/their version from before the checks and their last version are among the copies Joe keeps outside your project — send a message that is nothing but «show my data copies» to see them/u);
         expect(qaPathLines(q('snapshot'), 'en').join('\n')).toMatch(/is in a temporary folder named in the verification log, removed after six hours/u);
         expect(qaPathLines(q('copies'), 'en').join('\n')).not.toMatch(/snapshot folder shown in the log/u);
     });

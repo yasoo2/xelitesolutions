@@ -161,7 +161,7 @@ describe('12.5 row 1 — each 2T shape, nobody else writing: today\'s verificati
             const summary = h.summaryOf(report, request);
             expect(summary).toContain('Joe\'s checks ran on your app the way they always have, trying its forms and buttons; afterwards your app\'s data files were put back as before.');
             //  Review 7, B3: what pruning really keeps, and the chat that brings a copy back.
-            expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To bring one back, ask Joe in the chat.');
+            expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To see them, send a message that is nothing but «show my data copies»; the list ends with the line that brings one back.');
             //  The copies are Joe's, outside the project.
             expect(filesUnder(shape.dir).some(f => /qa-recovery/.test(f.rel))).toBe(false);
         });

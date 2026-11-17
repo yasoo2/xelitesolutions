@@ -176,11 +176,11 @@ describe('H1 — only his exact line brings a copy back', () => {
         const id = '20261117-002502';
         const arDigits = id.replace(/\d/gu, d => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
         for (const ok of [`restore copy ${id}`, `Restore copy ${id}.`, `  restore copy ${id}!  `, `RESTORE COPY ${id}`, `restore  copy ${id}`,
-            `استعِد النسخة ${id}`, `استعد النسخة ${id}`, `استعِد النسخه ${id}`, `استعِد النسخة ${arDigits}`, `‏استعِد النسخة ${id}`, `restore copy ${id}-2`]) {
+            `استعِد النسخة ${id}`, `استعد النسخة ${id}`, `استعِد النسخه ${id}`, `restore copy ${id} .`, `إستعد النسخة ${id}`, `استعيد النسخة ${id}`, `استعِد النسخة ${arDigits}`, `‏استعِد النسخة ${id}`, `restore copy ${id}-2`]) {
             expect([ok, restoreReplyCopyId(ok)]).toEqual([ok, ok.includes(`${id}-2`) ? `${id}-2` : id]);
         }
         for (const no of [`«restore copy ${id}»`, `"restore copy ${id}"`, `'restore copy ${id}'`, `restore copy ${id}?`, `restore copy ${id}؟`,
-            `yes, restore copy ${id}`, `restore copy ${id} later`, `restore copy ${id}..`, `restore copy ${id} .`, `restore copy ${id}!!`,
+            `yes, restore copy ${id}`, `restore copy ${id} later`, `restore copy ${id}..`, `restore copy ${id} ..`, `restore copy ${id}!!`,
             `restore copy ${id}\nrestore copy ${id}`, `restore copy`, `restore copy 1`, `restore copy #${id}`, 'تمام', 'اوكي', 'نعم', 'yes', 'ok',
             `استعِد النسخة ${id} بعدين`, `نعم، استعِد النسخة ${id}`, `«استعِد النسخة ${id}»`, `استعِد النسخة ${id} إذا فيها سجل أمل`,
             `رجّع النسخة ${id}`, `نعم، رجّع النسخة ${id}`, `restore the copy ${id}`, `please restore copy ${id}`]) {
@@ -427,7 +427,8 @@ describe('M3 — a store whose folder comes from the start\'s arguments is never
 describe('L1 — his reply is what he typed', () => {
     it('the orchestrator hands the tools his typed text, never the goal with his files\' block', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf8');
-        expect(src).toMatch(/ownerMessage: typeof goalContext\?\.ownerText === 'string' \? goalContext\.ownerText : ''/u);
+        //  Review 10 (H1, L4): and only when it IS what he typed, to the step his own message planned.
+        expect(src).toMatch(/ownerMessage: goalContext\?\.ownerTyped !== false && typeof goalContext\?\.ownerText === 'string' && !\(Number\(node\.retryCount\) > 0\)\s*\?\s*goalContext\.ownerText : ''/u);
         expect(src).not.toMatch(/ownerMessage: String\(goalText/u);
     });
 

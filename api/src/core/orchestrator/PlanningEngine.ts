@@ -2262,34 +2262,41 @@ Rules:
         const goalLower = probe.toLowerCase();
 
         /**
-         * [DATA RESTORE REPLY] His whole typed message is the one line Joe's list of his data copies told him to send
-         * back («استعِد النسخة 20261117-002502» / «restore copy 20261117-002502», restore-reply.ts). It goes to
+         * [DATA COPIES LINES] His whole typed message is one of the two exact lines of his data copies (restore-reply.ts):
+         * «اعرض نسخ بياناتي» / «show my data copies» lists them (read-only), and the line a list told him to send back
+         * («استعِد النسخة 20261117-002502» / «restore copy 20261117-002502») brings that copy back. Each goes to
          * project_data_recovery, first and with no model in the loop; the tool restores only when its own records say
          * that copy was in the latest list of this session and project, shown in an earlier turn within thirty
          * minutes, and not used yet. No word of any other message is read as asking for a copy (review 9, H1 M1):
-         * those go on exactly as on main, and the model may call the tool's read-only `list` when he asks about them.
+         * those go on exactly as on main.
+         *
+         * Only on his FRESH typed message (review 10, H1 L4): the run's `ownerText`, when the caller passed what he
+         * typed (`ownerTyped !== false`) — never a fallback to the goal — and only when the goal being planned IS that
+         * same line. A repair plan («Fix and continue: …») or a resumed goal carries the context of the turn that
+         * typed the line, and must never plan the restore again.
          */
         {
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { restoreReplyCopyId } = require('../engine/restore-reply');
-            //  What he TYPED — never a file's block, a picture's description, or a resumed goal (review 9, L1).
-            const typed: string = typeof context?.ownerText === 'string' ? context.ownerText : userGoal;
-            const id: string | undefined = restoreReplyCopyId(typed);
-            if (id) {
+            const { restoreReplyCopyId, isShowCopiesLine } = require('../engine/restore-reply');
+            const typed: string = context?.ownerTyped !== false && typeof context?.ownerText === 'string' ? context.ownerText : '';
+            const id: string | undefined = typed ? restoreReplyCopyId(typed) : undefined;
+            const restore = !!id && restoreReplyCopyId(userGoal) === id;
+            const show = !restore && !!typed && isShowCopiesLine(typed) && isShowCopiesLine(userGoal);
+            if (restore || show) {
                 const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
                 const active = ((global as any).joeProjects || {})[sessionKey];
                 return {
-                    id: `data_restore_${Date.now()}`,
+                    id: `${restore ? 'data_restore' : 'data_copies'}_${Date.now()}`,
                     goal: intent.goal,
                     steps: [{
                         id: 'project_data_recovery',
-                        description: 'إعادة نسخة من بيانات التطبيق بالسطر الذي أرسله المالك',
+                        description: restore ? 'إعادة نسخة من بيانات التطبيق بالسطر الذي أرسله المالك' : 'عرض النسخ التي يحتفظ بها جو من بيانات التطبيق',
                         tool: 'project_data_recovery',
                         agent: 'Dev',
-                        input: { ...(active?.dir ? { projectDir: active.dir } : {}), action: 'restore', restore: id },
+                        input: { ...(active?.dir ? { projectDir: active.dir } : {}), ...(restore ? { action: 'restore', restore: id } : { action: 'list' }) },
                         dependsOn: [],
                     }],
-                    metadata: { complexity: 'low', riskLevel: 'medium' },
+                    metadata: { complexity: 'low', riskLevel: restore ? 'medium' : 'low' },
                 };
             }
         }

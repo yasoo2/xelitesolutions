@@ -255,7 +255,7 @@ describe('a change run of a Node server today\'s put-back covers (2T)', () => {
         expect(summary).toContain('Joe\'s checks ran on your app the way they always have, trying its forms and buttons');
         //  Review 7, B3/M2: the copies' retention as pruning really keeps them, the chat that brings one back, and a change
         //  outside every request that could write told as one that may not have come from the checks.
-        expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To bring one back, ask Joe in the chat.');
+        expect(summary).toContain('Joe kept your app\'s data files as they were before each put-back, outside your project, for 14 days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To see them, send a message that is nothing but «show my data copies»; the list ends with the line that brings one back.');
         expect(summary).toContain('While the checks ran, «data/notes.json» also changed at a moment when none of the checks\' requests could save anything, so the change may not have come from the checks');
         expect(report.delivery.log.join('\n')).toMatch(/qa path: a change run \(history\); before the start: 2t/u);
     });

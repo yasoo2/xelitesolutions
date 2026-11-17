@@ -101,7 +101,7 @@ describe('B1 — path 3: what changed during the walk is put back, kept, and tol
         const told = qaPathLines(report.delivery.qaPath, 'en').join('\n');
         expect(told).toMatch(/these data files of your app changed: «data\/store\.json»; they were put back as they were before the checks/u);
         expect(told).not.toMatch(/without saving anything in it/u);
-        expect(told).toMatch(/ask Joe in the chat/u);
+        expect(told).toMatch(/send a message that is nothing but «show my data copies»/u);
         expect(qaPathLines(report.delivery.qaPath, 'ar').join('\n')).toMatch(/وأُعيدت كما كانت قبل الفحوص/u);
     });
 

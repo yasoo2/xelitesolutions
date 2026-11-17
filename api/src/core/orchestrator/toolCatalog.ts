@@ -132,6 +132,15 @@ export const CORE_TOOLS = [
  */
 const plannerTools = (): any[] => (tools as any[]).filter(t => t?.name && !isEngineTool(t.name));
 
+/**
+ * The tools a request's WORDS may reach: the planner's toolbox without the ones that say words never name them
+ * (`matchedByWords = false`: project_data_recovery, review 9 M1 / review 10 M2). Such a tool is reached only by its own
+ * exact line (restore-reply.ts › PlanningEngine's [DATA COPIES LINES]); it does not weigh the words of the others
+ * (IDF), is not ranked into the catalogue a goal's words pick, and is never routed to by the capability router — so
+ * every other message is weighed, offered and routed exactly as on main.
+ */
+const wordTools = (): any[] => plannerTools().filter(t => t?.matchedByWords !== false);
+
 export interface ScoredTool { name: string; score: number; line: string }
 
 /**
@@ -146,13 +155,13 @@ export interface ScoredTool { name: string; score: number; line: string }
  */
 const IDF: Map<string, number> = (() => {
     const df = new Map<string, number>();
-    for (const t of plannerTools()) {
+    for (const t of wordTools()) {
         const seen = new Set(
             `${norm(t?.name || '')} ${(t?.tags || []).map((x: any) => norm(String(x))).join(' ')}`
                 .split(/[\s_]+/).filter(Boolean));
         for (const w of seen) df.set(w, (df.get(w) || 0) + 1);
     }
-    const n = plannerTools().length || 1;
+    const n = wordTools().length || 1;
     const out = new Map<string, number>();
     for (const [w, c] of df) out.set(w, Math.max(0.25, Math.log(n / c) / Math.log(n)));
     return out;
@@ -196,7 +205,7 @@ export function toolLine(tool: any): string {
  */
 export function selectToolsFor(goal: string, limit = 30): ScoredTool[] {
     const terms = goalTerms(goal);
-    const all = plannerTools().filter(t => t?.description);
+    const all = wordTools().filter(t => t?.description);
     const scored = all
         .map(t => ({ name: t.name, score: scoreTool(t, terms), line: toolLine(t) }))
         .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -272,6 +281,9 @@ const ROUTER_EXCLUDED = new Set([
     'mobile_builder', 'go_builder', 'java_builder', 'python_builder', 'auth_builder',
     'scaffold_project', 'scaffold_full_stack', 'progressive_generator', 'bulk_file_generator',
     'ai_write_file', 'phase_executor',
+    // His data copies are reached only by their own exact lines (restore-reply.ts), never by words: "test the
+    // recovery copies" or "summarize the data recovery" is not a request for his copies (review 10, M2).
+    'project_data_recovery',
 ]);
 
 const URL_RE = /https?:\/\/[^\s"'<>]+|\b(?:www\.)[^\s"'<>]+/i;
@@ -369,7 +381,7 @@ export function capabilityRoute(goal: string, context?: any): CapabilityRoute | 
     if (!ACT_VERB.test(norm(g))) return null;
 
     const terms = goalTerms(g);
-    const ranked = plannerTools()
+    const ranked = wordTools()
         .filter(t => !ROUTER_EXCLUDED.has(t.name))
         .map(t => ({ tool: t, score: scoreTool(t, terms) }))
         .sort((a, b) => b.score - a.score);

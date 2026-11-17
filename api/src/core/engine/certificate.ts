@@ -18,6 +18,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { QaPath } from '../quality/qa-target';
+import { SHOW_COPIES_AR, SHOW_COPIES_EN } from './restore-reply';
 
 type Words = { short: string; whole: string };
 const INSTRUMENTS: Record<'ar' | 'en', Record<string, Words>> = {
@@ -119,7 +120,7 @@ export interface CertificateInput {
      * the browser line is followed by what that way was, and on the no-write walk what was not tried is listed
      * under «Not proven yet». None (a new build): as before.
      */
-    qaPath?: { path: QaPath | string; notTried?: string[]; putBack?: string[]; leftChanged?: { files: string[]; why?: string }; putBackFailed?: string[] };
+    qaPath?: { path: QaPath | string; notTried?: string[]; putBack?: string[]; leftChanged?: { files: string[]; why?: string }; putBackFailed?: string[]; putBackFailedBefore?: 'copies' | 'snapshot' };
 }
 
 /**
@@ -199,6 +200,12 @@ const QA_CERT_LINES: Record<'ar' | 'en' | 'es' | 'fr' | 'de' | 'ru', { certPriva
     },
 };
 
+/** How he sees the copies Joe keeps of the files not put back: the exact show line (restore-reply.ts). */
+const CERT_SEE_COPIES = {
+    ar: `نسخها بين النسخ التي يحتفظ بها جو؛ لتراها أرسل رسالة ليس فيها إلا «${SHOW_COPIES_AR}».`,
+    en: `Their versions are among the copies Joe keeps; to see them, send a message that is nothing but «${SHOW_COPIES_EN}».`,
+};
+
 /** The certificate's line for the way the browser check treated his data, in the given language ('' when none). */
 export function qaCertificateLine(qaPath: CertificateInput['qaPath'], language: string): string {
     if (!qaPath) return '';
@@ -209,7 +216,12 @@ export function qaCertificateLine(qaPath: CertificateInput['qaPath'], language: 
     if (qaPath.path === '2t') {
         const list = (xs: string[]) => xs.slice(0, 6).join(lang === 'ar' ? '، ' : ', ') + (xs.length > 6 ? '…' : '');
         if (qaPath.leftChanged?.files?.length && qaPath.leftChanged.why === 'serverRunning') return w.certAsBeforeLeft.replace('{files}', list(qaPath.leftChanged.files));
-        if (qaPath.putBackFailed?.length) return w.certAsBeforeFailed.replace('{files}', list(qaPath.putBackFailed));
+        //  Their versions are among the copies Joe keeps (unless they sit in a temporary folder): the one exact line
+        //  that shows them is quoted, never «ask Joe in the chat» (review 10, M3).
+        if (qaPath.putBackFailed?.length) {
+            return w.certAsBeforeFailed.replace('{files}', list(qaPath.putBackFailed))
+                + (qaPath.putBackFailedBefore === 'snapshot' ? '' : ` ${(lang === 'ar' ? CERT_SEE_COPIES.ar : CERT_SEE_COPIES.en)}`);
+        }
         return w.certAsBefore;
     }
     const n = String((qaPath.notTried || []).length);

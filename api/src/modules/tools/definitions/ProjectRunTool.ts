@@ -45,6 +45,8 @@ export interface RunningServer {
     identity?: string;
     /** The process listening on the port, when it is not the launched pid: what outlives a launcher. */
     listener?: { pid: number; identity: string };
+    /** The environment Joe started it with, beyond the inherited one (review 10, L5): a restart gives it again. */
+    env?: Record<string, string>;
 }
 const RUNNING: Map<string, RunningServer> = new Map();
 
@@ -340,6 +342,19 @@ export function canAdoptRecordedLive(record: any, expectedCwd: string): boolean 
         }
     }
     return true;
+}
+
+/**
+ * The environment a restart carries (review 10, L5): only on a restart Joe's own code asked for (`restartKey`, set by
+ * startServersAgain — a model's input never reaches the context), only string values, and never the port, which the
+ * run sets itself.
+ */
+function carriedEnv(context?: any): Record<string, string> {
+    const env = context?.restartKey ? context?.restartEnv : undefined;
+    if (!env || typeof env !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(env)) if (/^[A-Za-z_][A-Za-z0-9_]{0,63}$/u.test(k) && k !== 'PORT' && typeof v === 'string') out[k] = v;
+    return out;
 }
 
 function runKey(context?: any): string {
@@ -1913,9 +1928,11 @@ export class ProjectRunTool implements ToolDefinition {
             return { ok: false, error: message, logs };
         }
         const [launcher, launcherArgs] = parsedLauncher;
+        //  A server a restore stopped is started again with the environment Joe gave it (startServersAgain, review 10 L5).
+        const launchEnv: Record<string, string> = { ...carriedEnv(context), PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' };
         const managed = ExecutionGateway.startManaged(launcher, launcherArgs, {
             cwd,
-            env: { PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
+            env: launchEnv,
             windowsHide: true,
             //  The preview is recorded with the project and adopted by the next
             //  Joe (adoptRecordedPreviews): the process ledger leaves it alone.
@@ -1993,7 +2010,7 @@ export class ProjectRunTool implements ToolDefinition {
         }
 
         if (pid) {
-            await trackRunning(key, context, { pid, port: livePort || port, cwd, command: detected.command });
+            await trackRunning(key, context, { pid, port: livePort || port, cwd, command: detected.command, env: launchEnv });
             // A preview that exits after readiness must not remain adoptable.
             void managed.done.then((result) => {
                 const current = RUNNING.get(key);
@@ -2512,7 +2529,7 @@ async function listenerOf(port: number, launched: number): Promise<{ listener?: 
 }
 
 /** Track a server this run started, with its session, its pid's identity, and its port's listener. */
-async function trackRunning(key: string, context: any, server: { pid: number; port: number; cwd: string; command: string }): Promise<void> {
+async function trackRunning(key: string, context: any, server: { pid: number; port: number; cwd: string; command: string; env?: Record<string, string> }): Promise<void> {
     const sessionId = String(context?.sessionId || '').trim();
     RUNNING.set(key, {
         ...server,
@@ -2681,6 +2698,8 @@ export interface StoppedServer {
     sessionKey?: string;
     sessionId?: string;
     live?: Record<string, any>;
+    /** The environment Joe started it with (RunningServer.env), given again when it is started again. */
+    env?: Record<string, string>;
 }
 
 /** The folders a restore may touch: never a drive root, the home folder, or a folder above it (review 9, H2). */
@@ -2688,6 +2707,20 @@ function servingFolders(roots: string[]): string[] {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isHomeDriveOrAbove } = require('../path-containment');
     return roots.map(r => String(r || '').trim()).filter(r => r && !isHomeDriveOrAbove(r));
+}
+
+/**
+ * Whether a server's working folder is one a restore may touch: inside one of `roots`, and not inside one of `exclude`
+ * — another chat's project that sits inside the session's folder (review 10, M1): that chat's server is never stopped
+ * by a restore here.
+ */
+function servingTest(roots: string[], exclude: string[]): (cwd: unknown) => boolean {
+    const folders = servingFolders(roots);
+    const others = exclude.map(e => String(e || '').trim()).filter(Boolean);
+    return (cwd: unknown) => {
+        const c = String(cwd || '').trim();
+        return !!c && folders.some(r => isWithinRoot(c, r)) && !others.some(o => isWithinRoot(c, o));
+    };
 }
 
 /**
@@ -2702,13 +2735,12 @@ function servingFolders(roots: string[]): string[] {
  * killed only while it is still that process (its start time, or the listener of its recorded port), so a reused pid
  * is never touched. What would not stop is returned, and the caller refuses — and starts again what it stopped.
  */
-export async function stopServersServing(roots: string[], sessionKey: string | undefined, logs: string[]): Promise<{
+export async function stopServersServing(roots: string[], sessionKey: string | undefined, logs: string[], exclude: string[] = []): Promise<{
     stopped: StoppedServer[];
     stillRunning: Array<{ pid: number; port: number }>;
 }> {
     const out = { stopped: [] as StoppedServer[], stillRunning: [] as Array<{ pid: number; port: number }> };
-    const folders = servingFolders(roots);
-    const inside = (cwd: unknown) => { const c = String(cwd || '').trim(); return !!c && folders.some(r => isWithinRoot(c, r)); };
+    const inside = servingTest(roots, exclude);
     for (const [key, server] of Array.from(RUNNING.entries())) {
         if (!inside(server.cwd)) continue;
         //  What it takes to start it again, read before the stop forgets it.
@@ -2721,6 +2753,7 @@ export async function stopServersServing(roots: string[], sessionKey: string | u
                 ...(server.sessionKey ? { sessionKey: server.sessionKey } : {}),
                 ...(server.sessionId ? { sessionId: server.sessionId } : {}),
                 ...(live ? { live } : {}),
+                ...(server.env ? { env: { ...server.env } } : {}),
             });
         } else {
             out.stillRunning.push({ pid: server.pid, port: server.port });
@@ -2756,9 +2789,8 @@ export async function stopServersServing(roots: string[], sessionKey: string | u
 }
 
 /** The ports of Joe's servers whose working folder is inside one of `roots` (RUNNING, and the session's recorded `live`). */
-export function portsOfServersServing(roots: string[], sessionKey: string | undefined): number[] {
-    const folders = servingFolders(roots);
-    const inside = (cwd: unknown) => { const c = String(cwd || '').trim(); return !!c && folders.some(r => isWithinRoot(c, r)); };
+export function portsOfServersServing(roots: string[], sessionKey: string | undefined, exclude: string[] = []): number[] {
+    const inside = servingTest(roots, exclude);
     const ports = new Set<number>();
     for (const server of RUNNING.values()) if (inside(server.cwd) && server.port > 0) ports.add(server.port);
     const live = sessionKey ? (global as any).joeProjects?.[sessionKey]?.live : undefined;
@@ -2785,6 +2817,9 @@ export async function startServersAgain(stopped: StoppedServer[], context: any, 
         //  folder. `restart` keeps it from adopting anything; `restartKey` puts it back under its own key.
         const ctx = {
             restartKey: key,
+            //  The environment Joe started it with (review 10, L5). One started before this Joe, or by another
+            //  launcher, has none recorded: when it does not come back, the caller says so («شغّل المشروع»).
+            ...(s.env ? { restartEnv: { ...s.env } } : {}),
             language: context?.language,
             ...(context?.runId ? { runId: context.runId } : {}),
             ...(context?.isCancelled ? { isCancelled: context.isCancelled } : {}),

@@ -1556,12 +1556,12 @@ const QA_LINES = {
         "ru": "Проверки Joe прошли на вашем приложении как обычно и опробовали его формы и кнопки; затем файлы данных, которые удалось вернуть, возвращены, а некоторые — нет (они названы ниже). Браузер проверок обращался только к адресу приложения {origin}."
     },
     "recoveryKept": {
-        "ar": "أثناء الفحوص تغيّر أيضًا {files} في لحظة لم يكن فيها أي طلب من الفحوص يمكن أن يحفظ شيئًا، فقد لا يكون التغيير منها؛ ثم أُعيد كما كان. كل نسخة رآها جو بين النسخ التي يحتفظ بها؛ اطلبها من جو في المحادثة إن كانت تلك التغييرات منك أو من زبائنك.",
-        "en": "While the checks ran, {files} also changed at a moment when none of the checks' requests could save anything, so the change may not have come from the checks; then it was put back. Every version Joe saw is among the copies it keeps; ask Joe for it in the chat if those changes were yours or your customers'.",
-        "es": "Mientras corrían las comprobaciones, {files} también cambió en un momento en que ninguna petición de las comprobaciones podía guardar nada, así que el cambio puede no venir de ellas; después se restauró. Cada versión que Joe vio está entre las copias que guarda; pídesela a Joe en el chat si esos cambios eran tuyos o de tus clientes.",
-        "fr": "Pendant les vérifications, {files} a aussi changé à un moment où aucune requête des vérifications ne pouvait rien enregistrer, donc le changement ne vient peut-être pas d'elles ; puis il a été remis. Chaque version que Joe a vue fait partie des copies qu'il garde ; demandez-la à Joe dans la discussion si ces changements venaient de vous ou de vos clients.",
-        "de": "Während der Prüfungen änderte sich {files} auch zu einem Zeitpunkt, an dem keine Anfrage der Prüfungen etwas speichern konnte, die Änderung kam also vielleicht nicht von ihnen; danach wurde es zurückgelegt. Jede Version, die Joe gesehen hat, gehört zu den Kopien, die er aufbewahrt; fragen Sie Joe im Chat danach, falls diese Änderungen von Ihnen oder Ihren Kunden waren.",
-        "ru": "Пока шли проверки, {files} изменился ещё и в момент, когда ни один запрос проверок не мог ничего сохранить, поэтому изменение могло прийти не от них; затем он был возвращён. Каждая версия, которую видел Joe, есть среди сохранённых копий; попросите её у Joe в чате, если это были изменения ваши или ваших клиентов."
+        "ar": "أثناء الفحوص تغيّر أيضًا {files} في لحظة لم يكن فيها أي طلب من الفحوص يمكن أن يحفظ شيئًا، فقد لا يكون التغيير منها؛ ثم أُعيد كما كان. كل نسخة رآها جو بين النسخ التي يحتفظ بها؛ إن كانت تلك التغييرات منك أو من زبائنك فأرسل رسالة ليس فيها إلا «اعرض نسخ بياناتي» لترى النسخ.",
+        "en": "While the checks ran, {files} also changed at a moment when none of the checks' requests could save anything, so the change may not have come from the checks; then it was put back. Every version Joe saw is among the copies it keeps; if those changes were yours or your customers', send a message that is nothing but «show my data copies» to see them.",
+        "es": "Mientras corrían las comprobaciones, {files} también cambió en un momento en que ninguna petición de las comprobaciones podía guardar nada, así que el cambio puede no venir de ellas; después se restauró. Cada versión que Joe vio está entre las copias que guarda; si esos cambios eran tuyos o de tus clientes, envía un mensaje que solo diga «show my data copies» para verlas.",
+        "fr": "Pendant les vérifications, {files} a aussi changé à un moment où aucune requête des vérifications ne pouvait rien enregistrer, donc le changement ne vient peut-être pas d'elles ; puis il a été remis. Chaque version que Joe a vue fait partie des copies qu'il garde ; si ces changements venaient de vous ou de vos clients, envoyez un message qui dit seulement «show my data copies» pour les voir.",
+        "de": "Während der Prüfungen änderte sich {files} auch zu einem Zeitpunkt, an dem keine Anfrage der Prüfungen etwas speichern konnte, die Änderung kam also vielleicht nicht von ihnen; danach wurde es zurückgelegt. Jede Version, die Joe gesehen hat, gehört zu den Kopien, die er aufbewahrt; falls diese Änderungen von Ihnen oder Ihren Kunden waren, senden Sie eine Nachricht, die nur «show my data copies» lautet, um sie zu sehen.",
+        "ru": "Пока шли проверки, {files} изменился ещё и в момент, когда ни один запрос проверок не мог ничего сохранить, поэтому изменение могло прийти не от них; затем он был возвращён. Каждая версия, которую видел Joe, есть среди сохранённых копий; если это были изменения ваши или ваших клиентов, отправьте сообщение, в котором только «show my data copies», чтобы увидеть их."
     },
     "recoveryOverBudget": {
         "ar": "لم يحتفظ جو إلا بآخر نسخة من كل ملف بيانات قبل إعادته؛ فالبيانات أكبر مما يحفظه كاملًا.",
@@ -1572,12 +1572,12 @@ const QA_LINES = {
         "ru": "Joe сохранил только последнюю версию каждого файла данных перед возвратом: данных больше, чем он хранит целиком."
     },
     "putBackFailed": {
-        "ar": "تعذّرت إعادة {files} كما كانت قبل الفحوص؛ نسختها من قبل الفحوص وآخر نسخة منها بين النسخ التي يحتفظ بها جو خارج مشروعك، فاطلب من جو في المحادثة أن يعيد إحداها.",
-        "en": "{files} could not be put back as they were before the checks; their version from before the checks and their last version are among the copies Joe keeps outside your project — ask Joe in the chat to bring one back.",
-        "es": "{files} no se pudo restaurar como estaba antes de las comprobaciones; su versión de antes y su última versión están entre las copias que Joe guarda fuera de tu proyecto: pídele a Joe en el chat que te devuelva una.",
-        "fr": "{files} n'a pas pu être remis comme avant les vérifications ; sa version d'avant et sa dernière version font partie des copies que Joe garde hors de votre projet — demandez à Joe dans la discussion d'en remettre une.",
-        "de": "{files} konnte nicht wie vor den Prüfungen zurückgelegt werden; die Version von vorher und die letzte Version gehören zu den Kopien, die Joe außerhalb Ihres Projekts aufbewahrt — bitten Sie Joe im Chat, eine zurückzuholen.",
-        "ru": "{files} не удалось вернуть в прежнее состояние; версия до проверок и последняя версия есть среди копий, которые Joe хранит вне вашего проекта, — попросите Joe в чате вернуть одну из них."
+        "ar": "تعذّرت إعادة {files} كما كانت قبل الفحوص؛ نسختها من قبل الفحوص وآخر نسخة منها بين النسخ التي يحتفظ بها جو خارج مشروعك؛ أرسل رسالة ليس فيها إلا «اعرض نسخ بياناتي» لترى النسخ، وفي آخر القائمة السطر الذي يعيد إحداها.",
+        "en": "{files} could not be put back as they were before the checks; their version from before the checks and their last version are among the copies Joe keeps outside your project — send a message that is nothing but «show my data copies» to see them; the list ends with the line that brings one back.",
+        "es": "{files} no se pudo restaurar como estaba antes de las comprobaciones; su versión de antes y su última versión están entre las copias que Joe guarda fuera de tu proyecto: envía un mensaje que solo diga «show my data copies» para verlas; la lista termina con la línea que devuelve una.",
+        "fr": "{files} n'a pas pu être remis comme avant les vérifications ; sa version d'avant et sa dernière version font partie des copies que Joe garde hors de votre projet — envoyez un message qui dit seulement «show my data copies» pour les voir ; la liste se termine par la ligne qui en remet une.",
+        "de": "{files} konnte nicht wie vor den Prüfungen zurückgelegt werden; die Version von vorher und die letzte Version gehören zu den Kopien, die Joe außerhalb Ihres Projekts aufbewahrt — senden Sie eine Nachricht, die nur «show my data copies» lautet, um sie zu sehen; die Liste endet mit der Zeile, die eine zurückholt.",
+        "ru": "{files} не удалось вернуть в прежнее состояние; версия до проверок и последняя версия есть среди копий, которые Joe хранит вне вашего проекта, — отправьте сообщение, в котором только «show my data copies», чтобы увидеть их; список заканчивается строкой, которая возвращает одну из них."
     },
     "putBackFailedSnapshot": {
         "ar": "تعذّرت إعادة {files} كما كانت قبل الفحوص؛ ونسختها من قبل الفحوص في مجلد مؤقت مذكور في سجل الفحص، يُحذف بعد ست ساعات.",
@@ -1588,12 +1588,12 @@ const QA_LINES = {
         "ru": "{files} не удалось вернуть в прежнее состояние; версия до проверок лежит во временной папке, указанной в журнале проверки, и удаляется через шесть часов."
     },
     "recoverySaved": {
-        "ar": "احتفظ جو بملفات بيانات تطبيقك كما كانت قبل كل إعادة، خارج مشروعك، لمدة {days} يومًا، ما لم تمتلئ المساحة التي يخصّصها جو لهذه النسخ قبل ذلك، فتُحذف الأقدم أولًا. لاسترجاع نسخة، اطلب ذلك من جو في المحادثة.",
-        "en": "Joe kept your app's data files as they were before each put-back, outside your project, for {days} days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To bring one back, ask Joe in the chat.",
-        "es": "Joe guardó los archivos de datos de tu aplicación tal como estaban antes de cada restauración, fuera de tu proyecto, durante {days} días, salvo que el espacio que Joe reserva para estas copias se llene antes; entonces se borran primero las más antiguas. Para recuperar una, pídeselo a Joe en el chat.",
-        "fr": "Joe a gardé les fichiers de données de votre application tels qu'ils étaient avant chaque remise, hors de votre projet, pendant {days} jours — sauf si l'espace que Joe réserve à ces copies se remplit avant ; les plus anciennes partent alors en premier. Pour en récupérer une, demandez-le à Joe dans la discussion.",
-        "de": "Joe hat die Datendateien Ihrer App so, wie sie vor jedem Zurücklegen waren, außerhalb Ihres Projekts {days} Tage lang aufbewahrt — es sei denn, der Platz, den Joe für diese Kopien vorsieht, ist vorher voll; dann gehen die ältesten zuerst. Um eine zurückzuholen, fragen Sie Joe im Chat.",
-        "ru": "Joe сохранил файлы данных приложения в том виде, в каком они были перед каждым возвратом, вне вашего проекта, на {days} дней — если только место, которое Joe отводит под эти копии, не заполнится раньше; тогда первыми удаляются самые старые. Чтобы вернуть копию, попросите Joe в чате."
+        "ar": "احتفظ جو بملفات بيانات تطبيقك كما كانت قبل كل إعادة، خارج مشروعك، لمدة {days} يومًا، ما لم تمتلئ المساحة التي يخصّصها جو لهذه النسخ قبل ذلك، فتُحذف الأقدم أولًا. لترى النسخ أرسل رسالة ليس فيها إلا «اعرض نسخ بياناتي»، وفي آخر القائمة السطر الذي يعيد إحداها.",
+        "en": "Joe kept your app's data files as they were before each put-back, outside your project, for {days} days — unless the space Joe sets aside for these copies fills up first, when the oldest go first. To see them, send a message that is nothing but «show my data copies»; the list ends with the line that brings one back.",
+        "es": "Joe guardó los archivos de datos de tu aplicación tal como estaban antes de cada restauración, fuera de tu proyecto, durante {days} días, salvo que el espacio que Joe reserva para estas copias se llene antes; entonces se borran primero las más antiguas. Para verlas, envía un mensaje que solo diga «show my data copies»; la lista termina con la línea que devuelve una.",
+        "fr": "Joe a gardé les fichiers de données de votre application tels qu'ils étaient avant chaque remise, hors de votre projet, pendant {days} jours — sauf si l'espace que Joe réserve à ces copies se remplit avant ; les plus anciennes partent alors en premier. Pour les voir, envoyez un message qui dit seulement «show my data copies» ; la liste se termine par la ligne qui en remet une.",
+        "de": "Joe hat die Datendateien Ihrer App so, wie sie vor jedem Zurücklegen waren, außerhalb Ihres Projekts {days} Tage lang aufbewahrt — es sei denn, der Platz, den Joe für diese Kopien vorsieht, ist vorher voll; dann gehen die ältesten zuerst. Um sie zu sehen, senden Sie eine Nachricht, die nur «show my data copies» lautet; die Liste endet mit der Zeile, die eine zurückholt.",
+        "ru": "Joe сохранил файлы данных приложения в том виде, в каком они были перед каждым возвратом, вне вашего проекта, на {days} дней — если только место, которое Joe отводит под эти копии, не заполнится раньше; тогда первыми удаляются самые старые. Чтобы увидеть их, отправьте сообщение, в котором только «show my data copies»; список заканчивается строкой, которая возвращает одну из них."
     },
     "fenceDown": {
         "ar": "لم يعمل سياج الشبكة الذي يضعه جو، فجرت الفحوص دون أن تحفظ شيئًا في تطبيقك.",
@@ -1852,7 +1852,11 @@ const SQLITE_FILE = /\.(?:db|sqlite|sqlite3|db3)$/iu;
  * a link; what each file is now is kept aside first. A database copied whole (one file, out of WAL mode)
  * replaces its old journal too. Stop the app's server first: a running server writes its own copy back.
  */
-export async function restoreRecoveryVersion(workspaceId: string, projectRoot: string, runId: string, n: number, env: NodeJS.ProcessEnv = process.env): Promise<RecoveryRestore> {
+export async function restoreRecoveryVersion(
+    workspaceId: string, projectRoot: string, runId: string, n: number, env: NodeJS.ProcessEnv = process.env,
+    /** A file that must not come back here, and why (review 10, M1: a file inside another chat's project). */
+    opts: { skip?: (rel: string) => string | undefined } = {},
+): Promise<RecoveryRestore> {
     const root = path.resolve(projectRoot);
     const out: RecoveryRestore = { ok: false, restored: [], skipped: [], keptAside: [] };
     const home = recoveryHome(env);
@@ -1888,6 +1892,8 @@ export async function restoreRecoveryVersion(workspaceId: string, projectRoot: s
     };
     for (const rel of files.sort()) {
         if (!isData(rel)) { out.skipped.push({ file: rel, why: 'not one of the app\'s data files' }); continue; }
+        const refused = opts.skip?.(rel);
+        if (refused) { out.skipped.push({ file: rel, why: refused }); continue; }
         const target = await resolveInProject(root, rel, 'write');
         if (!target.ok) { out.skipped.push({ file: rel, why: String(target.error || 'outside the project') }); continue; }
         if (target.isDir) { out.skipped.push({ file: rel, why: 'a folder is there now' }); continue; }
